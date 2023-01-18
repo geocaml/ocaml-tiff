@@ -1,0 +1,3 @@
+(library
+ (name tiff)
+ (libraries eio eio.unix))

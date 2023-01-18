@@ -1,0 +1,9 @@
+(mdx
+  (files README.md)
+  (libraries eio eio.core fmt eio_main tiff))
+
+(rule
+ (alias runtest)
+ (deps test/cea.tiff)
+ (targets cea.tiff)
+ (action (copy test/cea.tiff cea.tiff)))
