@@ -2,6 +2,8 @@
 
 *Status: WIP & Experimental*
 
+Supports both TIFF and BigTIFF files.
+
 ```ocaml
 # Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->

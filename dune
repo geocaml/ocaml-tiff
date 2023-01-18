@@ -2,6 +2,8 @@
   (files README.md)
   (libraries eio eio.core fmt eio_main tiff))
 
+(executable (name main) (libraries eio_main tiff))
+
 (rule
  (alias runtest)
  (deps test/cea.tiff)
