@@ -8,12 +8,20 @@ Supports both TIFF and BigTIFF files.
 # Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
   let open Eio in
-  let r = Path.(open_in ~sw (env#fs / "cea.tiff")) in
+  let r = Path.(open_in ~sw (env#fs / "test/cea.tiff")) in
   let tiff = Tiff.of_file (r :> File.ro) in
-  Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) tiff.ifd.entries;
-  Eio.traceln "%ldx%ld" (Tiff.Ifd.height tiff.ifd.entries).offset (Tiff.Ifd.width tiff.ifd.entries).offset;
-  Eio.traceln "offsets: %a" Fmt.(list ~sep:(any ", ") int) tiff.ifd.data_offsets;
-  Eio.traceln "counts: %a" Fmt.(list ~sep:(any ", ") int) tiff.ifd.data_bytecounts;;
+  let ifd = Tiff.ifd tiff in
+  let entries = Tiff.Ifd.entries ifd in
+  Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
+  Eio.traceln "%ix%i"
+    (Tiff.Ifd.height (Tiff.ifd tiff))
+    (Tiff.Ifd.width (Tiff.ifd tiff));
+  Eio.traceln "offsets: %a"
+    Fmt.(list ~sep:(any ", ") int)
+    (Tiff.Ifd.data_offsets ifd);
+  Eio.traceln "counts: %a"
+    Fmt.(list ~sep:(any ", ") int)
+    (Tiff.Ifd.data_bytecounts ifd)
 +tag: image-width, field: short, count: 1, value/offset: 514
 +tag: image-length, field: short, count: 1, value/offset: 515
 +tag: bits-per-sample, field: short, count: 1, value/offset: 8

@@ -46,7 +46,6 @@ let header ro =
           Endian.uint64 ~offset:8 byte_order buf |> Optint.Int63.of_int64 )
     | i -> failwith ("Unknown magic number: " ^ string_of_int i)
   in
-  Eio.traceln "Offset: %a" Optint.Int63.pp offset;
   { byte_order; kind; offset }
 
 module Ifd = struct
