@@ -3,7 +3,7 @@ open Eio
 type header = {
   kind : kind;
   byte_order : endianness;
-  offset : Optint.Int63.t; (* What Eio limits to? *)
+  offset : Optint.Int63.t;
 }
 
 and kind = Tiff | Bigtiff
@@ -24,6 +24,9 @@ module Endian = struct
     match endian with
     | Big -> Cstruct.BE.get_uint64 buf offset
     | Little -> Cstruct.LE.get_uint64 buf offset
+
+  let double ?(offset = 0) endian buf =
+    Int64.float_of_bits (uint64 ~offset endian buf)
 end
 
 let header ro =
@@ -134,6 +137,10 @@ module Ifd = struct
     | ResolutionUnit
     | SampleFormat
     | SamplesPerPixel
+    | ModelPixelScale
+    | ModelTiepoint
+    | GeoAsciiParams
+    | GeoKeyDirectory
     | Unknown of int
 
   let tag_of_int = function
@@ -151,6 +158,10 @@ module Ifd = struct
     | 284 -> PlanarConfiguration
     | 296 -> ResolutionUnit
     | 339 -> SampleFormat
+    | 33550 -> ModelPixelScale
+    | 33922 -> ModelTiepoint
+    | 34737 -> GeoAsciiParams
+    | 34735 -> GeoKeyDirectory
     | i -> Unknown i
 
   let pp_tag ppf (x : tag) =
@@ -169,12 +180,18 @@ module Ifd = struct
     | PlanarConfiguration -> Fmt.string ppf "planar-configuration"
     | SampleFormat -> Fmt.string ppf "sample-format"
     | SamplesPerPixel -> Fmt.string ppf "samples-per-pixel"
+    | ModelPixelScale -> Fmt.string ppf "model-pixel-scale"
+    | ModelTiepoint -> Fmt.string ppf "model-tiepoint"
+    | GeoAsciiParams -> Fmt.string ppf "geo-ascii-params"
+    | GeoKeyDirectory -> Fmt.string ppf "geo-key-directory"
     | Unknown i -> Fmt.pf ppf "unknown-%i" i
 
   type t = {
     entries : entry list;
     data_offsets : int list;
     data_bytecounts : int list;
+    header : header;
+    ro : Eio.File.ro;
   }
 
   and entry = {
@@ -204,6 +221,9 @@ module Ifd = struct
 
   let height e = lookup_exn e.entries ImageLength |> read_entry_short
   let width e = lookup_exn e.entries ImageWidth |> read_entry_short
+
+  let samples_per_pixel e = lookup_exn e.entries SamplesPerPixel |> read_entry_short
+
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
   let get_dataset_offsets endian entries reader =
@@ -254,11 +274,39 @@ module Ifd = struct
     let file_offset = entry.offset |> Optint.Int63.of_int64 in
     let byte_size = field_byte_size entry.field in
     let count = entry.count |> Int64.to_int in
-    if count * byte_size > 4 then (
-      let bufs = List.init count (fun _ -> Cstruct.create byte_size) in
-      File.pread_exact reader ~file_offset bufs;
-      bufs)
-    else []
+    let bufs = List.init count (fun _ -> Cstruct.create byte_size) in
+    File.pread_exact reader ~file_offset bufs;
+    bufs
+
+  let pixel_scale t =
+    let entry = lookup_exn t.entries ModelPixelScale in
+    let scales = read_entry_raw entry t.ro in
+    assert (List.length scales = 3);
+    List.map (Endian.double t.header.byte_order) scales
+
+  let bits_per_sample t =
+    let entry = lookup_exn t.entries BitsPerSample in
+    if entry.count = 1L then [ Int64.to_int entry.offset ] else
+    let scales = read_entry_raw entry t.ro in
+    Eio.traceln "%a\n%a" pp_entry entry Cstruct.hexdump_pp (List.hd scales);
+    List.map (Endian.uint16 t.header.byte_order) scales
+
+  let tiepoint t =
+    let entry = lookup_exn t.entries ModelTiepoint in
+    let scales = read_entry_raw entry t.ro in
+    assert (List.length scales mod 6 = 0);
+    List.map (Endian.double t.header.byte_order) scales
+
+  let geo_ascii_params t =
+    let entry = lookup_exn t.entries GeoAsciiParams in
+    let ascii = read_entry_raw entry t.ro in
+    Cstruct.concat ascii |> Cstruct.to_string
+
+  let geo_key_directory t =
+    let entry = lookup_exn t.entries GeoKeyDirectory in
+    if entry.count = 1L then [ Int64.to_int entry.offset ] else
+    let ascii = read_entry_raw entry t.ro in
+    List.map (Endian.uint16 t.header.byte_order) ascii
 
   let v ~file_offset header reader =
     let endian = header.byte_order in
@@ -302,14 +350,33 @@ module Ifd = struct
     let entries = List.rev !entries in
     let data_offsets = get_dataset_offsets endian entries reader in
     let data_bytecounts = get_bytecounts endian entries reader in
-    { entries; data_offsets; data_bytecounts }
+    { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
-type t = { header : header; ifd : Ifd.t; reader : File.ro }
+type _ t = { header : header; ifd : Ifd.t; reader : File.ro }
 
 let ifd t = t.ifd
 
-let of_file f =
+let from_file (f : 'a) : 'a t =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { header; ifd; reader = f }
+
+module Area = struct
+  type point = { x : int; y : int }
+  type size = { width : int; height : int }
+  type t = { origin : point; size : size }
+end
+
+(* let read t (area : Area.t) =
+  let reader = t.reader in
+  let width = Ifd.width t.ifd in
+  let height = Ifd.height t.ifd in
+  assert (area.origin.x + area.size.width <= width);
+  assert (area.origin.y + area.size.height <= height);
+  let samples_per_pixel = Ifd.samples_per_pixel t.ifd in
+  let element_count = area.size.width * area.size.height * samples_per_pixel in
+  let line_element_count = width * samples_per_pixel in
+  for line = 0 to height do
+    let y_offset = line + area.origin.y in
+  done *)

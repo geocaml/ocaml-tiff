@@ -1,3 +1,4 @@
 (library
  (name tiff)
+ (public_name tiff)
  (libraries eio eio.unix))

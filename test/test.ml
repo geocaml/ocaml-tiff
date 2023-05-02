@@ -3,14 +3,16 @@ open Eio
 let () =
   Eio_main.run @@ fun env ->
   Eio.Switch.run @@ fun sw ->
-  let r = Path.(open_in ~sw (env#fs / "test/cea.tiff")) in
-  let tiff = Tiff.of_file (r :> File.ro) in
+  let r = Path.(open_in ~sw (env#fs / Sys.argv.(1))) in
+  let tiff = Tiff.from_file (r :> File.ro) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
   Eio.traceln "%ix%i"
-    (Tiff.Ifd.height (Tiff.ifd tiff))
-    (Tiff.Ifd.width (Tiff.ifd tiff));
+    (Tiff.Ifd.height ifd)
+    (Tiff.Ifd.width ifd);
+  Eio.traceln "Samples per pixel: %i" (Tiff.Ifd.samples_per_pixel ifd);
+  Eio.traceln "Bits per sample: %a" Fmt.(list int) (Tiff.Ifd.bits_per_sample ifd);
   Eio.traceln "offsets: %a"
     Fmt.(list ~sep:(any ", ") int)
     (Tiff.Ifd.data_offsets ifd);
