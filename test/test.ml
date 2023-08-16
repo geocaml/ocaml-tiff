@@ -8,11 +8,11 @@ let () =
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
-  Eio.traceln "%ix%i"
-    (Tiff.Ifd.height ifd)
-    (Tiff.Ifd.width ifd);
+  Eio.traceln "%ix%i" (Tiff.Ifd.height ifd) (Tiff.Ifd.width ifd);
   Eio.traceln "Samples per pixel: %i" (Tiff.Ifd.samples_per_pixel ifd);
-  Eio.traceln "Bits per sample: %a" Fmt.(list int) (Tiff.Ifd.bits_per_sample ifd);
+  Eio.traceln "Bits per sample: %a"
+    Fmt.(list int)
+    (Tiff.Ifd.bits_per_sample ifd);
   Eio.traceln "offsets: %a"
     Fmt.(list ~sep:(any ", ") int)
     (Tiff.Ifd.data_offsets ifd);
