@@ -290,6 +290,7 @@ module Ifd = struct
   let max_group lst n =
     let rec loop acc t =
       match (acc, t) with
+      | [], _ -> assert false
       | _, [] -> List.rev acc
       | a :: acc, v :: vs ->
           if List.length a >= n then loop ([ v ] :: List.rev a :: acc) vs
@@ -347,11 +348,6 @@ module Ifd = struct
     let entry = lookup_exn t.entries GeoDoubleParams in
     let doubles = read_entry_raw entry t.ro in
     Array.map (Endian.double t.header.byte_order) (Array.of_list doubles)
-
-  let strip_null buf =
-    let l = Cstruct.length buf in
-    if Cstruct.get_char buf (l - 1) = '\x00' then Cstruct.sub buf 0 (l - 1)
-    else buf
 
   let string_of_int64 endianness i =
     let buf = Cstruct.create 8 in
@@ -440,6 +436,7 @@ module Ifd = struct
       | 9106 -> Gon
       | 9107 -> DMS
       | 9108 -> DMS_hemisphere
+      | _ -> failwith "Unknown angular units"
 
     let angular_units_to_string = function
       | Radian -> "radian"
@@ -478,7 +475,7 @@ module Ifd = struct
       let ascii = read_entry_raw entry t.ro in
       let values = List.map (Endian.uint16 t.header.byte_order) ascii in
       match values with
-      | version :: revision :: minor :: count :: rest ->
+      | version :: revision :: minor :: _count :: rest ->
           let rec loop acc = function
             | key :: field :: count :: voff :: more ->
                 let k = key_of_id key in
@@ -571,10 +568,6 @@ module Ifd = struct
 
   let tile_byte_counts t =
     let entry = lookup_exn t.entries TileByteCounts in
-    let offsets =
-      if planar_configuration t = 1 then Int64.to_int entry.count
-      else Int64.to_int entry.count / samples_per_pixel t
-    in
     let offsets = read_entry_raw entry t.ro in
     if field_byte_size entry.field = 4 then
       List.map (Endian.uint32 t.header.byte_order) offsets
@@ -636,8 +629,7 @@ let from_file (f : file) =
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { header; ifd; reader = f }
 
-module Area = struct
-  type point = { x : int; y : int }
-  type size = { width : int; height : int }
-  type t = { origin : point; size : size }
-end
+let endianness t =
+  match t.header.byte_order with Big -> `Big | Little -> `Little
+
+let file t = t.reader

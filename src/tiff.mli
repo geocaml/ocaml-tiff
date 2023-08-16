@@ -85,6 +85,7 @@ module Ifd : sig
   (** The number of bytes stored in each tile. *)
 
   val predictor : t -> int
+  val planar_configuration : t -> int
 
   (** {3 GeoTIFF Specific} *)
 
@@ -158,3 +159,6 @@ val ifd : t -> Ifd.t
 
 val from_file : file -> t
 (** Start reading a TIFF file *)
+
+val endianness : t -> [ `Big | `Little ]
+val file : t -> file
