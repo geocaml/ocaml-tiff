@@ -39,6 +39,21 @@ module Ifd : sig
     | GdalMetadata
     | Unknown of int
 
+  type compression =
+    | No_compression
+    | CCITTRLE
+    | PACKBITS
+    | CCITTFAX3
+    | CCITTFAX4
+    | LZW
+    | OJPEG
+    | JPEG
+    | DEFLATE
+    | ADOBE_DEFLATE
+    | Other of int
+
+  val compression_to_int : compression -> int
+
   val pp_entry : entry Fmt.t
   (** A pretty printer for IFD entries *)
 
@@ -65,6 +80,9 @@ module Ifd : sig
   val bits_per_sample : t -> int list
   (** [bits_per_sample t] is the number of bits per component corresponding to a pixel.
       The following invariant should hold [List.length (bits_per_sample t) = sample_per_pixel t]. *)
+
+  val compression : t -> compression
+  (** Compression scheme used in the image data *)
 
   val tile_width : t -> int
   (** If the tiff is tiled, then the width of individual tiles. *)

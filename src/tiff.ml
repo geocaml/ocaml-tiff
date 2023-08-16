@@ -217,6 +217,45 @@ module Ifd = struct
     offset : int64; (* Overallocate for normal tiffs but needed for bigtiffs *)
   }
 
+  type compression =
+    | No_compression
+    | CCITTRLE
+    | PACKBITS
+    | CCITTFAX3
+    | CCITTFAX4
+    | LZW
+    | OJPEG
+    | JPEG
+    | DEFLATE
+    | ADOBE_DEFLATE
+    | Other of int
+
+  let compression_of_int = function
+    | 1 -> No_compression
+    | 2 -> CCITTRLE
+    | 32773 -> PACKBITS
+    | 3 -> CCITTFAX3
+    | 4 -> CCITTFAX4
+    | 5 -> LZW
+    | 6 -> OJPEG
+    | 7 -> JPEG
+    | 32946 -> DEFLATE
+    | 8 -> ADOBE_DEFLATE
+    | i -> Other i
+
+  let compression_to_int = function
+    | No_compression -> 1
+    | CCITTRLE -> 2
+    | PACKBITS -> 32773
+    | CCITTFAX3 -> 3
+    | CCITTFAX4 -> 4
+    | LZW -> 5
+    | OJPEG -> 6
+    | JPEG -> 7
+    | DEFLATE -> 32946
+    | ADOBE_DEFLATE -> 8
+    | Other i -> i
+
   let entries t = t.entries
   let data_offsets t = t.data_offsets
   let data_bytecounts t = t.data_bytecounts
@@ -337,6 +376,9 @@ module Ifd = struct
 
   let planar_configuration t =
     lookup_exn t.entries PlanarConfiguration |> read_entry_short
+
+  let compression t =
+    lookup_exn t.entries Compression |> read_entry_short |> compression_of_int
 
   let tiepoint t =
     let entry = lookup_exn t.entries ModelTiepoint in
