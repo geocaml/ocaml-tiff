@@ -1,11 +1,6 @@
 open Eio
 
-type header = {
-  kind : kind;
-  byte_order : endianness;
-  offset : Optint.Int63.t;
-}
-
+type header = { kind : kind; byte_order : endianness; offset : Optint.Int63.t }
 and kind = Tiff | Bigtiff
 and endianness = Big | Little
 
@@ -139,8 +134,15 @@ module Ifd = struct
     | SamplesPerPixel
     | ModelPixelScale
     | ModelTiepoint
+    | GeoDoubleParams
     | GeoAsciiParams
     | GeoKeyDirectory
+    | Predictor
+    | TileWidth
+    | TileHeight
+    | TileOffsets
+    | TileByteCounts
+    | GdalMetadata
     | Unknown of int
 
   let tag_of_int = function
@@ -160,8 +162,15 @@ module Ifd = struct
     | 339 -> SampleFormat
     | 33550 -> ModelPixelScale
     | 33922 -> ModelTiepoint
+    | 34736 -> GeoDoubleParams
     | 34737 -> GeoAsciiParams
     | 34735 -> GeoKeyDirectory
+    | 317 -> Predictor
+    | 322 -> TileWidth
+    | 323 -> TileHeight
+    | 324 -> TileOffsets
+    | 325 -> TileByteCounts
+    | 42112 -> GdalMetadata
     | i -> Unknown i
 
   let pp_tag ppf (x : tag) =
@@ -182,8 +191,15 @@ module Ifd = struct
     | SamplesPerPixel -> Fmt.string ppf "samples-per-pixel"
     | ModelPixelScale -> Fmt.string ppf "model-pixel-scale"
     | ModelTiepoint -> Fmt.string ppf "model-tiepoint"
+    | GeoDoubleParams -> Fmt.string ppf "geo-double-params"
     | GeoAsciiParams -> Fmt.string ppf "geo-ascii-params"
     | GeoKeyDirectory -> Fmt.string ppf "geo-key-directory"
+    | Predictor -> Fmt.string ppf "predictor"
+    | TileWidth -> Fmt.string ppf "tile-width"
+    | TileHeight -> Fmt.string ppf "tile-height"
+    | TileOffsets -> Fmt.string ppf "tile-offsets"
+    | TileByteCounts -> Fmt.string ppf "tile-byte-counts"
+    | GdalMetadata -> Fmt.string ppf "gdal-metadata"
     | Unknown i -> Fmt.pf ppf "unknown-%i" i
 
   type t = {
@@ -191,7 +207,7 @@ module Ifd = struct
     data_offsets : int list;
     data_bytecounts : int list;
     header : header;
-    ro : Eio.File.ro;
+    ro : File.ro_ty Eio.File.ro;
   }
 
   and entry = {
@@ -222,7 +238,8 @@ module Ifd = struct
   let height e = lookup_exn e.entries ImageLength |> read_entry_short
   let width e = lookup_exn e.entries ImageWidth |> read_entry_short
 
-  let samples_per_pixel e = lookup_exn e.entries SamplesPerPixel |> read_entry_short
+  let samples_per_pixel e =
+    lookup_exn e.entries SamplesPerPixel |> read_entry_short
 
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
@@ -270,43 +287,299 @@ module Ifd = struct
         done;
         List.rev !strips
 
-  let read_entry_raw entry reader =
-    let file_offset = entry.offset |> Optint.Int63.of_int64 in
-    let byte_size = field_byte_size entry.field in
-    let count = entry.count |> Int64.to_int in
+  let max_group lst n =
+    let rec loop acc t =
+      match (acc, t) with
+      | _, [] -> List.rev acc
+      | a :: acc, v :: vs ->
+          if List.length a >= n then loop ([ v ] :: List.rev a :: acc) vs
+          else loop ((v :: a) :: acc) vs
+    in
+    loop [ [] ] lst
+
+  let read_entry_raw' offset field count reader =
+    let file_offset = offset |> Optint.Int63.of_int64 in
+    let byte_size = field_byte_size field in
     let bufs = List.init count (fun _ -> Cstruct.create byte_size) in
-    File.pread_exact reader ~file_offset bufs;
-    bufs
+    let groups = if count > 256 then max_group bufs 256 else [ bufs ] in
+    let run () =
+      Switch.run @@ fun sw ->
+      List.fold_left
+        (fun file_offset bufs ->
+          Fiber.fork ~sw (fun () -> File.pread_exact reader ~file_offset bufs);
+          Optint.Int63.add file_offset
+            (Optint.Int63.of_int
+               (List.fold_left (fun acc buf -> Cstruct.length buf + acc) 0 bufs)))
+        file_offset groups
+    in
+    let _ = run () in
+    List.concat groups
+
+  let read_entry_raw ?count entry =
+    let count =
+      match count with Some c -> c | None -> entry.count |> Int64.to_int
+    in
+    read_entry_raw' entry.offset entry.field count
 
   let pixel_scale t =
     let entry = lookup_exn t.entries ModelPixelScale in
     let scales = read_entry_raw entry t.ro in
     assert (List.length scales = 3);
-    List.map (Endian.double t.header.byte_order) scales
+    List.map (Endian.double t.header.byte_order) scales |> Array.of_list
 
   let bits_per_sample t =
     let entry = lookup_exn t.entries BitsPerSample in
-    if entry.count = 1L then [ Int64.to_int entry.offset ] else
-    let scales = read_entry_raw entry t.ro in
-    Eio.traceln "%a\n%a" pp_entry entry Cstruct.hexdump_pp (List.hd scales);
-    List.map (Endian.uint16 t.header.byte_order) scales
+    if entry.count = 1L then [ Int64.to_int entry.offset ]
+    else
+      let scales = read_entry_raw entry t.ro in
+      List.map (Endian.uint16 t.header.byte_order) scales
+
+  let planar_configuration t =
+    lookup_exn t.entries PlanarConfiguration |> read_entry_short
 
   let tiepoint t =
     let entry = lookup_exn t.entries ModelTiepoint in
     let scales = read_entry_raw entry t.ro in
     assert (List.length scales mod 6 = 0);
-    List.map (Endian.double t.header.byte_order) scales
+    List.map (Endian.double t.header.byte_order) scales |> Array.of_list
+
+  let geo_double_params t =
+    let entry = lookup_exn t.entries GeoDoubleParams in
+    let doubles = read_entry_raw entry t.ro in
+    Array.map (Endian.double t.header.byte_order) (Array.of_list doubles)
+
+  let strip_null buf =
+    let l = Cstruct.length buf in
+    if Cstruct.get_char buf (l - 1) = '\x00' then Cstruct.sub buf 0 (l - 1)
+    else buf
+
+  let string_of_int64 endianness i =
+    let buf = Cstruct.create 8 in
+    if endianness = Big then Cstruct.BE.set_uint64 buf 0 i;
+    if endianness = Little then Cstruct.LE.set_uint64 buf 0 i;
+    Cstruct.to_string buf
 
   let geo_ascii_params t =
+    (* https://docs.ogc.org/is/19-008r4/19-008r4.html#_requirements_class_geoasciiparamstag *)
     let entry = lookup_exn t.entries GeoAsciiParams in
-    let ascii = read_entry_raw entry t.ro in
-    Cstruct.concat ascii |> Cstruct.to_string
+    let s =
+      if entry.count <= 8L then string_of_int64 t.header.byte_order entry.offset
+      else
+        let ascii = read_entry_raw entry t.ro in
+        Cstruct.concat ascii |> Cstruct.to_string
+    in
+    let len = String.length s in
+    (* Remove the ASCII null byte *)
+    let s = String.sub s 0 (len - 1) in
+    String.split_on_char '|' s |> List.filter (fun v -> not (String.equal "" v))
 
-  let geo_key_directory t =
-    let entry = lookup_exn t.entries GeoKeyDirectory in
-    if entry.count = 1L then [ Int64.to_int entry.offset ] else
-    let ascii = read_entry_raw entry t.ro in
-    List.map (Endian.uint16 t.header.byte_order) ascii
+  module GeoKeys = struct
+    type ifd = t
+
+    type key =
+      | GTModelTypeGeoKey
+      | GTRasterTypeGeoKey
+      | GeographicTypeGeoKey
+      | GeogCitationGeoKey
+      | GeogAngularUnitsGeoKey
+      | GeogSemiMajorAxisGeoKey
+      | GeogInvFlatteningGeoKey
+      | Unknown of int
+
+    let pp_key ppf = function
+      | Unknown i -> Fmt.pf ppf "unknown-%i" i
+      | GTModelTypeGeoKey -> Fmt.string ppf "gt-model-type"
+      | GTRasterTypeGeoKey -> Fmt.string ppf "gt-raster-type"
+      | GeographicTypeGeoKey -> Fmt.string ppf "geographic-type"
+      | GeogCitationGeoKey -> Fmt.string ppf "geog-citation"
+      | GeogAngularUnitsGeoKey -> Fmt.string ppf "geog-angular-units"
+      | GeogSemiMajorAxisGeoKey -> Fmt.string ppf "geog-semi-major-axis"
+      | GeogInvFlatteningGeoKey -> Fmt.string ppf "geog-inv-flattening"
+
+    let key_of_id = function
+      | 1024 -> GTModelTypeGeoKey
+      | 1025 -> GTRasterTypeGeoKey
+      | 2048 -> GeographicTypeGeoKey
+      | 2049 -> GeogCitationGeoKey
+      | 2054 -> GeogAngularUnitsGeoKey
+      | 2057 -> GeogSemiMajorAxisGeoKey
+      | 2059 -> GeogInvFlatteningGeoKey
+      | i -> Unknown i
+
+    type model_type = Projected | Geographic | Geocentric | Other of int
+
+    let model_type_of_int = function
+      | 1 -> Projected
+      | 2 -> Geographic
+      | 3 -> Geocentric
+      | i -> Other i
+
+    type raster_type = RasterPixelIsArea | RasterPixelIsPoint | Other of int
+
+    let raster_type_of_int = function
+      | 1 -> RasterPixelIsArea
+      | 2 -> RasterPixelIsPoint
+      | i -> Other i
+
+    type angular_units =
+      | Radian
+      | Degree
+      | Arc_minute
+      | Arc_second
+      | Grad
+      | Gon
+      | DMS
+      | DMS_hemisphere
+
+    let angular_units_of_int = function
+      | 9101 -> Radian
+      | 9102 -> Degree
+      | 9103 -> Arc_minute
+      | 9104 -> Arc_second
+      | 9105 -> Grad
+      | 9106 -> Gon
+      | 9107 -> DMS
+      | 9108 -> DMS_hemisphere
+
+    let angular_units_to_string = function
+      | Radian -> "radian"
+      | Degree -> "degree"
+      | Arc_minute -> "arc-minute"
+      | Arc_second -> "arc-second"
+      | Grad -> "grad"
+      | Gon -> "gon"
+      | DMS -> "dms"
+      | DMS_hemisphere -> "dms-hemisphere"
+
+    type entry = {
+      key : key;
+      field : [ `Immediate | `Loc of int ];
+      count : int;
+      offset : int64; (* Overallocate for normal tiffs but needed for bigtiffs *)
+    }
+
+    let pp_field ppf = function
+      | `Immediate -> Fmt.pf ppf "imm"
+      | `Loc i -> pp_tag ppf (tag_of_int i)
+
+    let pp_entry ppf e =
+      Fmt.pf ppf "geokey: %a, field: %a, count: %i, value/offset: %Ld" pp_key
+        e.key pp_field e.field e.count e.offset
+
+    type t = {
+      version : int;
+      revision : int;
+      minor : int;
+      geo_entries : entry list;
+    }
+
+    let entries t =
+      let entry = lookup_exn t.entries GeoKeyDirectory in
+      let ascii = read_entry_raw entry t.ro in
+      let values = List.map (Endian.uint16 t.header.byte_order) ascii in
+      match values with
+      | version :: revision :: minor :: count :: rest ->
+          let rec loop acc = function
+            | key :: field :: count :: voff :: more ->
+                let k = key_of_id key in
+                let f = if field = 0 then `Immediate else `Loc field in
+                let e =
+                  { key = k; field = f; count; offset = Int64.of_int voff }
+                in
+                loop (e :: acc) more
+            | _ -> List.rev acc
+          in
+          let geo_entries = loop [] rest in
+          { version; revision; minor; geo_entries }
+      | _ -> invalid_arg "GeoKeyDirectory Malformed!"
+
+    let pp ppf t =
+      Fmt.pf ppf "version: %i, revision: %i, minor: %i, count: %i\n" t.version
+        t.revision t.minor
+        (List.length t.geo_entries);
+      Fmt.(list ~sep:Fmt.cut pp_entry) ppf t.geo_entries
+
+    let lookup_key_exn e key = List.find (fun e -> e.key = key) e
+
+    let model_type e =
+      let key = lookup_key_exn e.geo_entries GTModelTypeGeoKey in
+      key.offset |> Int64.to_int |> model_type_of_int
+
+    let angular_units e =
+      let key = lookup_key_exn e.geo_entries GeogAngularUnitsGeoKey in
+      key.offset |> Int64.to_int |> angular_units_of_int
+
+    let raster_type e =
+      let key = lookup_key_exn e.geo_entries GTRasterTypeGeoKey in
+      key.offset |> Int64.to_int |> raster_type_of_int
+
+    let geo_citation t e =
+      let key = lookup_key_exn e.geo_entries GeogCitationGeoKey in
+      match key.field with
+      | `Immediate -> assert false
+      | `Loc i -> (
+          match tag_of_int i with
+          | GeoAsciiParams ->
+              List.nth (geo_ascii_params t) (Int64.to_int key.offset)
+          | _ -> "Unknown")
+
+    let semi_major_axis t e =
+      let key = lookup_key_exn e.geo_entries GeogSemiMajorAxisGeoKey in
+      match key.field with
+      | `Immediate -> assert false
+      | `Loc i -> (
+          match tag_of_int i with
+          | GeoDoubleParams -> (geo_double_params t).(Int64.to_int key.offset)
+          | _ -> failwith "Unknown location of semi major axis double")
+
+    let inv_flattening t e =
+      let key = lookup_key_exn e.geo_entries GeogInvFlatteningGeoKey in
+      match key.field with
+      | `Immediate -> assert false
+      | `Loc i -> (
+          match tag_of_int i with
+          | GeoDoubleParams -> (geo_double_params t).(Int64.to_int key.offset)
+          | _ -> failwith "Unknown location of semi major axis double")
+  end
+
+  let geo_key_directory t = GeoKeys.entries t
+
+  let predictor t =
+    let entry = lookup_exn t.entries Predictor in
+    Int64.to_int entry.offset
+
+  let tile_width t =
+    let entry = lookup_exn t.entries TileWidth in
+    Int64.to_int entry.offset
+
+  let tile_height t =
+    let entry = lookup_exn t.entries TileHeight in
+    Int64.to_int entry.offset
+
+  let tiles_across t =
+    let twidth = tile_width t in
+    (width t + twidth - 1) / twidth
+
+  let tiles_down t =
+    let theight = tile_height t in
+    (height t + theight - 1) / theight
+
+  let tile_offsets t =
+    let entry = lookup_exn t.entries TileOffsets in
+    let offsets = read_entry_raw entry t.ro in
+    List.map (Endian.uint64 t.header.byte_order) offsets
+
+  let tile_byte_counts t =
+    let entry = lookup_exn t.entries TileByteCounts in
+    let offsets =
+      if planar_configuration t = 1 then Int64.to_int entry.count
+      else Int64.to_int entry.count / samples_per_pixel t
+    in
+    let offsets = read_entry_raw entry t.ro in
+    if field_byte_size entry.field = 4 then
+      List.map (Endian.uint32 t.header.byte_order) offsets
+      |> List.map Int64.of_int32
+    else List.map (Endian.uint64 t.header.byte_order) offsets
 
   let v ~file_offset header reader =
     let endian = header.byte_order in
@@ -353,11 +626,12 @@ module Ifd = struct
     { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
-type _ t = { header : header; ifd : Ifd.t; reader : File.ro }
+type file = Eio.File.ro_ty Eio.File.ro
+type t = { header : header; ifd : Ifd.t; reader : file }
 
 let ifd t = t.ifd
 
-let from_file (f : 'a) : 'a t =
+let from_file (f : file) =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { header; ifd; reader = f }
@@ -367,16 +641,3 @@ module Area = struct
   type size = { width : int; height : int }
   type t = { origin : point; size : size }
 end
-
-(* let read t (area : Area.t) =
-  let reader = t.reader in
-  let width = Ifd.width t.ifd in
-  let height = Ifd.height t.ifd in
-  assert (area.origin.x + area.size.width <= width);
-  assert (area.origin.y + area.size.height <= height);
-  let samples_per_pixel = Ifd.samples_per_pixel t.ifd in
-  let element_count = area.size.width * area.size.height * samples_per_pixel in
-  let line_element_count = width * samples_per_pixel in
-  for line = 0 to height do
-    let y_offset = line + area.origin.y in
-  done *)
