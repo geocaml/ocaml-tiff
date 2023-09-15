@@ -1,4 +1,9 @@
-open Eio
+
+module File = struct
+  type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
+  (** Read-only access to a file that supports reading at a particular offset.
+      The read should be exact and raise [End_of_file] should that be the case. *)
+end
 
 type header = { kind : kind; byte_order : endianness; offset : Optint.Int63.t }
 and kind = Tiff | Bigtiff
@@ -27,7 +32,7 @@ end
 let header ro =
   (* We may get more bytes than we want, but this is to support Bigtiffs *)
   let buf = Cstruct.create 16 in
-  File.pread_exact ro ~file_offset:Optint.Int63.zero [ buf ];
+  ro ~file_offset:Optint.Int63.zero [ buf ];
   let byte_order =
     match Cstruct.to_string ~off:0 ~len:2 buf with
     | "II" -> Little
@@ -207,7 +212,7 @@ module Ifd = struct
     data_offsets : int list;
     data_bytecounts : int list;
     header : header;
-    ro : File.ro_ty Eio.File.ro;
+    ro : File.ro
   }
 
   and entry = {
@@ -292,7 +297,7 @@ module Ifd = struct
         let length = strip_count * strip_bytes in
         let buf = Cstruct.create length in
         let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
-        File.pread_exact ~file_offset:strip_offset reader [ buf ];
+        reader ~file_offset:strip_offset [ buf ];
         let get_offset ~offset buf = function
           | Short -> Endian.uint16 ~offset endian buf
           | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
@@ -314,7 +319,7 @@ module Ifd = struct
         let length = strip_count * strip_bytes in
         let buf = Cstruct.create length in
         let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
-        File.pread_exact ~file_offset:strip_offset reader [ buf ];
+        reader ~file_offset:strip_offset [ buf ];
         let get_offset ~offset buf = function
           | Short -> Endian.uint16 ~offset endian buf
           | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
@@ -343,16 +348,16 @@ module Ifd = struct
     let bufs = List.init count (fun _ -> Cstruct.create byte_size) in
     let groups = if count > 256 then max_group bufs 256 else [ bufs ] in
     let run () =
-      Switch.run @@ fun sw ->
+      (* TODO: Common Fiber.List.map abstraction ? *)
       List.fold_left
         (fun file_offset bufs ->
-          Fiber.fork ~sw (fun () -> File.pread_exact reader ~file_offset bufs);
+          reader ~file_offset bufs;
           Optint.Int63.add file_offset
             (Optint.Int63.of_int
                (List.fold_left (fun acc buf -> Cstruct.length buf + acc) 0 bufs)))
         file_offset groups
     in
-    let _ = run () in
+    let _ : Optint.Int63.t = run () in
     List.concat groups
 
   let read_entry_raw ?count entry =
@@ -622,7 +627,7 @@ module Ifd = struct
     (* More than Tiff needs, but how much Bigtiff needs *)
     let size_buf = Cstruct.create 8 in
     let bufs = [ size_buf ] in
-    File.pread_exact reader ~file_offset bufs;
+    reader ~file_offset bufs;
     let read, count =
       match header.kind with
       | Tiff -> (2, Endian.uint16 endian size_buf)
@@ -630,7 +635,7 @@ module Ifd = struct
     in
     let entry_size = if header.kind = Tiff then 12 else 20 in
     let buf = Cstruct.create (entry_size * count) in
-    File.pread_exact reader ~file_offset:(incr_offset read) [ buf ];
+    reader ~file_offset:(incr_offset read) [ buf ];
     let entries = ref [] in
     for i = 0 to count - 1 do
       match header.kind with
@@ -661,17 +666,14 @@ module Ifd = struct
     { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
-type file = Eio.File.ro_ty Eio.File.ro
-type t = { header : header; ifd : Ifd.t; reader : file }
+type t = { header : header; ifd : Ifd.t }
 
 let ifd t = t.ifd
 
-let from_file (f : file) =
+let from_file (f : File.ro) =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
-  { header; ifd; reader = f }
+  { header; ifd }
 
 let endianness t =
   match t.header.byte_order with Big -> `Big | Little -> `Little
-
-let file t = t.reader

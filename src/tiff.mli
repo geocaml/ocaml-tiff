@@ -4,6 +4,12 @@ This library provides functions for accessing TIFF files. A TIFF file
 is a way to provide {i raster} images.
 *)
 
+module File : sig
+  type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
+  (** Read-only access to a file that supports reading at a particular offset.
+      The read should be exact and raise [End_of_file] should that be the case. *)
+end
+
 module Ifd : sig
   type t
   (** An image file directory *)
@@ -161,7 +167,7 @@ module Ifd : sig
   (** Reads the value of the entry as a short if the entry field matches
       otherwise it will raise [Invalid_argument _]. *)
 
-  val read_entry_raw : ?count:int -> entry -> _ Eio.File.ro -> Cstruct.t list
+  val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
   (** Read entries as raw bytes. This will return a buffer list based on the
       layout of the entry. For example, if the count is [10] and the tag is
       [Double] then you will gexwt back a list of [10] buffers each of length [2]. *)
@@ -170,13 +176,10 @@ end
 type t
 (** A TIFF file *)
 
-type file = Eio.File.ro_ty Eio.File.ro
-
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
-val from_file : file -> t
+val from_file : File.ro -> t
 (** Start reading a TIFF file *)
 
 val endianness : t -> [ `Big | `Little ]
-val file : t -> file
