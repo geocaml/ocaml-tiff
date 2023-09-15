@@ -2,15 +2,14 @@
 
 *Status: WIP & Experimental*
 
-Supports both TIFF and BigTIFF files.
+Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected to be provided by the user using a library of their choice. For example, you could use [Eio](https://github.com/ocaml-multicore/eio).
 
 ```ocaml
 # Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
   let open Eio in
   let fs = Stdenv.fs env in
-  let r = Path.(open_in ~sw (fs / "test/cea.tiff")) in
-  let tiff = Tiff.from_file r in
+  Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
+  let tiff = Tiff.from_file (File.pread_exact r) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
