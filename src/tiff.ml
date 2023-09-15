@@ -1,4 +1,3 @@
-
 module File = struct
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
@@ -212,7 +211,7 @@ module Ifd = struct
     data_offsets : int list;
     data_bytecounts : int list;
     header : header;
-    ro : File.ro
+    ro : File.ro;
   }
 
   and entry = {
@@ -357,7 +356,7 @@ module Ifd = struct
                (List.fold_left (fun acc buf -> Cstruct.length buf + acc) 0 bufs)))
         file_offset groups
     in
-    let _ : Optint.Int63.t = run () in
+    let (_ : Optint.Int63.t) = run () in
     List.concat groups
 
   let read_entry_raw ?count entry =
