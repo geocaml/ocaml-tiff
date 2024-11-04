@@ -163,7 +163,11 @@ module Ifd : sig
 
   (** {2 Reading entries} *)
 
-  val read_entry_short : entry -> int
+  (* val read_entry_short : entry -> int
+  (** Reads the value of the entry as a short if the entry field matches
+      otherwise it will raise [Invalid_argument _]. *) *)
+
+  val read_entry : entry -> int
   (** Reads the value of the entry as a short if the entry field matches
       otherwise it will raise [Invalid_argument _]. *)
 
@@ -183,3 +187,16 @@ val from_file : File.ro -> t
 (** Start reading a TIFF file *)
 
 val endianness : t -> [ `Big | `Little ]
+
+val read_strip : File.ro -> int -> int -> int
+
+val read_data_helper : File.ro -> int list -> int list -> int -> int
+
+val read_data: File.ro -> int list -> int list -> int
+
+
+val read_strip_float32 : File.ro -> int -> int -> int -> float
+
+val read_data_helper_float32 : File.ro -> int list -> int list -> int -> float -> float
+
+val read_data_float32 : File.ro -> int list -> int list -> float
