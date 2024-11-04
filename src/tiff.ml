@@ -271,18 +271,26 @@ module Ifd = struct
   let lookup e tag = List.find_opt (fun e -> e.tag = tag) e
   let lookup_exn e tag = List.find (fun e -> e.tag = tag) e
 
-  let read_entry_short e =
+  (* let read_entry e =
     match e.field with
     | Short -> e.offset |> Int64.to_int
     | _ ->
         raise
+          (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e)) *)
+
+  let read_entry e =
+    match e.field with
+    | Short -> e.offset |> Int64.to_int
+    | Long -> e.offset |> Int64.to_int
+    | _ ->
+        raise
           (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e))
 
-  let height e = lookup_exn e.entries ImageLength |> read_entry_short
-  let width e = lookup_exn e.entries ImageWidth |> read_entry_short
+  let height e = lookup_exn e.entries ImageLength |> read_entry
+  let width e = lookup_exn e.entries ImageWidth |> read_entry
 
   let samples_per_pixel e =
-    lookup_exn e.entries SamplesPerPixel |> read_entry_short
+    lookup_exn e.entries SamplesPerPixel |> read_entry
 
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
@@ -379,10 +387,10 @@ module Ifd = struct
       List.map (Endian.uint16 t.header.byte_order) scales
 
   let planar_configuration t =
-    lookup_exn t.entries PlanarConfiguration |> read_entry_short
+    lookup_exn t.entries PlanarConfiguration |> read_entry
 
   let compression t =
-    lookup_exn t.entries Compression |> read_entry_short |> compression_of_int
+    lookup_exn t.entries Compression |> read_entry |> compression_of_int
 
   let tiepoint t =
     let entry = lookup_exn t.entries ModelTiepoint in
@@ -669,6 +677,7 @@ type t = { header : header; ifd : Ifd.t }
 
 let ifd t = t.ifd
 
+(* so the tiff file so far is a header; ifd and this function returns the "tiff file" *)
 let from_file (f : File.ro) =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
@@ -676,3 +685,64 @@ let from_file (f : File.ro) =
 
 let endianness t =
   match t.header.byte_order with Big -> `Big | Little -> `Little
+
+
+let read_strip ro strip_offset strip_bytecount =
+  let buf = Cstruct.create strip_bytecount in
+  let opt_strip_offset = Optint.Int63.of_int strip_offset in
+  ro ~file_offset:opt_strip_offset [ buf ];
+  
+  let total_value_of_strip = ref 0 in  (* Use a reference for mutable values *)
+  for i = 0 to strip_bytecount - 1 do  (* Loop should go to strip_bytecount - 1 *)
+    let uint_value = Cstruct.get_uint8 buf i in
+    total_value_of_strip := !total_value_of_strip + uint_value;  (* Update the reference *)
+  done;
+  Eio.traceln "Value of this strip: %i" !total_value_of_strip;
+  !total_value_of_strip
+
+let rec read_data_helper ro strip_offsets strip_bytecounts acc = 
+  match strip_offsets, strip_bytecounts with
+  | [], [] -> acc
+  | _, [] -> raise (Invalid_argument "Strip offsets list bigger than strip bytecounts list")
+  | [], _ -> raise (Invalid_argument "Strip bytecounts list bigger than strip offsets list")
+  | 0::strip_offsets, _::strip_bytecounts -> read_data_helper ro strip_offsets strip_bytecounts acc
+  | offset::strip_offsets, bytecount::strip_bytecounts ->
+    let acc = acc + read_strip ro offset bytecount in
+    read_data_helper ro strip_offsets strip_bytecounts acc
+
+let read_data ro strip_offsets strip_bytecounts = read_data_helper ro strip_offsets strip_bytecounts 0
+
+
+(* Helper function to read a single strip as 32-bit floats *)
+let read_strip_float32 ro strip_offset strip_bytecount strip_number =
+  let buf = Cstruct.create strip_bytecount in
+  let opt_strip_offset = Optint.Int63.of_int strip_offset in
+  ro ~file_offset:opt_strip_offset [ buf ];
+
+  let total_value_of_strip = ref 0.0 in
+
+  (* Each 32-bit float takes 4 bytes, so we process `strip_bytecount / 4` floats *)
+  for i = 0 to (strip_bytecount / 4) - 1 do
+    let int_value = Cstruct.LE.get_uint32 buf (i * 4) in
+    let float_value = Int32.float_of_bits int_value in
+    total_value_of_strip := !total_value_of_strip +. float_value;
+  done;
+
+  Eio.traceln "Strip %i: sum = %f" strip_number !total_value_of_strip;
+  !total_value_of_strip
+
+(* Recursive function to read all strips as 32-bit floats *)
+let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc =
+  match strip_offsets, strip_bytecounts with
+  | [], [] -> acc
+  | _, [] -> raise (Invalid_argument "Strip offsets list is bigger than strip bytecounts list")
+  | [], _ -> raise (Invalid_argument "Strip bytecounts list is bigger than strip offsets list")
+  (* | 0::strip_offsets, _::strip_bytecounts -> read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc *)
+  | offset::strip_offsets, bytecount::strip_bytecounts ->
+    let acc = acc +. read_strip_float32 ro offset bytecount strip_number in
+    read_data_helper_float32 ro strip_offsets strip_bytecounts (strip_number + 1) acc
+
+(* Main function to read data, assuming 32-bit float samples *)
+let read_data_float32 ro strip_offsets strip_bytecounts =
+  read_data_helper_float32 ro strip_offsets strip_bytecounts 0 0.0
+

@@ -2,16 +2,29 @@ open Eio
 
 let () =
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-  let r = Path.(open_in ~sw (env#fs / Sys.argv.(1))) in
-  let tiff = Tiff.of_file (r :> File.ro) in
+  let fs = Stdenv.fs env in
+  Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
+  let tiff = Tiff.from_file (File.pread_exact r) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
-  Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
-  let e = Tiff.Ifd.lookup_exn entries (Unknown 33550) in
-  let bufs = Tiff.Ifd.read_entry_raw e r in
-  let a = Int64.float_of_bits (Cstruct.LE.get_uint64 (List.hd bufs) 0) in
-  let b =
-    Int64.float_of_bits (Cstruct.LE.get_uint64 (List.hd (List.tl bufs)) 0)
-  in
-  Eio.traceln "%.20f, %.20f" a b
+  Eio.traceln "Entries:\n %a" Fmt.(list Tiff.Ifd.pp_entry) entries;
+  Eio.traceln "File size: %ix%i" (Tiff.Ifd.height ifd) (Tiff.Ifd.width ifd);
+  Eio.traceln "Samples per pixel: %i" (Tiff.Ifd.samples_per_pixel ifd);
+  Eio.traceln "Bits per sample: %a"
+    Fmt.(list int)
+    (Tiff.Ifd.bits_per_sample ifd);
+  let data_offsets = Tiff.Ifd.data_offsets ifd in
+  let data_bytecounts = Tiff.Ifd.data_bytecounts ifd in
+  Eio.traceln "Offsets: %a"
+    Fmt.(list ~sep:(any ", ") int)
+    (data_offsets);
+  Eio.traceln "Counts: %a"
+    Fmt.(list ~sep:(any ", ") int)
+    (data_bytecounts);
+  let total = Tiff.read_data (File.pread_exact r) data_offsets data_bytecounts in
+  (* let total = Tiff.read_data_float32 (File.pread_exact r) data_offsets data_bytecounts in *)
+
+ 
+  Eio.traceln "Total: %i" total;
+  Eio.traceln "File opened successfully.";;
+

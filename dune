@@ -6,6 +6,11 @@
  (name main)
  (libraries eio_main tiff))
 
+(executable
+ (name main_float)
+ (libraries eio_main tiff)
+)
+
 (rule
  (alias runtest)
  (deps test/cea.tiff)
