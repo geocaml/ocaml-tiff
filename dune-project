@@ -12,4 +12,6 @@
  (depends
    fmt
    cstruct
-   optint))
+   optint
+   (mdx :with-test)
+   (eio_main :with-test)))
