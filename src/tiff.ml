@@ -292,7 +292,15 @@ module Ifd = struct
     | Some strip_offsets ->
         let strips = ref [] in
         let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
+        let strip_bytes =
+          match strip_offsets.field with
+          | Short -> 2
+          | Long -> 4
+          | Long8 -> 8
+          | _ ->
+              Fmt.failwith "Unsupported strip length: %a" pp_field
+                strip_offsets.field
+        in
         let length = strip_count * strip_bytes in
         let buf = Cstruct.create length in
         let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
@@ -314,7 +322,15 @@ module Ifd = struct
     | Some strip_offsets ->
         let strips = ref [] in
         let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
+        let strip_bytes =
+          match strip_offsets.field with
+          | Short -> 2
+          | Long -> 4
+          | Long8 -> 8
+          | _ ->
+              Fmt.failwith "Unsupported strip length: %a" pp_field
+                strip_offsets.field
+        in
         let length = strip_count * strip_bytes in
         let buf = Cstruct.create length in
         let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
