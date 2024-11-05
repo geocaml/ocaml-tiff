@@ -730,7 +730,6 @@ let rec read_data_helper ro strip_offsets strip_bytecounts acc =
 let read_data ro strip_offsets strip_bytecounts = read_data_helper ro strip_offsets strip_bytecounts 0
 
 
-(* Helper function to read a single strip as 32-bit floats *)
 let read_strip_float32 ro strip_offset strip_bytecount strip_number =
   let buf = Cstruct.create strip_bytecount in
   let opt_strip_offset = Optint.Int63.of_int strip_offset in
@@ -748,7 +747,6 @@ let read_strip_float32 ro strip_offset strip_bytecount strip_number =
   Eio.traceln "Strip %i: sum = %f" strip_number !total_value_of_strip;
   !total_value_of_strip
 
-(* Recursive function to read all strips as 32-bit floats *)
 let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc =
   match strip_offsets, strip_bytecounts with
   | [], [] -> acc
@@ -759,7 +757,6 @@ let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number 
     let acc = acc +. read_strip_float32 ro offset bytecount strip_number in
     read_data_helper_float32 ro strip_offsets strip_bytecounts (strip_number + 1) acc
 
-(* Main function to read data, assuming 32-bit float samples *)
 let read_data_float32 ro strip_offsets strip_bytecounts =
   read_data_helper_float32 ro strip_offsets strip_bytecounts 0 0.0
 
