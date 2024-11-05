@@ -294,22 +294,15 @@ module Ifd = struct
 
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
+  (* I have bastardised these for my 1 file so I will need to update to make more general*)
   let get_dataset_offsets endian entries reader =
     match lookup entries StripOffsets with
     | None -> []
     | Some strip_offsets ->
         let strips = ref [] in
         let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes =
-          match strip_offsets.field with
-          | Short -> 2
-          | Long -> 4
-          | Long8 -> 8
-          | _ ->
-              Fmt.failwith "Unsupported strip length: %a" pp_field
-                strip_offsets.field
-        in
-        let length = strip_count * strip_bytes in
+        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
+        let length = strip_count * 2 * strip_bytes in (* overallocating because sometimes there is 0 offset strips*)
         let buf = Cstruct.create length in
         let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
         reader ~file_offset:strip_offset [ buf ];
@@ -317,13 +310,21 @@ module Ifd = struct
           | Short -> Endian.uint16 ~offset endian buf
           | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
         in
-        for i = 0 to strip_count - 1 do
-          strips :=
-            get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
-            :: !strips
-        done;
+        let counter = ref 0 in
+        let i = ref 0 in
+        while !counter < strip_count do
+          let strip = get_offset ~offset:(!i * strip_bytes) buf strip_offsets.field in
+          if strip != 0 then (
+            Eio.traceln "Strip offset %i: %i" !counter strip;
+            strips := strip :: !strips;
+            counter := !counter + 1
+          );
+          i := !i + 1
+        done;  
+        Eio.traceln "Length of offsets %i" (List.length !strips);
         List.rev !strips
 
+  (* I have bastardised these for my 1 file so I will need to update to make more general*)
   let get_bytecounts endian entries reader =
     match lookup entries StripByteCounts with
     | None -> []
@@ -348,9 +349,9 @@ module Ifd = struct
           | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
         in
         for i = 0 to strip_count - 1 do
-          strips :=
-            get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
-            :: !strips
+          let strip = get_offset ~offset:(i * strip_bytes) buf strip_offsets.field in
+          Eio.traceln "Bytecount %i: %i" i strip;
+          strips := strip :: !strips
         done;
         List.rev !strips
 
@@ -753,7 +754,7 @@ let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number 
   | [], [] -> acc
   | _, [] -> raise (Invalid_argument "Strip offsets list is bigger than strip bytecounts list")
   | [], _ -> raise (Invalid_argument "Strip bytecounts list is bigger than strip offsets list")
-  (* | 0::strip_offsets, _::strip_bytecounts -> read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc *)
+  | 0::strip_offsets, _::strip_bytecounts -> read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc
   | offset::strip_offsets, bytecount::strip_bytecounts ->
     let acc = acc +. read_strip_float32 ro offset bytecount strip_number in
     read_data_helper_float32 ro strip_offsets strip_bytecounts (strip_number + 1) acc
