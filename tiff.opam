@@ -8,6 +8,8 @@ depends: [
   "fmt"
   "cstruct"
   "optint"
+  "mdx" {with-test}
+  "eio_main" {with-test}
   "odoc" {with-doc}
 ]
 build: [
