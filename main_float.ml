@@ -24,6 +24,6 @@ let () =
   let total = Tiff.read_data_float32 (File.pread_exact r) data_offsets data_bytecounts in
 
  
-  Eio.traceln "Total: %f" total;
+  Eio.traceln "Total: %.12f" total;
   Eio.traceln "File opened successfully.";;
 
