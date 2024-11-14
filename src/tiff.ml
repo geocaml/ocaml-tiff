@@ -294,14 +294,22 @@ module Ifd = struct
 
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
-  (* let get_dataset_offsets endian entries reader =
+  let get_dataset_offsets endian entries reader =
     match lookup entries StripOffsets with
     | None -> []
     | Some strip_offsets ->
         let strips = ref [] in
         let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
-        let length = strip_count * strip_bytes in (* overallocating because sometimes there is 0 offset strips*)
+        let strip_bytes =
+          match strip_offsets.field with
+          | Short -> 2
+          | Long -> 4
+          | Long8 -> 8
+          | _ ->
+              Fmt.failwith "Unsupported strip length: %a" pp_field
+                strip_offsets.field
+        in
+        let length = strip_count * strip_bytes in
         let buf = Cstruct.create length in
         let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
         reader ~file_offset:strip_offset [ buf ];
@@ -310,14 +318,44 @@ module Ifd = struct
           | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
         in
         for i = 0 to strip_count - 1 do
-          let strip = get_offset ~offset:(!i * strip_bytes) buf strip_offsets.field in
-          Eio.traceln "Strip offset %i: %i" i strip;
-          strips := strip :: !strips
-        done;  
-        List.rev !strips *)
+          strips :=
+            get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
+            :: !strips
+        done;
+        List.rev !strips
+
+  let get_bytecounts endian entries reader =
+    match lookup entries StripByteCounts with
+    | None -> []
+    | Some strip_offsets ->
+        let strips = ref [] in
+        let strip_count = Int64.to_int strip_offsets.count in
+        let strip_bytes =
+          match strip_offsets.field with
+          | Short -> 2
+          | Long -> 4
+          | Long8 -> 8
+          | _ ->
+              Fmt.failwith "Unsupported strip length: %a" pp_field
+                strip_offsets.field
+        in
+        let length = strip_count * strip_bytes in
+        let buf = Cstruct.create length in
+        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
+        reader ~file_offset:strip_offset [ buf ];
+        let get_offset ~offset buf = function
+          | Short -> Endian.uint16 ~offset endian buf
+          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
+        in
+        for i = 0 to strip_count - 1 do
+          strips :=
+            get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
+            :: !strips
+        done;
+        List.rev !strips
 
 
-  (* I have bastardised these for my 1 file so I will need to update to make more general*)
+  (* (* I have bastardised these for my 1 file so I will need to update to make more general *)
   let get_dataset_offsets endian entries reader =
     match lookup entries StripOffsets with
     | None -> []
@@ -368,7 +406,7 @@ module Ifd = struct
           Eio.traceln "Bytecount %i: %i" i strip;
           strips := strip :: !strips
         done;
-        List.rev !strips
+        List.rev !strips *)
 
   let max_group lst n =
     let rec loop acc t =
