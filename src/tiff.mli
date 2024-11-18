@@ -4,6 +4,8 @@ This library provides functions for accessing TIFF files. A TIFF file
 is a way to provide {i raster} images.
 *)
 
+open Bigarray
+
 module File : sig
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
@@ -79,6 +81,9 @@ module Ifd : sig
 
   val height : t -> int
   (** [height t] returns the height of the image. *)
+
+  val rows_per_strip : t -> int
+  (** [rows_per_strip t] returns the number of rows per strip. *)
 
   val samples_per_pixel : t -> int
   (** [samples_per_pixel] is usually 1 for grayscale and 3 for RGB. *)
@@ -200,3 +205,12 @@ val read_strip_float32 : File.ro -> int -> int -> int -> float
 val read_data_helper_float32 : File.ro -> int list -> int list -> int -> float -> float
 
 val read_data_float32 : File.ro -> int list -> int list -> float
+
+
+val read_strip2_float32 : File.ro -> int -> int -> int -> (float, 'a, 'b) Array1.t -> int
+
+val read_data2_helper_float32 : File.ro -> int list -> int list -> int -> (float, 'a,  'b) Array1.t -> (float, 'a,  'b) Array1.t
+
+val read_data2_float32 : File.ro -> int list -> int list -> int -> int -> (float, float64_elt,  c_layout) Array1.t
+
+val sum_array : (float, 'a, 'b) Array1.t -> float
