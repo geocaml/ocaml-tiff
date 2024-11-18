@@ -1,3 +1,5 @@
+open Bigarray
+
 module File = struct
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
@@ -7,6 +9,8 @@ end
 type header = { kind : kind; byte_order : endianness; offset : Optint.Int63.t }
 and kind = Tiff | Bigtiff
 and endianness = Big | Little
+
+exception OffsetsBytecountsDifferentLengthsError of string
 
 module Endian = struct
   let uint16 ?(offset = 0) endian buf =
@@ -289,6 +293,8 @@ module Ifd = struct
   let height e = lookup_exn e.entries ImageLength |> read_entry
   let width e = lookup_exn e.entries ImageWidth |> read_entry
 
+  let rows_per_strip e = lookup_exn e.entries RowsPerStrip |> read_entry
+  
   let samples_per_pixel e =
     lookup_exn e.entries SamplesPerPixel |> read_entry
 
@@ -803,8 +809,8 @@ let read_strip_float32 ro strip_offset strip_bytecount strip_number =
 let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc =
   match strip_offsets, strip_bytecounts with
   | [], [] -> acc
-  | _, [] -> raise (Invalid_argument "Strip offsets list is bigger than strip bytecounts list")
-  | [], _ -> raise (Invalid_argument "Strip bytecounts list is bigger than strip offsets list")
+  | _, [] -> raise (OffsetsBytecountsDifferentLengthsError "Strip offsets list is bigger than strip bytecounts list")
+  | [], _ -> raise (OffsetsBytecountsDifferentLengthsError "Strip bytecounts list is bigger than strip offsets list")
   | 0::strip_offsets, _::strip_bytecounts -> read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc
   | offset::strip_offsets, bytecount::strip_bytecounts ->
     let acc = acc +. read_strip_float32 ro offset bytecount strip_number in
@@ -813,3 +819,55 @@ let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number 
 let read_data_float32 ro strip_offsets strip_bytecounts =
   read_data_helper_float32 ro strip_offsets strip_bytecounts 0 0.0
 
+
+
+
+
+let read_strip2_float32 ro strip_offset strip_bytecount index arr =
+  let buf = Cstruct.create strip_bytecount in
+  let opt_strip_offset = Optint.Int63.of_int strip_offset in
+  ro ~file_offset:opt_strip_offset [ buf ];
+
+  (* Each 32-bit float takes 4 bytes, so we process `strip_bytecount / 4` floats *)
+  for i = 0 to (strip_bytecount / 4) - 1 do
+    let int_value = Cstruct.LE.get_uint32 buf (i * 4) in
+    let float_value = Int32.float_of_bits int_value in
+    Array1.set arr (index + i) float_value;
+  done;
+  index + (strip_bytecount / 4)
+
+
+let rec read_data2_helper_float32 ro strip_offsets strip_bytecounts index arr = 
+  match strip_offsets, strip_bytecounts with
+  | [], [] -> arr
+  | _, [] -> raise (OffsetsBytecountsDifferentLengthsError "Strip offsets list is bigger than strip bytecounts list")
+  | [], _ -> raise (OffsetsBytecountsDifferentLengthsError "Strip bytecounts list is bigger than strip offsets list")
+  | offset:: strip_offsets, bytecount:: strip_bytecounts -> 
+    let index = read_strip2_float32 ro offset bytecount index arr in
+    read_data2_helper_float32 ro strip_offsets strip_bytecounts index arr
+
+    (* 
+  let read_data2_helper_float32 ro strip_offsets strip_bytecounts strips_length arr =
+  let index = ref 0 in
+  for i = 0 to strips_length - 1 do
+    index := read_strip2_float32 ro (List.nth strip_offsets i) (List.nth strip_bytecounts i) (!index) arr
+    read_strip2_float32 ro 
+  done;  *)
+
+
+let read_data2_float32 ro strip_offsets strip_bytecounts rows_per_strip image_width = 
+  let strip_offsets_length = List.length strip_offsets in
+  if strip_offsets_length = (List.length strip_bytecounts) then
+    let array_length = (strip_offsets_length * rows_per_strip * image_width) in
+    let data_array = Array1.create float64 c_layout array_length in
+    read_data2_helper_float32 ro strip_offsets strip_bytecounts 0 data_array
+  else 
+    raise (OffsetsBytecountsDifferentLengthsError "strip_offsets and strip_bytecounts are of different lengths") 
+
+
+let sum_array arr = 
+  let sum = ref 0.0 in
+  for i = 0 to (Array1.dim arr) - 1 do
+    sum := !sum +. Array1.get arr i
+  done;
+  !sum
