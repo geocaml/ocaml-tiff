@@ -360,6 +360,60 @@ module Ifd = struct
         done;
         List.rev !strips
 
+
+  (* (* I have bastardised these for my 1 file so I will need to update to make more general *)
+  let get_dataset_offsets endian entries reader =
+    match lookup entries StripOffsets with
+    | None -> []
+    | Some strip_offsets ->
+        let strips = ref [] in
+        let strip_count = Int64.to_int strip_offsets.count in
+        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
+        let length = strip_count * 2 * strip_bytes in (* overallocating because sometimes there is 0 offset strips*)
+        let buf = Cstruct.create length in
+        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
+        reader ~file_offset:strip_offset [ buf ];
+        let get_offset ~offset buf = function
+          | Short -> Endian.uint16 ~offset endian buf
+          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
+        in
+        let counter = ref 0 in
+        let i = ref 0 in
+        while !counter < strip_count do
+          let strip = get_offset ~offset:(!i * strip_bytes) buf strip_offsets.field in
+          if strip != 0 then (
+            Eio.traceln "Strip offset %i: %i" !counter strip;
+            strips := strip :: !strips;
+            counter := !counter + 1
+          );
+          i := !i + 1
+        done;  
+        Eio.traceln "Length of offsets %i" (List.length !strips);
+        List.rev !strips
+
+  (* I have bastardised these for my 1 file so I will need to update to make more general*)
+  let get_bytecounts endian entries reader =
+    match lookup entries StripByteCounts with
+    | None -> []
+    | Some strip_offsets ->
+        let strips = ref [] in
+        let strip_count = Int64.to_int strip_offsets.count in
+        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
+        let length = strip_count * strip_bytes in
+        let buf = Cstruct.create length in
+        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
+        reader ~file_offset:strip_offset [ buf ];
+        let get_offset ~offset buf = function
+          | Short -> Endian.uint16 ~offset endian buf
+          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
+        in
+        for i = 0 to strip_count - 1 do
+          let strip = get_offset ~offset:(i * strip_bytes) buf strip_offsets.field in
+          Eio.traceln "Bytecount %i: %i" i strip;
+          strips := strip :: !strips
+        done;
+        List.rev !strips *)
+
   let max_group lst n =
     let rec loop acc t =
       match (acc, t) with
