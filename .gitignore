@@ -5,3 +5,4 @@ _build
 checkerboard*
 Seasonality.RESIDENT-135744*
 grayscale_16x16_with_metadata.tiff
+test-ignore

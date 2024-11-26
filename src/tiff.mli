@@ -199,18 +199,10 @@ val read_data_helper : File.ro -> int list -> int list -> int -> int
 
 val read_data: File.ro -> int list -> int list -> int
 
+val read_strip_float32 : File.ro -> int -> int -> int -> (float, 'a, 'b) Array1.t -> int
 
-val read_strip_float32 : File.ro -> int -> int -> int -> float
+val read_data_helper_float32 : File.ro -> int list -> int list -> int -> (float, 'a,  'b) Array1.t -> (float, 'a,  'b) Array1.t
 
-val read_data_helper_float32 : File.ro -> int list -> int list -> int -> float -> float
-
-val read_data_float32 : File.ro -> int list -> int list -> float
-
-
-val read_strip2_float32 : File.ro -> int -> int -> int -> (float, 'a, 'b) Array1.t -> int
-
-val read_data2_helper_float32 : File.ro -> int list -> int list -> int -> (float, 'a,  'b) Array1.t -> (float, 'a,  'b) Array1.t
-
-val read_data2_float32 : File.ro -> int list -> int list -> int -> int -> (float, float64_elt,  c_layout) Array1.t
+val read_data_float32 : File.ro -> int list -> int list -> int -> int -> (float, float64_elt,  c_layout) Array1.t
 
 val sum_array : (float, 'a, 'b) Array1.t -> float

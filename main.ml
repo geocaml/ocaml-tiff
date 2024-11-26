@@ -2,10 +2,9 @@ open Eio
 
 let () =
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-  let r = Path.(open_in ~sw (env#fs / Sys.argv.(1))) in
-  let r = File.pread_exact r in
-  let tiff = Tiff.from_file r in
+  let fs = Stdenv.fs env in
+  Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
+  let tiff = Tiff.from_file (File.pread_exact r) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "Entries:\n %a" Fmt.(list Tiff.Ifd.pp_entry) entries;
@@ -27,4 +26,3 @@ let () =
  
   Eio.traceln "Total: %i" total;
   Eio.traceln "File opened successfully.";;
-

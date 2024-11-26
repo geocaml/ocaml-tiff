@@ -360,60 +360,6 @@ module Ifd = struct
         done;
         List.rev !strips
 
-
-  (* (* I have bastardised these for my 1 file so I will need to update to make more general *)
-  let get_dataset_offsets endian entries reader =
-    match lookup entries StripOffsets with
-    | None -> []
-    | Some strip_offsets ->
-        let strips = ref [] in
-        let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
-        let length = strip_count * 2 * strip_bytes in (* overallocating because sometimes there is 0 offset strips*)
-        let buf = Cstruct.create length in
-        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
-        reader ~file_offset:strip_offset [ buf ];
-        let get_offset ~offset buf = function
-          | Short -> Endian.uint16 ~offset endian buf
-          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
-        in
-        let counter = ref 0 in
-        let i = ref 0 in
-        while !counter < strip_count do
-          let strip = get_offset ~offset:(!i * strip_bytes) buf strip_offsets.field in
-          if strip != 0 then (
-            Eio.traceln "Strip offset %i: %i" !counter strip;
-            strips := strip :: !strips;
-            counter := !counter + 1
-          );
-          i := !i + 1
-        done;  
-        Eio.traceln "Length of offsets %i" (List.length !strips);
-        List.rev !strips
-
-  (* I have bastardised these for my 1 file so I will need to update to make more general*)
-  let get_bytecounts endian entries reader =
-    match lookup entries StripByteCounts with
-    | None -> []
-    | Some strip_offsets ->
-        let strips = ref [] in
-        let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes = if strip_offsets.field = Short then 2 else 4 in
-        let length = strip_count * strip_bytes in
-        let buf = Cstruct.create length in
-        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
-        reader ~file_offset:strip_offset [ buf ];
-        let get_offset ~offset buf = function
-          | Short -> Endian.uint16 ~offset endian buf
-          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
-        in
-        for i = 0 to strip_count - 1 do
-          let strip = get_offset ~offset:(i * strip_bytes) buf strip_offsets.field in
-          Eio.traceln "Bytecount %i: %i" i strip;
-          strips := strip :: !strips
-        done;
-        List.rev !strips *)
-
   let max_group lst n =
     let rec loop acc t =
       match (acc, t) with
@@ -789,41 +735,7 @@ let rec read_data_helper ro strip_offsets strip_bytecounts acc =
 let read_data ro strip_offsets strip_bytecounts = read_data_helper ro strip_offsets strip_bytecounts 0
 
 
-let read_strip_float32 ro strip_offset strip_bytecount strip_number =
-  let buf = Cstruct.create strip_bytecount in
-  let opt_strip_offset = Optint.Int63.of_int strip_offset in
-  ro ~file_offset:opt_strip_offset [ buf ];
-
-  let total_value_of_strip = ref 0.0 in
-
-  (* Each 32-bit float takes 4 bytes, so we process `strip_bytecount / 4` floats *)
-  for i = 0 to (strip_bytecount / 4) - 1 do
-    let int_value = Cstruct.LE.get_uint32 buf (i * 4) in
-    let float_value = Int32.float_of_bits int_value in
-    total_value_of_strip := !total_value_of_strip +. float_value;
-  done;
-
-  Eio.traceln "Strip %i: sum = %f" strip_number !total_value_of_strip;
-  !total_value_of_strip
-
-let rec read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc =
-  match strip_offsets, strip_bytecounts with
-  | [], [] -> acc
-  | _, [] -> raise (OffsetsBytecountsDifferentLengthsError "Strip offsets list is bigger than strip bytecounts list")
-  | [], _ -> raise (OffsetsBytecountsDifferentLengthsError "Strip bytecounts list is bigger than strip offsets list")
-  | 0::strip_offsets, _::strip_bytecounts -> read_data_helper_float32 ro strip_offsets strip_bytecounts strip_number acc
-  | offset::strip_offsets, bytecount::strip_bytecounts ->
-    let acc = acc +. read_strip_float32 ro offset bytecount strip_number in
-    read_data_helper_float32 ro strip_offsets strip_bytecounts (strip_number + 1) acc
-
-let read_data_float32 ro strip_offsets strip_bytecounts =
-  read_data_helper_float32 ro strip_offsets strip_bytecounts 0 0.0
-
-
-
-
-
-let read_strip2_float32 ro strip_offset strip_bytecount index arr =
+let read_strip_float32 ro strip_offset strip_bytecount index arr =
   let buf = Cstruct.create strip_bytecount in
   let opt_strip_offset = Optint.Int63.of_int strip_offset in
   ro ~file_offset:opt_strip_offset [ buf ];
@@ -837,30 +749,22 @@ let read_strip2_float32 ro strip_offset strip_bytecount index arr =
   index + (strip_bytecount / 4)
 
 
-let rec read_data2_helper_float32 ro strip_offsets strip_bytecounts index arr = 
+let rec read_data_helper_float32 ro strip_offsets strip_bytecounts index arr = 
   match strip_offsets, strip_bytecounts with
   | [], [] -> arr
   | _, [] -> raise (OffsetsBytecountsDifferentLengthsError "Strip offsets list is bigger than strip bytecounts list")
   | [], _ -> raise (OffsetsBytecountsDifferentLengthsError "Strip bytecounts list is bigger than strip offsets list")
   | offset:: strip_offsets, bytecount:: strip_bytecounts -> 
-    let index = read_strip2_float32 ro offset bytecount index arr in
-    read_data2_helper_float32 ro strip_offsets strip_bytecounts index arr
-
-    (* 
-  let read_data2_helper_float32 ro strip_offsets strip_bytecounts strips_length arr =
-  let index = ref 0 in
-  for i = 0 to strips_length - 1 do
-    index := read_strip2_float32 ro (List.nth strip_offsets i) (List.nth strip_bytecounts i) (!index) arr
-    read_strip2_float32 ro 
-  done;  *)
+    let index = read_strip_float32 ro offset bytecount index arr in
+    read_data_helper_float32 ro strip_offsets strip_bytecounts index arr
 
 
-let read_data2_float32 ro strip_offsets strip_bytecounts rows_per_strip image_width = 
+let read_data_float32 ro strip_offsets strip_bytecounts rows_per_strip image_width = 
   let strip_offsets_length = List.length strip_offsets in
   if strip_offsets_length = (List.length strip_bytecounts) then
     let array_length = (strip_offsets_length * rows_per_strip * image_width) in
     let data_array = Array1.create float64 c_layout array_length in
-    read_data2_helper_float32 ro strip_offsets strip_bytecounts 0 data_array
+    read_data_helper_float32 ro strip_offsets strip_bytecounts 0 data_array
   else 
     raise (OffsetsBytecountsDifferentLengthsError "strip_offsets and strip_bytecounts are of different lengths") 
 
