@@ -566,6 +566,8 @@ module Ifd = struct
           { version; revision; minor; geo_entries }
       | _ -> invalid_arg "GeoKeyDirectory Malformed!"
 
+    let get_geo_entries t = t.geo_entries
+    
     let pp ppf t =
       Fmt.pf ppf "version: %i, revision: %i, minor: %i, count: %i\n" t.version
         t.revision t.minor
@@ -708,8 +710,7 @@ let from_file (f : File.ro) =
 let endianness t =
   match t.header.byte_order with Big -> `Big | Little -> `Little
 
-
-let read_strip ro strip_offset strip_bytecount =
+let read_strip_uint8 ro strip_offset strip_bytecount =
   let buf = Cstruct.create strip_bytecount in
   let opt_strip_offset = Optint.Int63.of_int strip_offset in
   ro ~file_offset:opt_strip_offset [ buf ];
@@ -722,18 +723,48 @@ let read_strip ro strip_offset strip_bytecount =
   Eio.traceln "Value of this strip: %i" !total_value_of_strip;
   !total_value_of_strip
 
-let rec read_data_helper ro strip_offsets strip_bytecounts acc = 
+let rec read_data_helper_uint8 ro strip_offsets strip_bytecounts acc = 
   match strip_offsets, strip_bytecounts with
   | [], [] -> acc
   | _, [] -> raise (Invalid_argument "Strip offsets list bigger than strip bytecounts list")
   | [], _ -> raise (Invalid_argument "Strip bytecounts list bigger than strip offsets list")
-  | 0::strip_offsets, _::strip_bytecounts -> read_data_helper ro strip_offsets strip_bytecounts acc
+  | 0::strip_offsets, _::strip_bytecounts -> read_data_helper_uint8 ro strip_offsets strip_bytecounts acc
   | offset::strip_offsets, bytecount::strip_bytecounts ->
-    let acc = acc + read_strip ro offset bytecount in
-    read_data_helper ro strip_offsets strip_bytecounts acc
+    let acc = acc + read_strip_uint8 ro offset bytecount in
+    read_data_helper_uint8 ro strip_offsets strip_bytecounts acc
 
-let read_data ro strip_offsets strip_bytecounts = read_data_helper ro strip_offsets strip_bytecounts 0
 
+let read_data_uint8 ro strip_offsets strip_bytecounts = read_data_helper_uint8 ro strip_offsets strip_bytecounts 0
+
+let read_strip2_uint8 ro strip_offset strip_bytecount index arr =
+  let buf = Cstruct.create strip_bytecount in
+  let opt_strip_offset = Optint.Int63.of_int strip_offset in
+  ro ~file_offset:opt_strip_offset [ buf ];
+  
+  for i = 0 to strip_bytecount - 1 do  (* Loop should go to strip_bytecount - 1 *)
+    let uint8_value = Cstruct.get_uint8 buf i in
+    Array1.set arr (index + i) uint8_value;
+  done;
+  index + 1 
+
+let rec read_data_helper2_uint8 ro strip_offsets strip_bytecounts index arr = 
+  match strip_offsets, strip_bytecounts with
+  | [], [] -> arr
+  | _, [] -> raise (Invalid_argument "Strip offsets list bigger than strip bytecounts list")
+  | [], _ -> raise (Invalid_argument "Strip bytecounts list bigger than strip offsets list")
+  | offset::strip_offsets, bytecount::strip_bytecounts ->
+    let index = read_strip2_uint8 ro offset bytecount index arr in
+    read_data_helper2_uint8 ro strip_offsets strip_bytecounts index arr
+
+
+let read_data2_uint8 ro strip_offsets strip_bytecounts rows_per_strip image_width = 
+  let strip_offsets_length = List.length strip_offsets in 
+  if strip_offsets_length = (List.length strip_bytecounts) then 
+    let array_length = (strip_offsets_length * rows_per_strip * image_width) in
+    let data_array = Array1.create int8_unsigned c_layout array_length in
+    read_data_helper2_uint8 ro strip_offsets strip_bytecounts 0 data_array
+else 
+  raise (OffsetsBytecountsDifferentLengthsError "strip_offsets and strip_bytecounts are of different lengths")
 
 let read_strip_float32 ro strip_offset strip_bytecount index arr =
   let buf = Cstruct.create strip_bytecount in
@@ -769,9 +800,16 @@ let read_data_float32 ro strip_offsets strip_bytecounts rows_per_strip image_wid
     raise (OffsetsBytecountsDifferentLengthsError "strip_offsets and strip_bytecounts are of different lengths") 
 
 
-let sum_array arr = 
+let sum_array_float arr = 
   let sum = ref 0.0 in
   for i = 0 to (Array1.dim arr) - 1 do
     sum := !sum +. Array1.get arr i
+  done;
+  !sum
+
+let sum_array_uint arr = 
+  let sum = ref 0 in
+  for i = 0 to (Array1.dim arr) - 1 do
+    sum := !sum + Array1.get arr i
   done;
   !sum

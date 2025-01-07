@@ -134,6 +134,7 @@ module Ifd : sig
   module GeoKeys : sig
     type ifd = t
     type t
+    type entry
     type model_type = Projected | Geographic | Geocentric | Other of int
     type raster_type = RasterPixelIsArea | RasterPixelIsPoint | Other of int
 
@@ -148,6 +149,9 @@ module Ifd : sig
       | DMS_hemisphere
 
     val angular_units_to_string : angular_units -> string
+    val entries : ifd -> t
+    val get_geo_entries : t -> entry list
+    val pp_entry : entry Fmt.t
     val pp : t Fmt.t
     val model_type : t -> model_type
     val raster_type : t -> raster_type
@@ -193,11 +197,17 @@ val from_file : File.ro -> t
 
 val endianness : t -> [ `Big | `Little ]
 
-val read_strip : File.ro -> int -> int -> int
+val read_strip_uint8 : File.ro -> int -> int -> int
 
-val read_data_helper : File.ro -> int list -> int list -> int -> int
+val read_data_helper_uint8 : File.ro -> int list -> int list -> int -> int
 
-val read_data: File.ro -> int list -> int list -> int
+val read_data_uint8 : File.ro -> int list -> int list -> int
+
+val read_strip2_uint8 : File.ro -> int -> int -> int -> (int, 'a, 'b) Array1.t -> int
+
+val read_data2_uint8 : File.ro -> int list -> int list -> int -> int -> (int, int8_unsigned_elt,  c_layout) Array1.t
+
+val read_data_helper2_uint8 : File.ro -> int list -> int list -> int -> (int, 'a,  'b) Array1.t -> (int, 'a,  'b) Array1.t
 
 val read_strip_float32 : File.ro -> int -> int -> int -> (float, 'a, 'b) Array1.t -> int
 
@@ -205,4 +215,6 @@ val read_data_helper_float32 : File.ro -> int list -> int list -> int -> (float,
 
 val read_data_float32 : File.ro -> int list -> int list -> int -> int -> (float, float64_elt,  c_layout) Array1.t
 
-val sum_array : (float, 'a, 'b) Array1.t -> float
+val sum_array_float : (float, 'a, 'b) Array1.t -> float
+
+val sum_array_uint : (int, 'a, 'b) Array1.t -> int

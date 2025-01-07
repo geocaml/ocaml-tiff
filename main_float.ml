@@ -26,9 +26,24 @@ let () =
     (data_bytecounts);
   (* let total = Tiff.read_data_float32 (File.pread_exact r) data_offsets data_bytecounts in *)
   
-  let arr_test = Tiff.read_data_float32 (File.pread_exact r) data_offsets data_bytecounts rows_per_strip width in
+  let geokey_entries = Tiff.Ifd.GeoKeys.entries ifd in 
+  Eio.traceln "GeoKey Entries:\n %a" Fmt.(list Tiff.Ifd.GeoKeys.pp_entry) (Tiff.Ifd.GeoKeys.get_geo_entries geokey_entries);
+  let model_tiepoint = Tiff.Ifd.tiepoint ifd in
+  let model_pixel_scale = Tiff.Ifd.pixel_scale ifd in 
+  let print_float_array fmt arr =
+    Format.fprintf fmt "[";
+    Array.iteri (fun i x ->
+      if i > 0 then Format.fprintf fmt "; ";
+      Format.fprintf fmt "%f" x
+    ) arr;
+    Format.fprintf fmt "]"
+  in
+  Eio.traceln "Model tiepoints: %a" print_float_array model_tiepoint;
+  Eio.traceln "Model pixel scales: %a" print_float_array model_pixel_scale;
 
-  let sum_arr_test = Tiff.sum_array arr_test in 
+  let arr_test = Tiff.read_data_float32 (File.pread_exact r) data_offsets data_bytecounts rows_per_strip width in
+    
+  let sum_arr_test = Tiff.sum_array_float arr_test in 
 
   (* Eio.traceln "Total from o.g. method: %.12f" total; *)
   Eio.traceln "New total: %.12f" sum_arr_test; 
