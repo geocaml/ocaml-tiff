@@ -778,7 +778,7 @@ end
 type t = { 
   header : header; 
   ifd : Ifd.t;
-  data: Data.t option
+  data: Data.t
 }
 
 let ifd t = t.ifd
@@ -786,27 +786,23 @@ let ifd t = t.ifd
 let data t = t.data
 
 (* so the tiff file so far is a header; ifd and this function returns the "tiff file" *)
-let from_file (f : File.ro) ?(data_type : Data.data_type option) =
+let from_file (f : File.ro) (data_type : Data.data_type) =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   let data_offsets = Ifd.data_offsets ifd in
   let data_bytecounts = Ifd.data_bytecounts ifd in
   let rows_per_strip = Ifd.rows_per_strip ifd in 
   let width =  Ifd.width ifd in
-  match data_type with
-  | Some data_type ->
-    let data = 
-      match data_type with
-      | Data.UINT8 ->
-        let data_arr = Data.read_data_uint8 f data_offsets data_bytecounts rows_per_strip width in
-        Some(Data.UInt8Data(data_arr))
-      | Data.FLOAT -> 
-        let data_arr = Data.read_data_float32 f data_offsets data_bytecounts rows_per_strip width in
-        Some(Data.FloatData(data_arr))
-    in
-    { header; ifd; data }
-  | None ->
-    {header; ifd; data = None}
+  let data = 
+    match data_type with
+    | Data.UINT8 ->
+      let data_arr = Data.read_data_uint8 f data_offsets data_bytecounts rows_per_strip width in
+      Data.UInt8Data(data_arr)
+    | Data.FLOAT -> 
+      let data_arr = Data.read_data_float32 f data_offsets data_bytecounts rows_per_strip width in
+      Data.FloatData(data_arr)
+  in
+  { header; ifd; data }
 
 let endianness t =
   match t.header.byte_order with Big -> `Big | Little -> `Little

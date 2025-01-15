@@ -197,7 +197,9 @@ type t
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
-val from_file : File.ro -> ?data_type:Data.data_type -> t
+val data : t -> Data.t
+
+val from_file : File.ro -> Data.data_type -> t
 (** Start reading a TIFF file *)
 
 val endianness : t -> [ `Big | `Little ]
