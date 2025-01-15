@@ -186,34 +186,21 @@ module Ifd : sig
       [Double] then you will gexwt back a list of [10] buffers each of length [2]. *)
 end
 
+module Data : sig
+  type t
+  type data_type = UINT8 | FLOAT
+
+end
 type t
 (** A TIFF file *)
 
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
-val from_file : File.ro -> t
+val from_file : File.ro -> ?data_type:Data.data_type -> t
 (** Start reading a TIFF file *)
 
 val endianness : t -> [ `Big | `Little ]
-
-val read_strip_uint8 : File.ro -> int -> int -> int
-
-val read_data_helper_uint8 : File.ro -> int list -> int list -> int -> int
-
-val read_data_uint8 : File.ro -> int list -> int list -> int
-
-val read_strip2_uint8 : File.ro -> int -> int -> int -> (int, 'a, 'b) Array1.t -> int
-
-val read_data2_uint8 : File.ro -> int list -> int list -> int -> int -> (int, int8_unsigned_elt,  c_layout) Array1.t
-
-val read_data_helper2_uint8 : File.ro -> int list -> int list -> int -> (int, 'a,  'b) Array1.t -> (int, 'a,  'b) Array1.t
-
-val read_strip_float32 : File.ro -> int -> int -> int -> (float, 'a, 'b) Array1.t -> int
-
-val read_data_helper_float32 : File.ro -> int list -> int list -> int -> (float, 'a,  'b) Array1.t -> (float, 'a,  'b) Array1.t
-
-val read_data_float32 : File.ro -> int list -> int list -> int -> int -> (float, float64_elt,  c_layout) Array1.t
 
 val sum_array_float : (float, 'a, 'b) Array1.t -> float
 

@@ -4,7 +4,7 @@ let () =
   Eio_main.run @@ fun env ->
   let fs = Stdenv.fs env in
   Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
-  let tiff = Tiff.from_file (File.pread_exact r) in
+  let tiff = Tiff.from_file (File.pread_exact r) (Data.UINT8) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   let width = Tiff.Ifd.width ifd in
@@ -39,10 +39,8 @@ let () =
   Eio.traceln "Model tiepoints: %a" print_float_array model_tiepoint;
   Eio.traceln "Model pixel scales: %a" print_float_array model_pixel_scale;
 
-  
-  let arr_test = Tiff.read_data2_uint8 (File.pread_exact r) data_offsets data_bytecounts rows_per_strip width in 
-  let total = Tiff.read_data_uint8 (File.pread_exact r) data_offsets data_bytecounts in
-  
+  let data = Tiff.data tiff
+
   let sum_arr_test = Tiff.sum_array_uint arr_test in 
   Eio.traceln "Total: %i" total;
   Eio.traceln "New total: %i" sum_arr_test; 
