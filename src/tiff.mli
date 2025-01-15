@@ -187,8 +187,16 @@ module Ifd : sig
 end
 
 module Data : sig
-  type t
   type data_type = UINT8 | FLOAT
+
+  type ('a, 'b) tiff_data = ('a, 'b, c_layout) Array1.t
+  
+  type t =
+  | UInt8Data of (int, int8_unsigned_elt) tiff_data
+  | FloatData of (float, float64_elt) tiff_data
+
+  exception TiffDataHasWrongType 
+
 
 end
 type t

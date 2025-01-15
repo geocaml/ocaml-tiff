@@ -7,10 +7,10 @@ let () =
     let tiff = Tiff.from_file (File.pread_exact r) (Tiff.Data.UINT8) in
     let ifd = Tiff.ifd tiff in
     let entries = Tiff.Ifd.entries ifd in
+    let height = Tiff.Ifd.height ifd in 
     let width = Tiff.Ifd.width ifd in
-    let rows_per_strip = Tiff.Ifd.rows_per_strip ifd in
     Eio.traceln "Entries:\n %a" Fmt.(list Tiff.Ifd.pp_entry) entries;
-    Eio.traceln "File size: %ix%i" (Tiff.Ifd.height ifd) (Tiff.Ifd.width ifd);
+    Eio.traceln "File size: %ix%i" height width;
     Eio.traceln "Samples per pixel: %i" (Tiff.Ifd.samples_per_pixel ifd);
     Eio.traceln "Bits per sample: %a"
       Fmt.(list int)
@@ -41,7 +41,11 @@ let () =
 
     let data = Tiff.data tiff in
 
-    let sum_arr_test = Tiff.sum_array_uint arr_test in 
-    Eio.traceln "Total: %i" total;
+    let arr = 
+      match data with 
+      | Tiff.Data.UInt8Data(arr) -> arr
+      | _ ->  raise Tiff.Data.TiffDataHasWrongType     
+    in
+    let sum_arr_test = Tiff.sum_array_uint arr in 
     Eio.traceln "New total: %i" sum_arr_test; 
     Eio.traceln "File opened successfully.";; 

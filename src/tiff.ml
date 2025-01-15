@@ -708,7 +708,7 @@ module Data = struct
   | UInt8Data of (int, int8_unsigned_elt) tiff_data
   | FloatData of (float, float64_elt) tiff_data
       
-  (* exception TiffDataHasWrongType  *)
+  exception TiffDataHasWrongType 
 
   let read_strip_uint8 ro strip_offset strip_bytecount index arr =
     let buf = Cstruct.create strip_bytecount in
@@ -785,7 +785,6 @@ let ifd t = t.ifd
 
 let data t = t.data
 
-(* so the tiff file so far is a header; ifd and this function returns the "tiff file" *)
 let from_file (f : File.ro) (data_type : Data.data_type) =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
