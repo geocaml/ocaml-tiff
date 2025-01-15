@@ -9,7 +9,7 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
   let open Eio in
   let fs = Stdenv.fs env in
   Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
-  let tiff = Tiff.from_file (File.pread_exact r) in
+  let tiff = Tiff.from_file (File.pread_exact r) (Tiff.Data.UINT8) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;

@@ -1,4 +1,4 @@
 (library
  (name tiff)
  (public_name tiff)
- (libraries eio cstruct fmt optint))
+ (libraries fmt cstruct optint eio))

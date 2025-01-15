@@ -805,17 +805,3 @@ let from_file (f : File.ro) (data_type : Data.data_type) =
 
 let endianness t =
   match t.header.byte_order with Big -> `Big | Little -> `Little
-
-let sum_array_float arr = 
-  let sum = ref 0.0 in
-  for i = 0 to (Array1.dim arr) - 1 do
-    sum := !sum +. Array1.get arr i
-  done;
-  !sum
-
-let sum_array_uint arr = 
-  let sum = ref 0 in
-  for i = 0 to (Array1.dim arr) - 1 do
-    sum := !sum + Array1.get arr i
-  done;
-  !sum

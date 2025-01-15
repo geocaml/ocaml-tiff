@@ -211,7 +211,3 @@ val from_file : File.ro -> Data.data_type -> t
 (** Start reading a TIFF file *)
 
 val endianness : t -> [ `Big | `Little ]
-
-val sum_array_float : (float, 'a, 'b) Array1.t -> float
-
-val sum_array_uint : (int, 'a, 'b) Array1.t -> int
