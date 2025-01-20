@@ -792,6 +792,7 @@ let from_file (f : File.ro) (data_type : Data.data_type) =
   let data_bytecounts = Ifd.data_bytecounts ifd in
   let rows_per_strip = Ifd.rows_per_strip ifd in 
   let width =  Ifd.width ifd in
+  (* reads whole tiff file into memory every time... *)
   let data = 
     match data_type with
     | Data.UINT8 ->
