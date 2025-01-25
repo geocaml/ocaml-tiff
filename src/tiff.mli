@@ -1,15 +1,15 @@
 (** {1 TIFF}
 
-This library provides functions for accessing TIFF files. A TIFF file
-is a way to provide {i raster} images.
-*)
+    This library provides functions for accessing TIFF files. A TIFF file is a
+    way to provide {i raster} images. *)
 
 open Bigarray
 
 module File : sig
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
-      The read should be exact and raise [End_of_file] should that be the case. *)
+      The read should be exact and raise [End_of_file] should that be the case.
+  *)
 end
 
 module Ifd : sig
@@ -89,8 +89,9 @@ module Ifd : sig
   (** [samples_per_pixel] is usually 1 for grayscale and 3 for RGB. *)
 
   val bits_per_sample : t -> int list
-  (** [bits_per_sample t] is the number of bits per component corresponding to a pixel.
-      The following invariant should hold [List.length (bits_per_sample t) = sample_per_pixel t]. *)
+  (** [bits_per_sample t] is the number of bits per component corresponding to a
+      pixel. The following invariant should hold
+      [List.length (bits_per_sample t) = sample_per_pixel t]. *)
 
   val compression : t -> compression
   (** Compression scheme used in the image data *)
@@ -122,8 +123,8 @@ module Ifd : sig
   (** Pixel scales entry. *)
 
   val tiepoint : t -> float array
-  (** Also known as GeoreferenceTag, this stores raster to model
-      tiepoint pairs. *)
+  (** Also known as GeoreferenceTag, this stores raster to model tiepoint pairs.
+  *)
 
   val geo_double_params : t -> float array
   (** Double valued GeoKeys. *)
@@ -162,7 +163,8 @@ module Ifd : sig
   end
 
   val geo_key_directory : t -> GeoKeys.t
-  (** This tag may be used to store the GeoKey Directory, which defines and references the "GeoKeys" *)
+  (** This tag may be used to store the GeoKey Directory, which defines and
+      references the "GeoKeys" *)
 
   val data_offsets : t -> int list
   (** The offsets into the file for the chunks of the data. *)
@@ -183,31 +185,30 @@ module Ifd : sig
   val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
   (** Read entries as raw bytes. This will return a buffer list based on the
       layout of the entry. For example, if the count is [10] and the tag is
-      [Double] then you will gexwt back a list of [10] buffers each of length [2]. *)
+      [Double] then you will gexwt back a list of [10] buffers each of length
+      [2]. *)
 end
 
 module Data : sig
   type data_type = UINT8 | FLOAT
+  type ('a, 'b) tiff_data = ('a, 'b, c_layout) Genarray.t
 
-  type ('a, 'b) tiff_data = ('a, 'b, c_layout) Array1.t
-  
   type t =
-  | UInt8Data of (int, int8_unsigned_elt) tiff_data
-  | FloatData of (float, float64_elt) tiff_data
+    | UInt8Data of (int, int8_unsigned_elt) tiff_data
+    | FloatData of (float, float64_elt) tiff_data
 
-  exception TiffDataHasWrongType 
-
-
+  exception TiffDataHasWrongType
 end
+
 type t
 (** A TIFF file *)
 
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
-val data : t -> Data.t
+val data : t -> File.ro -> Data.data_type -> Data.t
 
-val from_file : File.ro -> Data.data_type -> t
+val from_file : File.ro -> t
 (** Start reading a TIFF file *)
 
 val endianness : t -> [ `Big | `Little ]

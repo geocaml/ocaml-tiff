@@ -4,7 +4,7 @@
 
 (executable
  (name main)
- (libraries eio_main tiff))
+ (libraries eio_main owl cstruct owl-base tiff))
 
 (rule
  (alias runtest)

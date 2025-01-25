@@ -5,7 +5,7 @@ let () =
   Eio.Switch.run @@ fun sw ->
   let r = Path.(open_in ~sw (env#fs / Sys.argv.(1))) in
   let r = File.pread_exact r in
-  let tiff = Tiff.from_file r (Tiff.Data.UINT8) in
+  let tiff = Tiff.from_file r in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
