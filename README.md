@@ -12,6 +12,13 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
   let tiff = Tiff.from_file (File.pread_exact r) in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
+  let data = Tiff.data tiff (File.pread_exact r) (Tiff.Data.UINT8) in 
+  let sum =
+    match data with
+    | UInt8Data data -> Owl.Dense.Ndarray.Generic.sum' data
+    | _ -> raise Tiff.Data.TiffDataHasWrongType
+  in
+
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
   Eio.traceln "%ix%i"
     (Tiff.Ifd.height (Tiff.ifd tiff))
@@ -21,7 +28,8 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
     (Tiff.Ifd.data_offsets ifd);
   Eio.traceln "counts: %a"
     Fmt.(list ~sep:(any ", ") int)
-    (Tiff.Ifd.data_bytecounts ifd)
+    (Tiff.Ifd.data_bytecounts ifd);
+  Eio.traceln "sum: %i" sum
 +tag: image-width, field: short, count: 1, value/offset: 514
 +tag: image-length, field: short, count: 1, value/offset: 515
 +tag: bits-per-sample, field: short, count: 1, value/offset: 8
@@ -41,5 +49,6 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
 +515x514
 +offsets: 426, 8136, 15846, 23556, 31266, 38976, 46686, 54396, 62106, 69816, 77526, 85236, 92946, 100656, 108366, 116076, 123786, 131496, 139206, 146916, 154626, 162336, 170046, 177756, 185466, 193176, 200886, 208596, 216306, 224016, 231726, 239436, 247146, 254856, 262566
 +counts: 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710
++sum: 27304701
 - : unit = ()
 ```
