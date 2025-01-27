@@ -175,8 +175,8 @@ module Ifd : sig
   (** {2 Reading entries} *)
 
   (* val read_entry_short : entry -> int
-  (** Reads the value of the entry as a short if the entry field matches
-      otherwise it will raise [Invalid_argument _]. *) *)
+     (** Reads the value of the entry as a short if the entry field matches
+         otherwise it will raise [Invalid_argument _]. *) *)
 
   val read_entry : entry -> int
   (** Reads the value of the entry as a short if the entry field matches

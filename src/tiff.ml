@@ -277,11 +277,11 @@ module Ifd = struct
   let lookup_exn e tag = List.find (fun e -> e.tag = tag) e
 
   (* let read_entry e =
-    match e.field with
-    | Short -> e.offset |> Int64.to_int
-    | _ ->
-        raise
-          (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e)) *)
+     match e.field with
+     | Short -> e.offset |> Int64.to_int
+     | _ ->
+         raise
+           (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e)) *)
 
   let read_entry e =
     match e.field with
