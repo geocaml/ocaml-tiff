@@ -697,12 +697,12 @@ end
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
-  type data_type = UINT8 | FLOAT
+  type data_type = UINT8 | FLOAT32
   type ('a, 'b) tiff_data = ('a, 'b, c_layout) Genarray.t
 
   type t =
     | UInt8Data of (int, int8_unsigned_elt) tiff_data
-    | FloatData of (float, float64_elt) tiff_data
+    | Float32Data of (float, float32_elt) tiff_data
 
   exception TiffDataHasWrongType
 
@@ -741,11 +741,11 @@ module Data = struct
         (OffsetsBytecountsDifferentLengthsError
            "strip_offsets and strip_bytecounts are of different lengths")
 
-  let read_data_float ro strip_offsets strip_bytecounts rows_per_strip window =
+  let read_data_float32 ro strip_offsets strip_bytecounts rows_per_strip window =
     let strip_offsets_length = List.length strip_offsets in
     if strip_offsets_length = List.length strip_bytecounts then (
       let arr_length = window.xsize * window.ysize in
-      let arr = Genarray.create float64 c_layout [| arr_length |] in
+      let arr = Genarray.create float32 c_layout [| arr_length |] in
       let strip_offsets = Array.of_list strip_offsets in
       let strip_bytecounts = Array.of_list strip_bytecounts in
       let first_strip = window.yoff / rows_per_strip in
@@ -805,12 +805,12 @@ let data t (f : File.ro) ?(xoffset = None) ?(yoffset = None) ?(xsize = None)
           window
       in
       Data.UInt8Data data_arr
-  | Data.FLOAT ->
+  | Data.FLOAT32 ->
       let data_arr =
-        Data.read_data_float f data_offsets data_bytecounts rows_per_strip
+        Data.read_data_float32 f data_offsets data_bytecounts rows_per_strip
           window
       in
-      Data.FloatData data_arr
+      Data.Float32Data data_arr
 
 let from_file (f : File.ro) =
   let header = header f in

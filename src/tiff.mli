@@ -192,12 +192,12 @@ end
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data : sig
-  type data_type = UINT8 | FLOAT
+  type data_type = UINT8 | FLOAT32
   type ('a, 'b) tiff_data = ('a, 'b, c_layout) Genarray.t
 
   type t =
     | UInt8Data of (int, int8_unsigned_elt) tiff_data
-    | FloatData of (float, float64_elt) tiff_data
+    | Float32Data of (float, float32_elt) tiff_data
 
   exception TiffDataHasWrongType
 end
