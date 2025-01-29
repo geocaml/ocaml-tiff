@@ -189,6 +189,13 @@ module Ifd : sig
       [2]. *)
 end
 
+type window = {
+  xoff: int;
+  yoff: int;
+  xsize: int;
+  ysize: int
+}
+
 module Data : sig
   type data_type = UINT8 | FLOAT
   type ('a, 'b) tiff_data = ('a, 'b, c_layout) Genarray.t
@@ -206,7 +213,7 @@ type t
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
-val data : t -> File.ro -> Data.data_type -> Data.t
+val data : t -> File.ro -> ?xoffset:int option -> ?yoffset: int option -> ?xsize: int option -> ?ysize: int option -> Data.data_type -> Data.t
 
 val from_file : File.ro -> t
 (** Start reading a TIFF file *)
