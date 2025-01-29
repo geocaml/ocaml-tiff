@@ -707,73 +707,53 @@ module Data = struct
   exception TiffDataHasWrongType
 
   let ceil a b = (a + b - 1) / b
+  let read_uint8_value buf buf_index i = Cstruct.get_uint8 buf (!buf_index + i)
+
+  let read_float32_value buf buf_index i =
+    let int_value = Cstruct.LE.get_uint32 buf (!buf_index + (i * 4)) in
+    Int32.float_of_bits int_value
+
+  let read_data ro strip_offsets strip_bytecounts rows_per_strip window arr_type
+      read_value =
+    let strip_offsets_length = List.length strip_offsets in
+    if strip_offsets_length = List.length strip_bytecounts then (
+      let arr_length = window.xsize * window.ysize in
+      let arr = Genarray.create arr_type c_layout [| arr_length |] in
+      let strip_offsets = Array.of_list strip_offsets in
+      let strip_bytecounts = Array.of_list strip_bytecounts in
+      let first_strip = window.yoff / rows_per_strip in
+      (* assume whole numbers for now *)
+      let last_strip = first_strip + ceil window.ysize rows_per_strip in
+      let index = ref 0 in
+      for s = first_strip to last_strip - 1 do
+        let buf = Cstruct.create strip_bytecounts.(s) in
+        let buf_index = ref 0 in
+        let strip_length = strip_bytecounts.(s) / rows_per_strip in
+        let opt_strip_offset = Optint.Int63.of_int strip_offsets.(s) in
+        ro ~file_offset:opt_strip_offset [ buf ];
+        for _ = 0 to rows_per_strip - 1 do
+          for i = window.xoff to window.xoff + window.xsize - 1 do
+            let value = read_value buf buf_index i in
+            if !index < arr_length then Genarray.set arr [| !index |] value;
+            index := !index + 1
+          done;
+          buf_index := !buf_index + strip_length
+        done
+      done;
+      arr)
+    else
+      raise
+        (OffsetsBytecountsDifferentLengthsError
+           "strip_offsets and strip_bytecounts are of different lengths")
 
   let read_data_uint8 ro strip_offsets strip_bytecounts rows_per_strip window =
-    let strip_offsets_length = List.length strip_offsets in
-    if strip_offsets_length = List.length strip_bytecounts then (
-      let arr_length = window.xsize * window.ysize in
-      let arr = Genarray.create int8_unsigned c_layout [| arr_length |] in
-      let strip_offsets = Array.of_list strip_offsets in
-      let strip_bytecounts = Array.of_list strip_bytecounts in
-      let first_strip = window.yoff / rows_per_strip in
-      (* assume whole numbers for now *)
-      let last_strip = first_strip + ceil window.ysize rows_per_strip in
-      let index = ref 0 in
-      for s = first_strip to last_strip - 1 do
-        let buf = Cstruct.create strip_bytecounts.(s) in
-        let buf_index = ref 0 in
-        let strip_length = strip_bytecounts.(s) / rows_per_strip in
-        let opt_strip_offset = Optint.Int63.of_int strip_offsets.(s) in
-        ro ~file_offset:opt_strip_offset [ buf ];
-        for _ = 0 to rows_per_strip - 1 do
-          for i = window.xoff to window.xoff + window.xsize - 1 do
-            let uint8_value = Cstruct.get_uint8 buf (!buf_index + i) in
-            if !index < arr_length then
-              Genarray.set arr [| !index |] uint8_value;
-            index := !index + 1
-          done;
-          buf_index := !buf_index + strip_length
-        done
-      done;
-      arr)
-    else
-      raise
-        (OffsetsBytecountsDifferentLengthsError
-           "strip_offsets and strip_bytecounts are of different lengths")
+    read_data ro strip_offsets strip_bytecounts rows_per_strip window
+      int8_unsigned read_uint8_value
 
-  let read_data_float32 ro strip_offsets strip_bytecounts rows_per_strip window =
-    let strip_offsets_length = List.length strip_offsets in
-    if strip_offsets_length = List.length strip_bytecounts then (
-      let arr_length = window.xsize * window.ysize in
-      let arr = Genarray.create float32 c_layout [| arr_length |] in
-      let strip_offsets = Array.of_list strip_offsets in
-      let strip_bytecounts = Array.of_list strip_bytecounts in
-      let first_strip = window.yoff / rows_per_strip in
-      (* assume whole numbers for now *)
-      let last_strip = first_strip + ceil window.ysize rows_per_strip in
-      let index = ref 0 in
-      for s = first_strip to last_strip - 1 do
-        let buf = Cstruct.create strip_bytecounts.(s) in
-        let buf_index = ref 0 in
-        let strip_length = strip_bytecounts.(s) / rows_per_strip in
-        let opt_strip_offset = Optint.Int63.of_int strip_offsets.(s) in
-        ro ~file_offset:opt_strip_offset [ buf ];
-        for _ = 0 to rows_per_strip - 1 do
-          for i = window.xoff to window.xoff + window.xsize - 1 do
-            let int_value = Cstruct.LE.get_uint32 buf (!buf_index + (i * 4)) in
-            let float_value = Int32.float_of_bits int_value in
-            if !index < arr_length then
-              Genarray.set arr [| !index |] float_value;
-            index := !index + 1
-          done;
-          buf_index := !buf_index + strip_length
-        done
-      done;
-      arr)
-    else
-      raise
-        (OffsetsBytecountsDifferentLengthsError
-           "strip_offsets and strip_bytecounts are of different lengths")
+  let read_data_float32 ro strip_offsets strip_bytecounts rows_per_strip window
+      =
+    read_data ro strip_offsets strip_bytecounts rows_per_strip window float32
+      read_float32_value
 end
 
 type t = { header : header; ifd : Ifd.t }
