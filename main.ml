@@ -23,7 +23,7 @@ let () =
   let sum =
     match data with
     | UInt8Data data -> Owl.Dense.Ndarray.Generic.sum' data
-    | _ -> raise Tiff.Data.TiffDataHasWrongType
+    | _ -> raise (Invalid_argument "Tiff Data has wrong type")
   in
 
   Eio.traceln "Sum: %i" sum

@@ -11,8 +11,6 @@ type header = { kind : kind; byte_order : endianness; offset : Optint.Int63.t }
 and kind = Tiff | Bigtiff
 and endianness = Big | Little
 
-exception OffsetsBytecountsDifferentLengthsError of string
-
 module Endian = struct
   let uint16 ?(offset = 0) endian buf =
     match endian with
@@ -704,8 +702,6 @@ module Data = struct
     | UInt8Data of (int, int8_unsigned_elt) tiff_data
     | Float32Data of (float, float32_elt) tiff_data
 
-  exception TiffDataHasWrongType
-
   let ceil a b = (a + b - 1) / b
   let read_uint8_value buf buf_index i = Cstruct.get_uint8 buf (!buf_index + i)
 
@@ -743,7 +739,7 @@ module Data = struct
       arr)
     else
       raise
-        (OffsetsBytecountsDifferentLengthsError
+        (Invalid_argument
            "strip_offsets and strip_bytecounts are of different lengths")
 
   let read_data_uint8 ro strip_offsets strip_bytecounts rows_per_strip window =

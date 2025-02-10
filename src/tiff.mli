@@ -198,8 +198,6 @@ module Data : sig
   type t =
     | UInt8Data of (int, int8_unsigned_elt) tiff_data
     | Float32Data of (float, float32_elt) tiff_data
-
-  exception TiffDataHasWrongType
 end
 
 type t

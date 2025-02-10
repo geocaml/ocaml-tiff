@@ -16,7 +16,7 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
   let sum =
     match data with
     | UInt8Data data -> Owl.Dense.Ndarray.Generic.sum' data
-    | _ -> raise Tiff.Data.TiffDataHasWrongType
+    | _ -> raise (Invalid_argument "Tiff Data has wrong type")
   in
 
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
