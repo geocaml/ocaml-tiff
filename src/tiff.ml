@@ -703,10 +703,10 @@ module Data = struct
     | Float32Data of (float, float32_elt) tiff_data
 
   let ceil a b = (a + b - 1) / b
-  let read_uint8_value buf buf_index i = Cstruct.get_uint8 buf (!buf_index + i)
+  let read_uint8_value buf buf_index i = Cstruct.get_uint8 buf (buf_index + i)
 
   let read_float32_value buf buf_index i =
-    let int_value = Cstruct.LE.get_uint32 buf (!buf_index + (i * 4)) in
+    let int_value = Cstruct.LE.get_uint32 buf (buf_index + (i * 4)) in
     Int32.float_of_bits int_value
 
   let read_data ro strip_offsets strip_bytecounts rows_per_strip window arr_type
@@ -729,7 +729,7 @@ module Data = struct
         ro ~file_offset:opt_strip_offset [ buf ];
         for _ = 0 to rows_per_strip - 1 do
           for i = window.xoff to window.xoff + window.xsize - 1 do
-            let value = read_value buf buf_index i in
+            let value = read_value buf !buf_index i in
             if !index < arr_length then Genarray.set arr [| !index |] value;
             index := !index + 1
           done;
@@ -757,8 +757,7 @@ type t = { header : header; ifd : Ifd.t }
 let ifd t = t.ifd
 
 (* have to specify all 4 or else it defaults to whole file*)
-let data t (f : File.ro) ?(xoffset = None) ?(yoffset = None) ?(xsize = None)
-    ?(ysize = None) data_type =
+let data t (f : File.ro) ?xoffset ?yoffset ?xsize ?ysize data_type =
   let ifd = t.ifd in
   let data_offsets = Ifd.data_offsets ifd in
   let data_bytecounts = Ifd.data_bytecounts ifd in
@@ -772,8 +771,6 @@ let data t (f : File.ro) ?(xoffset = None) ?(yoffset = None) ?(xsize = None)
         let height = Ifd.height ifd in
         { xoff = 0; yoff = 0; xsize = width; ysize = height }
   in
-  (* Eio.traceln "xoff: %i yoff: %i xsize: %i ysize: %i" window.xoff window.yoff window.xsize window.ysize; *)
-  (* reads whole tiff file into memory every time... *)
   match data_type with
   | Data.UINT8 ->
       let data_arr =

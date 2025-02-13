@@ -209,10 +209,10 @@ val ifd : t -> Ifd.t
 val data :
   t ->
   File.ro ->
-  ?xoffset:int option ->
-  ?yoffset:int option ->
-  ?xsize:int option ->
-  ?ysize:int option ->
+  ?xoffset:int ->
+  ?yoffset:int ->
+  ?xsize:int ->
+  ?ysize:int ->
   Data.data_type ->
   Data.t
 
