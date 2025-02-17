@@ -1,13 +1,15 @@
 (** {1 TIFF}
 
-This library provides functions for accessing TIFF files. A TIFF file
-is a way to provide {i raster} images.
-*)
+    This library provides functions for accessing TIFF files. A TIFF file is a
+    way to provide {i raster} images. *)
+
+open Bigarray
 
 module File : sig
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
-      The read should be exact and raise [End_of_file] should that be the case. *)
+      The read should be exact and raise [End_of_file] should that be the case.
+  *)
 end
 
 module Ifd : sig
@@ -80,12 +82,16 @@ module Ifd : sig
   val height : t -> int
   (** [height t] returns the height of the image. *)
 
+  val rows_per_strip : t -> int
+  (** [rows_per_strip t] returns the number of rows per strip. *)
+
   val samples_per_pixel : t -> int
   (** [samples_per_pixel] is usually 1 for grayscale and 3 for RGB. *)
 
   val bits_per_sample : t -> int list
-  (** [bits_per_sample t] is the number of bits per component corresponding to a pixel.
-      The following invariant should hold [List.length (bits_per_sample t) = sample_per_pixel t]. *)
+  (** [bits_per_sample t] is the number of bits per component corresponding to a
+      pixel. The following invariant should hold
+      [List.length (bits_per_sample t) = sample_per_pixel t]. *)
 
   val compression : t -> compression
   (** Compression scheme used in the image data *)
@@ -117,8 +123,8 @@ module Ifd : sig
   (** Pixel scales entry. *)
 
   val tiepoint : t -> float array
-  (** Also known as GeoreferenceTag, this stores raster to model
-      tiepoint pairs. *)
+  (** Also known as GeoreferenceTag, this stores raster to model tiepoint pairs.
+  *)
 
   val geo_double_params : t -> float array
   (** Double valued GeoKeys. *)
@@ -129,6 +135,7 @@ module Ifd : sig
   module GeoKeys : sig
     type ifd = t
     type t
+    type entry
     type model_type = Projected | Geographic | Geocentric | Other of int
     type raster_type = RasterPixelIsArea | RasterPixelIsPoint | Other of int
 
@@ -143,6 +150,9 @@ module Ifd : sig
       | DMS_hemisphere
 
     val angular_units_to_string : angular_units -> string
+    val entries : ifd -> t
+    val get_geo_entries : t -> entry list
+    val pp_entry : entry Fmt.t
     val pp : t Fmt.t
     val model_type : t -> model_type
     val raster_type : t -> raster_type
@@ -153,7 +163,8 @@ module Ifd : sig
   end
 
   val geo_key_directory : t -> GeoKeys.t
-  (** This tag may be used to store the GeoKey Directory, which defines and references the "GeoKeys" *)
+  (** This tag may be used to store the GeoKey Directory, which defines and
+      references the "GeoKeys" *)
 
   val data_offsets : t -> int list
   (** The offsets into the file for the chunks of the data. *)
@@ -163,23 +174,50 @@ module Ifd : sig
 
   (** {2 Reading entries} *)
 
-  val read_entry_short : entry -> int
+  (* val read_entry_short : entry -> int
+     (** Reads the value of the entry as a short if the entry field matches
+         otherwise it will raise [Invalid_argument _]. *) *)
+
+  val read_entry : entry -> int
   (** Reads the value of the entry as a short if the entry field matches
       otherwise it will raise [Invalid_argument _]. *)
 
   val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
   (** Read entries as raw bytes. This will return a buffer list based on the
       layout of the entry. For example, if the count is [10] and the tag is
-      [Double] then you will gexwt back a list of [10] buffers each of length [2]. *)
+      [Double] then you will gexwt back a list of [10] buffers each of length
+      [2]. *)
+end
+
+type window = { xoff : int; yoff : int; xsize : int; ysize : int }
+(** A window can be used to reduce the size of data returned by {! data} *)
+
+module Data : sig
+  type ('repr, 'kind) kind =
+    | Uint8 : (int, int8_unsigned_elt) kind
+    | Float32 : (float, float32_elt) kind  (** A subset of {! Bigarray.kind}. *)
+
+  type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
+  (** Raw TIFF data. *)
 end
 
 type t
 (** A TIFF file *)
 
+val from_file : File.ro -> t
+(** Start reading a TIFF file. *)
+
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
-val from_file : File.ro -> t
-(** Start reading a TIFF file *)
+val data :
+  ?window:window ->
+  t ->
+  File.ro ->
+  ('repr, 'kind) Data.kind ->
+  ('repr, 'kind) Data.t
+(** Low-level access to the raw data inside the TIFF file. The user must specify
+    the data kind.
 
-val endianness : t -> [ `Big | `Little ]
+    Higher-level abstractions may wish to present a uniform interface to this
+    data. *)

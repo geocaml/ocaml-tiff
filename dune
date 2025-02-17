@@ -1,14 +1,14 @@
 (mdx
  (files README.md)
- (libraries eio eio.core eio.unix fmt eio_main tiff))
+ (libraries eio eio.core eio.unix fmt eio_main owl-base tiff))
 
 (executable
  (name main)
- (libraries eio_main tiff))
+ (libraries eio_main owl-base cstruct tiff))
 
 (rule
  (alias runtest)
- (deps test/cea.tiff)
+ (deps test/cea.tiff test/uniform.tiff)
  (targets cea.tiff)
  (action
   (copy test/cea.tiff cea.tiff)))

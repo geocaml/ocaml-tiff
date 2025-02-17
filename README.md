@@ -6,12 +6,15 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
 
 ```ocaml
 # Eio_main.run @@ fun env ->
-  let open Eio in
-  let fs = Stdenv.fs env in
-  Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
-  let tiff = Tiff.from_file (File.pread_exact r) in
+  let fs = Eio.Stdenv.fs env in
+  Eio.Path.(with_open_in (fs / "test/cea.tiff")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let tiff = Tiff.from_file ro in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
+  let data = Tiff.data tiff ro Tiff.Data.Uint8 in 
+  let sum = Owl_base_dense_ndarray_generic.sum' data in
+
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
   Eio.traceln "%ix%i"
     (Tiff.Ifd.height (Tiff.ifd tiff))
@@ -21,7 +24,8 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
     (Tiff.Ifd.data_offsets ifd);
   Eio.traceln "counts: %a"
     Fmt.(list ~sep:(any ", ") int)
-    (Tiff.Ifd.data_bytecounts ifd)
+    (Tiff.Ifd.data_bytecounts ifd);
+  Eio.traceln "sum: %i" sum
 +tag: image-width, field: short, count: 1, value/offset: 514
 +tag: image-length, field: short, count: 1, value/offset: 515
 +tag: bits-per-sample, field: short, count: 1, value/offset: 8
@@ -41,5 +45,22 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
 +515x514
 +offsets: 426, 8136, 15846, 23556, 31266, 38976, 46686, 54396, 62106, 69816, 77526, 85236, 92946, 100656, 108366, 116076, 123786, 131496, 139206, 146916, 154626, 162336, 170046, 177756, 185466, 193176, 200886, 208596, 216306, 224016, 231726, 239436, 247146, 254856, 262566
 +counts: 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710
++sum: 27304701
+- : unit = ()
+```
+
+Windows can be used to narrow the area returned by `data`.
+
+```ocaml
+# Eio_main.run @@ fun env ->
+  let fs = Eio.Stdenv.fs env in
+  Eio.Path.(with_open_in (fs / "test/uniform.tiff")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in 
+  let tiff = Tiff.from_file ro in
+  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let data = Tiff.data ~window tiff ro Tiff.Data.Uint8 in
+  let res = Owl_base_dense_ndarray_generic.sum' data in
+  Eio.traceln "We expect %i and got %i" (10 * 10 * 128) res;;
++We expect 12800 and got 12800
 - : unit = ()
 ```
