@@ -15,4 +15,4 @@
    optint
    (mdx :with-test)
    (eio_main :with-test)
-   (owl :with-test)))
+   (owl-base :with-test)))

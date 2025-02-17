@@ -1,2 +1,4 @@
 _build
+venv
+*.py
 .DS_Store
