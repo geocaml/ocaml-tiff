@@ -190,33 +190,34 @@ module Ifd : sig
 end
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
+(** A window can be used to reduce the size of data returned by {! data} *)
 
 module Data : sig
-  type data_type = UINT8 | FLOAT32
-  type ('a, 'b) tiff_data = ('a, 'b, c_layout) Genarray.t
+  type ('repr, 'kind) kind =
+    | Uint8 : (int, int8_unsigned_elt) kind
+    | Float32 : (float, float32_elt) kind  (** A subset of {! Bigarray.kind}. *)
 
-  type t =
-    | UInt8Data of (int, int8_unsigned_elt) tiff_data
-    | Float32Data of (float, float32_elt) tiff_data
+  type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
+  (** Raw TIFF data. *)
 end
 
 type t
 (** A TIFF file *)
 
+val from_file : File.ro -> t
+(** Start reading a TIFF file. *)
+
 val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
 val data :
+  ?window:window ->
   t ->
   File.ro ->
-  ?xoffset:int ->
-  ?yoffset:int ->
-  ?xsize:int ->
-  ?ysize:int ->
-  Data.data_type ->
-  Data.t
+  ('repr, 'kind) Data.kind ->
+  ('repr, 'kind) Data.t
+(** Low-level access to the raw data inside the TIFF file. The user must specify
+    the data kind.
 
-val from_file : File.ro -> t
-(** Start reading a TIFF file *)
-
-val endianness : t -> [ `Big | `Little ]
+    Higher-level abstractions may wish to present a uniform interface to this
+    data. *)

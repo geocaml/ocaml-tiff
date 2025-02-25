@@ -295,65 +295,78 @@ module Ifd = struct
   let samples_per_pixel e = lookup_exn e.entries SamplesPerPixel |> read_entry
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
+  let is_immediate (entry : entry) =
+    Int64.equal entry.count 1L
+    && match entry.field with Byte | Short | Long -> true | _ -> false
+
   let get_dataset_offsets endian entries reader =
     match lookup entries StripOffsets with
     | None -> []
     | Some strip_offsets ->
-        let strips = ref [] in
         let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes =
-          match strip_offsets.field with
-          | Short -> 2
-          | Long -> 4
-          | Long8 -> 8
-          | _ ->
-              Fmt.failwith "Unsupported strip length: %a" pp_field
-                strip_offsets.field
-        in
-        let length = strip_count * strip_bytes in
-        let buf = Cstruct.create length in
-        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
-        reader ~file_offset:strip_offset [ buf ];
-        let get_offset ~offset buf = function
-          | Short -> Endian.uint16 ~offset endian buf
-          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
-        in
-        for i = 0 to strip_count - 1 do
-          strips :=
-            get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
-            :: !strips
-        done;
-        List.rev !strips
+        if is_immediate strip_offsets then [ read_entry strip_offsets ]
+        else
+          let strips = ref [] in
+          let strip_bytes =
+            match strip_offsets.field with
+            | Short -> 2
+            | Long -> 4
+            | Long8 -> 8
+            | _ ->
+                Fmt.failwith "Unsupported strip length: %a" pp_field
+                  strip_offsets.field
+          in
+          let length = strip_count * strip_bytes in
+          let buf = Cstruct.create length in
+          let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
+          reader ~file_offset:strip_offset [ buf ];
+          let get_offset ~offset buf = function
+            | Short -> Endian.uint16 ~offset endian buf
+            | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
+            | _ -> Fmt.failwith "Unsupported"
+          in
+          for i = 0 to strip_count - 1 do
+            strips :=
+              get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
+              :: !strips
+          done;
+          List.rev !strips
 
   let get_bytecounts endian entries reader =
     match lookup entries StripByteCounts with
     | None -> []
     | Some strip_offsets ->
-        let strips = ref [] in
-        let strip_count = Int64.to_int strip_offsets.count in
-        let strip_bytes =
-          match strip_offsets.field with
-          | Short -> 2
-          | Long -> 4
-          | Long8 -> 8
-          | _ ->
-              Fmt.failwith "Unsupported strip length: %a" pp_field
-                strip_offsets.field
-        in
-        let length = strip_count * strip_bytes in
-        let buf = Cstruct.create length in
-        let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
-        reader ~file_offset:strip_offset [ buf ];
-        let get_offset ~offset buf = function
-          | Short -> Endian.uint16 ~offset endian buf
-          | _ -> Endian.uint32 ~offset endian buf |> Int32.to_int
-        in
-        for i = 0 to strip_count - 1 do
-          strips :=
-            get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
-            :: !strips
-        done;
-        List.rev !strips
+        if is_immediate strip_offsets then [ read_entry strip_offsets ]
+        else
+          let strip_count = Int64.to_int strip_offsets.count in
+          let strips = ref [] in
+          let strip_bytes =
+            match strip_offsets.field with
+            | Short -> 2
+            | Long -> 4
+            | Long8 -> 8
+            | _ ->
+                Fmt.failwith "Unsupported strip length: %a" pp_field
+                  strip_offsets.field
+          in
+          let length = strip_count * strip_bytes in
+          let buf = Cstruct.create length in
+          let strip_offset = Optint.Int63.of_int64 strip_offsets.offset in
+          reader ~file_offset:strip_offset [ buf ];
+          let get_offset ~offset buf = function
+            | Short -> Endian.uint16 ~offset endian buf
+            | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
+            | Long8 -> failwith "TODO"
+            | _ ->
+                Fmt.failwith "Unsupported strip length: %a" pp_field
+                  strip_offsets.field
+          in
+          for i = 0 to strip_count - 1 do
+            strips :=
+              get_offset ~offset:(i * strip_bytes) buf strip_offsets.field
+              :: !strips
+          done;
+          List.rev !strips
 
   let max_group lst n =
     let rec loop acc t =
@@ -700,26 +713,26 @@ let from_file (f : File.ro) =
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { header; ifd }
 
-let endianness t =
-  match t.header.byte_order with Big -> `Big | Little -> `Little
-
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
-  type data_type = UINT8 | FLOAT32
-  type ('a, 'b) tiff_data = ('a, 'b, c_layout) Genarray.t
+  open Bigarray
 
-  type t =
-    | UInt8Data of (int, int8_unsigned_elt) tiff_data
-    | Float32Data of (float, float32_elt) tiff_data
+  type ('repr, 'kind) kind =
+    | Uint8 : (int, int8_unsigned_elt) kind
+    | Float32 : (float, float32_elt) kind
+
+  type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
 
   let ceil a b = (a + b - 1) / b
-  let read_uint8_value buf buf_index i tiff_endianness = 
-    match tiff_endianness with 
-    | _ -> Cstruct.get_uint8 buf (buf_index + i)
+
+  let read_uint8_value buf buf_index i tiff_endianness =
+    match tiff_endianness with _ -> Cstruct.get_uint8 buf (buf_index + i)
 
   let read_float32_value buf buf_index i tiff_endianness =
-    let int_value = Endian.uint32 ~offset:(buf_index + (i* 4)) tiff_endianness buf in 
+    let int_value =
+      Endian.uint32 ~offset:(buf_index + (i * 4)) tiff_endianness buf
+    in
     Int32.float_of_bits int_value
 
   let read_data t ro window arr_type read_value =
@@ -757,33 +770,27 @@ module Data = struct
     else
       raise
         (Invalid_argument
-            "strip_offsets and strip_bytecounts are of different lengths")
+           "strip_offsets and strip_bytecounts are of different lengths")
 
-  let read_data_uint8 t ro window = read_data t ro window int8_unsigned read_uint8_value
+  let read_data_uint8 t ro window =
+    read_data t ro window int8_unsigned read_uint8_value
 
-  let read_data_float32 t ro window = read_data t ro window float32 read_float32_value
+  let read_data_float32 t ro window =
+    read_data t ro window float32 read_float32_value
 end
 
 (* have to specify all 4 or else it defaults to whole file*)
-let data t (f : File.ro) ?xoffset ?yoffset ?xsize ?ysize data_type =
+let data (type repr kind) ?window t (f : File.ro)
+    (data_type : (repr, kind) Data.kind) : (repr, kind) Data.t =
   let ifd = ifd t in
   let window =
-    match (xoffset, yoffset, xsize, ysize) with
-    | Some xoffset, Some yoffset, Some xsize, Some ysize ->
-        { xoff = xoffset; yoff = yoffset; xsize; ysize }
-    | _, _, _, _ ->
+    match window with
+    | Some w -> w
+    | None ->
         let width = Ifd.width ifd in
         let height = Ifd.height ifd in
         { xoff = 0; yoff = 0; xsize = width; ysize = height }
   in
   match data_type with
-  | Data.UINT8 ->
-      let data_arr =
-        Data.read_data_uint8 t f window
-      in
-      Data.UInt8Data data_arr
-  | Data.FLOAT32 ->
-      let data_arr =
-        Data.read_data_float32 t f window
-      in
-      Data.Float32Data data_arr
+  | Data.Uint8 -> Data.read_data_uint8 t f window
+  | Data.Float32 -> Data.read_data_float32 t f window

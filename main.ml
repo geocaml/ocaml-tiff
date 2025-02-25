@@ -9,13 +9,13 @@ let () =
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
   Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
-
+  Eio.traceln "offsets: %a"
+    Fmt.(list ~sep:(any ", ") int)
+    (Tiff.Ifd.data_offsets ifd);
+  Eio.traceln "counts: %a"
+    Fmt.(list ~sep:(any ", ") int)
+    (Tiff.Ifd.data_bytecounts ifd);
   (* E.g. when reading a UINT8 file: *)
-  let data = Tiff.data tiff r Tiff.Data.UINT8 in
-  let sum =
-    match data with
-    | UInt8Data data -> Owl.Dense.Ndarray.Generic.sum' data
-    | _ -> raise (Invalid_argument "Tiff Data has wrong type")
-  in
-
+  let data = Tiff.data tiff r Tiff.Data.Uint8 in
+  let sum = Owl_base_dense_ndarray_generic.sum' data in
   Eio.traceln "Sum: %i" sum
