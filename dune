@@ -6,6 +6,10 @@
  (name main)
  (libraries eio_main owl-base cstruct tiff))
 
+(executable
+ (name main_float)
+ (libraries eio_main owl-base cstruct tiff))
+
 (rule
  (alias runtest)
  (deps test/cea.tiff test/uniform.tiff)
