@@ -46,8 +46,6 @@ Supports both TIFF and BigTIFF files. The underlying IO mechanisms are expected 
 +offsets: 426, 8136, 15846, 23556, 31266, 38976, 46686, 54396, 62106, 69816, 77526, 85236, 92946, 100656, 108366, 116076, 123786, 131496, 139206, 146916, 154626, 162336, 170046, 177756, 185466, 193176, 200886, 208596, 216306, 224016, 231726, 239436, 247146, 254856, 262566
 +counts: 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710, 7710
 +sum: 27304701
-<<<<<<< HEAD
-=======
 - : unit = ()
 ```
 
@@ -64,6 +62,5 @@ Windows can be used to narrow the area returned by `data`.
   let res = Owl_base_dense_ndarray_generic.sum' data in
   Eio.traceln "We expect %i and got %i" (10 * 10 * 128) res;;
 +We expect 12800 and got 12800
->>>>>>> upstream/main
 - : unit = ()
 ```
