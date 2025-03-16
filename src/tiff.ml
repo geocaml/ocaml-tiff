@@ -235,6 +235,19 @@ module Ifd = struct
     | ADOBE_DEFLATE
     | Other of int
 
+  let compression_to_string = function
+    | No_compression -> "No_compression"
+    | CCITTRLE -> "CCITTRLE"
+    | PACKBITS -> "PACKBITS"
+    | CCITTFAX3 -> "CCITTFAX3"
+    | CCITTFAX4 -> "CCITTFAX4"
+    | LZW -> "LZW"
+    | OJPEG -> "OJPEG"
+    | JPEG -> "JPEG"
+    | DEFLATE -> "DEFLATE"
+    | ADOBE_DEFLATE -> "ADOBE_DEFLATE"
+    | Other i -> "Other " ^ string_of_int i
+
   let compression_of_int = function
     | 1 -> No_compression
     | 2 -> CCITTRLE
@@ -272,13 +285,6 @@ module Ifd = struct
   let lookup e tag = List.find_opt (fun e -> e.tag = tag) e
   let lookup_exn e tag = List.find (fun e -> e.tag = tag) e
 
-  (* let read_entry e =
-     match e.field with
-     | Short -> e.offset |> Int64.to_int
-     | _ ->
-         raise
-           (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e)) *)
-
   let read_entry e =
     match e.field with
     | Short -> e.offset |> Int64.to_int
@@ -293,9 +299,12 @@ module Ifd = struct
   let samples_per_pixel e = lookup_exn e.entries SamplesPerPixel |> read_entry
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
+  let is_immediate_raw ~count field =
+    Int64.equal count 1L
+    && match field with Byte | Short | Long -> true | _ -> false
+
   let is_immediate (entry : entry) =
-    Int64.equal entry.count 1L
-    && match entry.field with Byte | Short | Long -> true | _ -> false
+    is_immediate_raw ~count:entry.count entry.field
 
   let get_dataset_offsets endian entries reader =
     match lookup entries StripOffsets with
@@ -410,6 +419,10 @@ module Ifd = struct
   let bits_per_sample t =
     let entry = lookup_exn t.entries BitsPerSample in
     if entry.count = 1L then [ Int64.to_int entry.offset ]
+    else if entry.count = 2L then (
+      let buf = Cstruct.create 8 in
+      Cstruct.BE.set_uint64 buf 0 entry.offset;
+      [ Cstruct.BE.get_uint16 buf 4; Cstruct.BE.get_uint16 buf 6 ])
     else
       let scales = read_entry_raw entry t.ro in
       List.map (Endian.uint16 t.header.byte_order) scales
@@ -677,24 +690,50 @@ module Ifd = struct
     for i = 0 to count - 1 do
       match header.kind with
       | Tiff ->
-          let tag = Endian.uint16 ~offset:(i * 12) endian buf |> tag_of_int in
+          let base_offset = i * entry_size in
+          let tag =
+            Endian.uint16 ~offset:base_offset endian buf |> tag_of_int
+          in
           let field =
-            Endian.uint16 ~offset:((i * 12) + 2) endian buf |> field_of_int
+            Endian.uint16 ~offset:(base_offset + 2) endian buf |> field_of_int
           in
           let count =
-            Endian.uint32 ~offset:((i * 12) + 4) endian buf |> Int64.of_int32
+            Endian.uint32 ~offset:(base_offset + 4) endian buf |> Int64.of_int32
           in
           let offset =
-            Endian.uint32 ~offset:((i * 12) + 8) endian buf |> Int64.of_int32
+            match (is_immediate_raw ~count field, field) with
+            | true, Byte ->
+                Cstruct.get_uint8 buf (base_offset + 8) |> Int64.of_int
+            | true, Short ->
+                Endian.uint16 ~offset:(base_offset + 8) endian buf
+                |> Int64.of_int
+            | _ ->
+                Endian.uint32 ~offset:(base_offset + 8) endian buf
+                |> Int64.of_int32
           in
-          entries := { tag; field; count; offset } :: !entries
+          let entry = { tag; field; count; offset } in
+          entries := entry :: !entries
       | Bigtiff ->
-          let tag = Endian.uint16 ~offset:(i * 20) endian buf |> tag_of_int in
-          let field =
-            Endian.uint16 ~offset:((i * 20) + 2) endian buf |> field_of_int
+          let base_offset = i * entry_size in
+          let tag =
+            Endian.uint16 ~offset:base_offset endian buf |> tag_of_int
           in
-          let count = Endian.uint64 ~offset:((i * 20) + 4) endian buf in
-          let offset = Endian.uint64 ~offset:((i * 20) + 12) endian buf in
+          let field =
+            Endian.uint16 ~offset:(base_offset + 2) endian buf |> field_of_int
+          in
+          let count = Endian.uint64 ~offset:(base_offset + 4) endian buf in
+          let offset =
+            match (is_immediate_raw ~count field, field) with
+            | true, Byte ->
+                Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
+            | true, Short ->
+                Endian.uint16 ~offset:(base_offset + 12) endian buf
+                |> Int64.of_int
+            | true, Long ->
+                Endian.uint32 ~offset:(base_offset + 12) endian buf
+                |> Int64.of_int32
+            | _ -> Endian.uint64 ~offset:(base_offset + 12) endian buf
+          in
           entries := { tag; field; count; offset } :: !entries
     done;
     let entries = List.rev !entries in
@@ -723,47 +762,96 @@ module Data = struct
 
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
 
-  let ceil a b = (a + b - 1) / b
+  let read_uint8_value buf buf_index _ = Cstruct.get_uint8 buf buf_index
 
-  let read_uint8_value buf buf_index i tiff_endianness =
-    match tiff_endianness with _ -> Cstruct.get_uint8 buf (buf_index + i)
-
-  let read_float32_value buf buf_index i tiff_endianness =
-    let int_value =
-      Endian.uint32 ~offset:(buf_index + (i * 4)) tiff_endianness buf
-    in
+  let read_float32_value buf buf_index tiff_endianness =
+    let int_value = Endian.uint32 ~offset:buf_index tiff_endianness buf in
     Int32.float_of_bits int_value
+
+  let ceil a b = (a + b - 1) / b
 
   let read_data t ro window arr_type read_value =
     let ifd = t.ifd in
-    let strip_offsets = Ifd.data_offsets ifd in
-    let strip_bytecounts = Ifd.data_bytecounts ifd in
+    let samples_per_pixel =
+      try Ifd.samples_per_pixel ifd with Not_found -> 1
+    in
+    let height = Ifd.height ifd in
+    let width = Ifd.width ifd in
+    let bits_per_sample = Ifd.bits_per_sample ifd in
+    let bytes_per_pixel = List.fold_left Int.add 0 bits_per_sample / 8 in
+    let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
+    let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
     let rows_per_strip = Ifd.rows_per_strip ifd in
     let tiff_endianness = t.header.byte_order in
-    let strip_offsets_length = List.length strip_offsets in
-    if strip_offsets_length = List.length strip_bytecounts then (
-      let arr_length = window.xsize * window.ysize in
-      let arr = Genarray.create arr_type c_layout [| arr_length |] in
-      let strip_offsets = Array.of_list strip_offsets in
-      let strip_bytecounts = Array.of_list strip_bytecounts in
+    let strip_offsets_length = Array.length strip_offsets in
+    if strip_offsets_length = Array.length strip_bytecounts then (
+      let arr =
+        (* Supporting multi-channel TIFF files *)
+        if samples_per_pixel = 1 then
+          Genarray.create arr_type c_layout [| window.ysize; window.xsize |]
+        else
+          Genarray.create arr_type c_layout
+            [| window.ysize; window.xsize; samples_per_pixel |]
+      in
+      (* The strip where our first row will be found *)
       let first_strip = window.yoff / rows_per_strip in
-      (* assume whole numbers for now *)
+      (* The strip where our last row will be found *)
       let last_strip = first_strip + ceil window.ysize rows_per_strip in
-      let index = ref 0 in
-      for s = first_strip to last_strip - 1 do
-        let buf = Cstruct.create strip_bytecounts.(s) in
-        let buf_index = ref 0 in
-        let strip_length = strip_bytecounts.(s) / rows_per_strip in
-        let opt_strip_offset = Optint.Int63.of_int strip_offsets.(s) in
-        ro ~file_offset:opt_strip_offset [ buf ];
-        for _ = 0 to rows_per_strip - 1 do
-          for i = window.xoff to window.xoff + window.xsize - 1 do
-            let value = read_value buf !buf_index i tiff_endianness in
-            if !index < arr_length then Genarray.set arr [| !index |] value;
-            index := !index + 1
-          done;
-          buf_index := !buf_index + strip_length
-        done
+      let row_index = ref window.yoff in
+
+      (* We iterate through every strip *)
+      for strip = first_strip to last_strip - 1 do
+        let strip_buffer = Cstruct.create strip_bytecounts.(strip) in
+        let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
+
+        (* Fill the strip buffer *)
+        ro ~file_offset:strip_offset [ strip_buffer ];
+
+        (* Calculate the number of rows in the current strip *)
+        let rows_in_strip =
+          (* If we are the last strip, then we might have less rows *)
+          if strip = strip_offsets_length - 1 then
+            height - (strip * rows_per_strip)
+          else rows_per_strip
+        in
+
+        (* Iterating through the rows of the current strip *)
+        for inner_row = 0 to rows_in_strip - 1 do
+          (* The actual y offset we are at *)
+          let y_offset = !row_index + inner_row in
+
+          if y_offset >= window.ysize then ()
+          else
+            (* The x offset we are at *)
+            let x_offset = ref window.xoff in
+
+            while !x_offset <= window.xoff + window.xsize - 1 do
+              (* The index into the strip buffer *)
+              let index = !x_offset + (inner_row * width) in
+              if samples_per_pixel = 1 then
+                let value =
+                  read_value strip_buffer (index * bytes_per_pixel)
+                    tiff_endianness
+                in
+                Genarray.set arr [| y_offset; !x_offset |] value
+              else
+                for channel = 0 to samples_per_pixel - 1 do
+                  (* TODO: Perhaps only under chunky planar configuration? *)
+                  let byte_off =
+                    if channel > 0 then List.nth bits_per_sample channel / 8
+                    else 0
+                  in
+                  let value =
+                    read_value strip_buffer
+                      ((index * bytes_per_pixel) + byte_off)
+                      tiff_endianness
+                  in
+                  Genarray.set arr [| y_offset; !x_offset; channel |] value
+                done;
+              x_offset := !x_offset + 1
+            done
+        done;
+        row_index := !row_index + rows_in_strip
       done;
       arr)
     else
