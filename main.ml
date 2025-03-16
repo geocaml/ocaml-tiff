@@ -1,21 +1,10 @@
-open Eio
-
 let () =
   Eio_main.run @@ fun env ->
-  Eio.Switch.run @@ fun sw ->
-  let r = Path.(open_in ~sw (env#fs / Sys.argv.(1))) in
-  let r = File.pread_exact r in
-  let tiff = Tiff.from_file r in
-  let ifd = Tiff.ifd tiff in
-  let entries = Tiff.Ifd.entries ifd in
-  Eio.traceln "%a" Fmt.(list Tiff.Ifd.pp_entry) entries;
-  Eio.traceln "offsets: %a"
-    Fmt.(list ~sep:(any ", ") int)
-    (Tiff.Ifd.data_offsets ifd);
-  Eio.traceln "counts: %a"
-    Fmt.(list ~sep:(any ", ") int)
-    (Tiff.Ifd.data_bytecounts ifd);
-  (* E.g. when reading a UINT8 file: *)
-  let data = Tiff.data tiff r Tiff.Data.Uint8 in
-  let sum = Owl_base_dense_ndarray_generic.sum' data in
-  Eio.traceln "Sum: %i" sum
+  let fs = Eio.Stdenv.fs env in
+  Eio.Path.(with_open_in (fs / "test/uniform.tiff")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let tiff = Tiff.from_file ro in
+  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let data = Tiff.data ~window tiff ro Tiff.Data.Uint8 in
+  let res = Owl_base_dense_ndarray_generic.sum' data in
+  Eio.traceln "We expect %i and got %i" (10 * 10 * 128) res
