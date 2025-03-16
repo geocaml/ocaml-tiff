@@ -6,13 +6,13 @@ A pure OCaml library for reading TIFF files. The underlying IO mechanisms are ex
 ```ocaml
 module Arr = Owl_base_dense_ndarray_generic
 
-let info ?(kind=Tiff.Data.Uint8) f =
+let info ?window ?(kind=Tiff.Data.Uint8) f =
   Eio_main.run @@ fun env ->
   let fs = Eio.Stdenv.fs env in
   Eio.Path.(with_open_in (fs / f)) @@ fun r ->
   let ro = Eio.File.pread_exact r in 
   let tif = Tiff.from_file ro in
-  let data = Tiff.data tif ro kind in
+  let data = Tiff.data ?window tif ro kind in
   Eio.traceln "Shape: [%a]" Fmt.(array ~sep:Fmt.comma int) (Arr.shape data);
   Eio.traceln "Sum: %i" (Arr.sum' data)
 ```
@@ -38,16 +38,10 @@ The second contains two bands of data (hence the extra dimension).
 Windows can be used to narrow the area returned by `data`.
 
 ```ocaml
-# Eio_main.run @@ fun env ->
-  let fs = Eio.Stdenv.fs env in
-  Eio.Path.(with_open_in (fs / "test/uniform.tiff")) @@ fun r ->
-  let ro = Eio.File.pread_exact r in 
-  let tiff = Tiff.from_file ro in
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
-  let data = Tiff.data ~window tiff ro Tiff.Data.Uint8 in
-  let res = Owl_base_dense_ndarray_generic.sum' data in
-  Eio.traceln "We expect %i and got %i" (10 * 10 * 128) res;;
-+We expect 12800 and got 12800
+# let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  info ~window "./test/uniform.tiff";;
++Shape: [10, 10]
++Sum: 12800
 - : unit = ()
 ```
 
