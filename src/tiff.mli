@@ -60,6 +60,7 @@ module Ifd : sig
     | ADOBE_DEFLATE
     | Other of int
 
+  val compression_to_string : compression -> string
   val compression_to_int : compression -> int
 
   val pp_entry : entry Fmt.t
