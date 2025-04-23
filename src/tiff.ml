@@ -139,6 +139,7 @@ module Ifd = struct
     | SamplesPerPixel
     | ModelPixelScale
     | ModelTiepoint
+    | ModelTransformation
     | GeoDoubleParams
     | GeoAsciiParams
     | GeoKeyDirectory
@@ -196,6 +197,7 @@ module Ifd = struct
     | SamplesPerPixel -> Fmt.string ppf "samples-per-pixel"
     | ModelPixelScale -> Fmt.string ppf "model-pixel-scale"
     | ModelTiepoint -> Fmt.string ppf "model-tiepoint"
+    | ModelTransformation -> Fmt.string ppf "model-transformation"
     | GeoDoubleParams -> Fmt.string ppf "geo-double-params"
     | GeoAsciiParams -> Fmt.string ppf "geo-ascii-params"
     | GeoKeyDirectory -> Fmt.string ppf "geo-key-directory"
@@ -437,6 +439,12 @@ module Ifd = struct
     let entry = lookup_exn t.entries ModelTiepoint in
     let scales = read_entry_raw entry t.ro in
     assert (List.length scales mod 6 = 0);
+    List.map (Endian.double t.header.byte_order) scales |> Array.of_list
+
+  let transformation t =
+    let entry = lookup_exn t.entries ModelTransformation in
+    let scales = read_entry_raw entry t.ro in
+    assert (List.length scales = 16);
     List.map (Endian.double t.header.byte_order) scales |> Array.of_list
 
   let geo_double_params t =

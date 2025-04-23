@@ -36,6 +36,7 @@ module Ifd : sig
     | SamplesPerPixel
     | ModelPixelScale
     | ModelTiepoint
+    | ModelTransformation
     | GeoDoubleParams
     | GeoAsciiParams
     | GeoKeyDirectory
@@ -126,6 +127,9 @@ module Ifd : sig
   val tiepoint : t -> float array
   (** Also known as GeoreferenceTag, this stores raster to model tiepoint pairs.
   *)
+
+  val transformation : t -> float array
+  (** This tag may be used to specify the transformation matrix between the raster space and model space *)
 
   val geo_double_params : t -> float array
   (** Double valued GeoKeys. *)
