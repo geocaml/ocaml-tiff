@@ -8,7 +8,7 @@
 
 (rule
  (alias runtest)
- (deps test/cea.tiff test/uniform.tiff test/jello-gray.tiff)
+ (deps testdata/cea.tiff testdata/uniform.tiff testdata/jello-gray.tiff)
  (targets cea.tiff)
  (action
-  (copy test/cea.tiff cea.tiff)))
+  (copy testdata/cea.tiff cea.tiff)))

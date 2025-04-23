@@ -10,7 +10,7 @@ let info ?window ?(kind=Tiff.Data.Uint8) f =
   Eio_main.run @@ fun env ->
   let fs = Eio.Stdenv.fs env in
   Eio.Path.(with_open_in (fs / f)) @@ fun r ->
-  let ro = Eio.File.pread_exact r in 
+  let ro = Eio.File.pread_exact r in
   let tif = Tiff.from_file ro in
   let data = Tiff.data ?window tif ro kind in
   Eio.traceln "Shape: [%a]" Fmt.(array ~sep:Fmt.comma int) (Arr.shape data);
@@ -20,7 +20,7 @@ let info ?window ?(kind=Tiff.Data.Uint8) f =
 We then apply our `info` function to two different TIFF files. The first only contains a single band of data.
 
 ```ocaml
-# info "./test/cea.tiff";;
+# info "./testdata/cea.tiff";;
 +Shape: [515, 514]
 +Sum: 27304701
 - : unit = ()
@@ -29,7 +29,7 @@ We then apply our `info` function to two different TIFF files. The first only co
 The second contains two bands of data (hence the extra dimension).
 
 ```ocaml
-# info "./test/jello-gray.tiff";;
+# info "./testdata/jello-gray.tiff";;
 +Shape: [192, 256, 2]
 +Sum: 16731734
 - : unit = ()
@@ -39,7 +39,7 @@ Windows can be used to narrow the area returned by `data`.
 
 ```ocaml
 # let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
-  info ~window "./test/uniform.tiff";;
+  info ~window "./testdata/uniform.tiff";;
 +Shape: [10, 10]
 +Sum: 12800
 - : unit = ()
@@ -50,8 +50,8 @@ Other files are a little more awkward, with different endianness and different s
 ```ocaml
 # Eio_main.run @@ fun env ->
   let fs = Eio.Stdenv.fs env in
-  Eio.Path.(with_open_in (fs / "test/jello-gray.tiff")) @@ fun r ->
-  let ro = Eio.File.pread_exact r in 
+  Eio.Path.(with_open_in (fs / "testdata/jello-gray.tiff")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file ro in
   let ifd = Tiff.ifd tiff in
   let entries = Tiff.Ifd.entries ifd in
