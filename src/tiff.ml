@@ -292,6 +292,7 @@ module Ifd = struct
     match e.field with
     | Short -> e.offset |> Int64.to_int
     | Long -> e.offset |> Int64.to_int
+    | Long8 -> e.offset |> Int64.to_int
     | _ ->
         raise
           (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e))
@@ -306,15 +307,21 @@ module Ifd = struct
     Int64.equal count 1L
     && match field with Byte | Short | Long -> true | _ -> false
 
-  let is_immediate (entry : entry) =
-    is_immediate_raw ~count:entry.count entry.field
+  let is_immediate_raw_big ~count field =
+    Int64.equal count 1L
+    && match field with Byte | Short | Long | Long8 -> true | _ -> false
 
-  let get_dataset_offsets endian entries reader =
+  let is_immediate kind (entry : entry) =
+    match kind with
+    | Tiff -> is_immediate_raw ~count:entry.count entry.field
+    | Bigtiff -> is_immediate_raw_big ~count:entry.count entry.field
+
+  let get_dataset_offsets kind endian entries reader =
     match lookup entries StripOffsets with
     | None -> []
     | Some strip_offsets ->
         let strip_count = Int64.to_int strip_offsets.count in
-        if is_immediate strip_offsets then [ read_entry strip_offsets ]
+        if is_immediate kind strip_offsets then [ read_entry strip_offsets ]
         else
           let strips = ref [] in
           let strip_bytes =
@@ -333,6 +340,7 @@ module Ifd = struct
           let get_offset ~offset buf = function
             | Short -> Endian.uint16 ~offset endian buf
             | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
+            | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
             | _ -> Fmt.failwith "Unsupported"
           in
           for i = 0 to strip_count - 1 do
@@ -342,11 +350,11 @@ module Ifd = struct
           done;
           List.rev !strips
 
-  let get_bytecounts endian entries reader =
+  let get_bytecounts kind endian entries reader =
     match lookup entries StripByteCounts with
     | None -> []
     | Some strip_offsets ->
-        if is_immediate strip_offsets then [ read_entry strip_offsets ]
+        if is_immediate kind strip_offsets then [ read_entry strip_offsets ]
         else
           let strip_count = Int64.to_int strip_offsets.count in
           let strips = ref [] in
@@ -366,7 +374,7 @@ module Ifd = struct
           let get_offset ~offset buf = function
             | Short -> Endian.uint16 ~offset endian buf
             | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
-            | Long8 -> failwith "TODO"
+            | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
             | _ ->
                 Fmt.failwith "Unsupported strip length: %a" pp_field
                   strip_offsets.field
@@ -732,7 +740,7 @@ module Ifd = struct
           in
           let count = Endian.uint64 ~offset:(base_offset + 4) endian buf in
           let offset =
-            match (is_immediate_raw ~count field, field) with
+            match (is_immediate_raw_big ~count field, field) with
             | true, Byte ->
                 Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
             | true, Short ->
@@ -746,8 +754,8 @@ module Ifd = struct
           entries := { tag; field; count; offset } :: !entries
     done;
     let entries = List.rev !entries in
-    let data_offsets = get_dataset_offsets endian entries reader in
-    let data_bytecounts = get_bytecounts endian entries reader in
+    let data_offsets = get_dataset_offsets header.kind endian entries reader in
+    let data_bytecounts = get_bytecounts header.kind endian entries reader in
     { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
