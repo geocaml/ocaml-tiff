@@ -1,6 +1,6 @@
 (mdx
  (files README.md)
- (libraries eio unix eio.core eio.unix fmt eio_main owl-base tiff))
+ (libraries eio unix ounit2 eio.core eio.unix fmt eio_main owl-base tiff))
 
 (executable
  (name main)

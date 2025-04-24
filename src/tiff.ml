@@ -1,3 +1,7 @@
+module Private = struct
+  module Lzw = Lzw
+end
+
 module File = struct
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
