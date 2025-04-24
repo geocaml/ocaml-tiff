@@ -836,10 +836,18 @@ module Data = struct
         (* Fill the strip buffer *)
         ro ~file_offset:strip_offset [ raw_strip_buffer ];
 
+        let expected_size = rows_per_strip * width * bytes_per_pixel in
+
         let strip_buffer =
           match Ifd.compression ifd with
-          | No_compression -> raw_strip_buffer
-          | LZW -> Lzw.decode raw_strip_buffer
+          | No_compression ->
+              if Cstruct.length raw_strip_buffer < expected_size then
+                failwith "Strip is unexpectedly short";
+              raw_strip_buffer
+          | LZW ->
+              let uncompressed_buffer = Cstruct.create expected_size in
+              Lzw.decode raw_strip_buffer uncompressed_buffer;
+              uncompressed_buffer
           | _ -> failwith "Unsupported compression"
         in
 

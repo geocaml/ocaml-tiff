@@ -112,7 +112,7 @@ let test_load_simple_float32_tiff _ =
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro Tiff.Data.Float32 in
   let res = Owl_base_dense_ndarray_generic.sum' data in
-  assert_equal ~msg:"Value sum" 50. res
+  assert_equal ~printer:Float.to_string ~msg:"Value sum" 50. res
 
 let suite =
   "Basic tests"

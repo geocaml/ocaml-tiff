@@ -24,22 +24,6 @@ let test_all_bit_width_2 _ =
     done
   done
 
-let test_get_larger_bits _ =
-  let src = Lzw.flatten_codes 8 [ (Z.of_int 0xAB, 8); (Z.of_int 0xCD, 8) ] in
-  for v = 0 to 16 do
-    let expected = 0xCDAB land ((1 lsl v) - 1) in
-    let actual = Lzw.get_bits src 0 v in
-    assert_equal expected actual
-  done
-
-let test_get_longer_slices _ =
-  let src = Lzw.flatten_codes 8 [ (Z.of_int 0xAB, 8); (Z.of_int 0xCD, 8) ] in
-  for v = 0 to 16 do
-    let expected = (0xCDAB lsr (16 - v)) land ((1 lsl v) - 1) in
-    let actual = Lzw.get_bits src (16 - v) v in
-    assert_equal expected actual
-  done
-
 let suite =
   "LZW"
   >::: [
