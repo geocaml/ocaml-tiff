@@ -61,8 +61,15 @@ module Ifd : sig
     | ADOBE_DEFLATE
     | Other of int
 
+  type predictor =
+    | No_predictor
+    | HorizontalDifferencing
+    | Unknown of int
+
   val compression_to_string : compression -> string
   val compression_to_int : compression -> int
+
+  val predictor_to_int : predictor -> int
 
   val pp_entry : entry Fmt.t
   (** A pretty printer for IFD entries *)
@@ -116,7 +123,7 @@ module Ifd : sig
   val tile_byte_counts : t -> Int64.t list
   (** The number of bytes stored in each tile. *)
 
-  val predictor : t -> int
+  val predictor : t -> predictor
   val planar_configuration : t -> int
 
   (** {3 GeoTIFF Specific} *)

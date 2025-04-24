@@ -277,6 +277,21 @@ module Ifd = struct
     | ADOBE_DEFLATE -> 8
     | Other i -> i
 
+  type predictor =
+    | No_predictor
+    | HorizontalDifferencing
+    | Unknown of int
+
+  let predictor_of_int = function
+    | 1 -> No_predictor
+    | 2 -> HorizontalDifferencing
+    | i -> Unknown i
+
+  let predictor_to_int = function
+    | No_predictor -> 1
+    | HorizontalDifferencing -> 2
+    | Unknown i -> i
+
   let entries t = t.entries
   let data_offsets t = t.data_offsets
   let data_bytecounts t = t.data_bytecounts
@@ -657,7 +672,7 @@ module Ifd = struct
 
   let predictor t =
     let entry = lookup_exn t.entries Predictor in
-    Int64.to_int entry.offset
+    Int64.to_int entry.offset |> predictor_of_int
 
   let tile_width t =
     let entry = lookup_exn t.entries TileWidth in
