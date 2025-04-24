@@ -277,10 +277,7 @@ module Ifd = struct
     | ADOBE_DEFLATE -> 8
     | Other i -> i
 
-  type predictor =
-    | No_predictor
-    | HorizontalDifferencing
-    | Unknown of int
+  type predictor = No_predictor | HorizontalDifferencing | Unknown of int
 
   let predictor_of_int = function
     | 1 -> No_predictor
@@ -839,12 +836,12 @@ module Data = struct
         (* Fill the strip buffer *)
         ro ~file_offset:strip_offset [ raw_strip_buffer ];
 
-        let strip_buffer = match (Ifd.compression ifd) with
-        | No_compression -> raw_strip_buffer
-        | LZW -> (
-          Lzw.decode raw_strip_buffer        )
-        | _ -> failwith "Unsupported compression" in
-
+        let strip_buffer =
+          match Ifd.compression ifd with
+          | No_compression -> raw_strip_buffer
+          | LZW -> Lzw.decode raw_strip_buffer
+          | _ -> failwith "Unsupported compression"
+        in
 
         (* Calculate the number of rows in the current strip *)
         let rows_in_strip =

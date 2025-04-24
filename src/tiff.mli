@@ -61,14 +61,10 @@ module Ifd : sig
     | ADOBE_DEFLATE
     | Other of int
 
-  type predictor =
-    | No_predictor
-    | HorizontalDifferencing
-    | Unknown of int
+  type predictor = No_predictor | HorizontalDifferencing | Unknown of int
 
   val compression_to_string : compression -> string
   val compression_to_int : compression -> int
-
   val predictor_to_int : predictor -> int
 
   val pp_entry : entry Fmt.t
@@ -136,7 +132,8 @@ module Ifd : sig
   *)
 
   val transformation : t -> float array
-  (** This tag may be used to specify the transformation matrix between the raster space and model space *)
+  (** This tag may be used to specify the transformation matrix between the
+      raster space and model space *)
 
   val geo_double_params : t -> float array
   (** Double valued GeoKeys. *)
