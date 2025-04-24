@@ -833,11 +833,18 @@ module Data = struct
 
       (* We iterate through every strip *)
       for strip = first_strip to last_strip - 1 do
-        let strip_buffer = Cstruct.create strip_bytecounts.(strip) in
+        let raw_strip_buffer = Cstruct.create strip_bytecounts.(strip) in
         let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
 
         (* Fill the strip buffer *)
-        ro ~file_offset:strip_offset [ strip_buffer ];
+        ro ~file_offset:strip_offset [ raw_strip_buffer ];
+
+        let strip_buffer = match (Ifd.compression ifd) with
+        | No_compression -> raw_strip_buffer
+        | LZW -> (
+          Lzw.decode raw_strip_buffer        )
+        | _ -> failwith "Unsupported compression" in
+
 
         (* Calculate the number of rows in the current strip *)
         let rows_in_strip =
