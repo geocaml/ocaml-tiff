@@ -168,6 +168,7 @@ module Ifd = struct
     | 339 -> SampleFormat
     | 33550 -> ModelPixelScale
     | 33922 -> ModelTiepoint
+    | 34264 -> ModelTransformation
     | 34736 -> GeoDoubleParams
     | 34737 -> GeoAsciiParams
     | 34735 -> GeoKeyDirectory
