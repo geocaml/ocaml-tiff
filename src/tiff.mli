@@ -231,7 +231,6 @@ val data :
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
 
-
-  module Private : sig
-    module Lzw = Lzw
-  end
+module Private : sig
+  module Lzw = Lzw
+end
