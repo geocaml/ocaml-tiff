@@ -1,7 +1,3 @@
-module Private = struct
-  module Lzw = Lzw
-end
-
 module File = struct
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
@@ -929,3 +925,7 @@ let data (type repr kind) ?window t (f : File.ro)
   match data_type with
   | Data.Uint8 -> Data.read_data_uint8 t f window
   | Data.Float32 -> Data.read_data_float32 t f window
+
+module Private = struct
+  module Lzw = Lzw
+end

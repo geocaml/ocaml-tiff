@@ -5,10 +5,6 @@
 
 open Bigarray
 
-module Private : sig
-  module Lzw = Lzw
-end
-
 module File : sig
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.
@@ -234,3 +230,8 @@ val data :
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
+
+
+  module Private : sig
+    module Lzw = Lzw
+  end
