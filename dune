@@ -1,6 +1,6 @@
 (mdx
  (files README.md)
- (libraries eio unix eio.core eio.unix fmt eio_main owl-base tiff))
+ (libraries eio unix ounit2 eio.core eio.unix fmt eio_main owl-base tiff))
 
 (executable
  (name main)
@@ -8,7 +8,8 @@
 
 (rule
  (alias runtest)
- (deps test/cea.tiff test/uniform.tiff test/jello-gray.tiff)
+ (deps
+  (glob_files testdata/*.tiff))
  (targets cea.tiff)
  (action
-  (copy test/cea.tiff cea.tiff)))
+  (copy testdata/cea.tiff cea.tiff)))

@@ -36,6 +36,7 @@ module Ifd : sig
     | SamplesPerPixel
     | ModelPixelScale
     | ModelTiepoint
+    | ModelTransformation
     | GeoDoubleParams
     | GeoAsciiParams
     | GeoKeyDirectory
@@ -60,8 +61,11 @@ module Ifd : sig
     | ADOBE_DEFLATE
     | Other of int
 
+  type predictor = No_predictor | HorizontalDifferencing | Unknown of int
+
   val compression_to_string : compression -> string
   val compression_to_int : compression -> int
+  val predictor_to_int : predictor -> int
 
   val pp_entry : entry Fmt.t
   (** A pretty printer for IFD entries *)
@@ -115,7 +119,7 @@ module Ifd : sig
   val tile_byte_counts : t -> Int64.t list
   (** The number of bytes stored in each tile. *)
 
-  val predictor : t -> int
+  val predictor : t -> predictor
   val planar_configuration : t -> int
 
   (** {3 GeoTIFF Specific} *)
@@ -126,6 +130,10 @@ module Ifd : sig
   val tiepoint : t -> float array
   (** Also known as GeoreferenceTag, this stores raster to model tiepoint pairs.
   *)
+
+  val transformation : t -> float array
+  (** This tag may be used to specify the transformation matrix between the
+      raster space and model space *)
 
   val geo_double_params : t -> float array
   (** Double valued GeoKeys. *)
@@ -222,3 +230,7 @@ val data :
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
+
+module Private : sig
+  module Lzw = Lzw
+end

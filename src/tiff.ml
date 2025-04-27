@@ -139,6 +139,7 @@ module Ifd = struct
     | SamplesPerPixel
     | ModelPixelScale
     | ModelTiepoint
+    | ModelTransformation
     | GeoDoubleParams
     | GeoAsciiParams
     | GeoKeyDirectory
@@ -167,6 +168,7 @@ module Ifd = struct
     | 339 -> SampleFormat
     | 33550 -> ModelPixelScale
     | 33922 -> ModelTiepoint
+    | 34264 -> ModelTransformation
     | 34736 -> GeoDoubleParams
     | 34737 -> GeoAsciiParams
     | 34735 -> GeoKeyDirectory
@@ -196,6 +198,7 @@ module Ifd = struct
     | SamplesPerPixel -> Fmt.string ppf "samples-per-pixel"
     | ModelPixelScale -> Fmt.string ppf "model-pixel-scale"
     | ModelTiepoint -> Fmt.string ppf "model-tiepoint"
+    | ModelTransformation -> Fmt.string ppf "model-transformation"
     | GeoDoubleParams -> Fmt.string ppf "geo-double-params"
     | GeoAsciiParams -> Fmt.string ppf "geo-ascii-params"
     | GeoKeyDirectory -> Fmt.string ppf "geo-key-directory"
@@ -274,6 +277,18 @@ module Ifd = struct
     | ADOBE_DEFLATE -> 8
     | Other i -> i
 
+  type predictor = No_predictor | HorizontalDifferencing | Unknown of int
+
+  let predictor_of_int = function
+    | 1 -> No_predictor
+    | 2 -> HorizontalDifferencing
+    | i -> Unknown i
+
+  let predictor_to_int = function
+    | No_predictor -> 1
+    | HorizontalDifferencing -> 2
+    | Unknown i -> i
+
   let entries t = t.entries
   let data_offsets t = t.data_offsets
   let data_bytecounts t = t.data_bytecounts
@@ -289,6 +304,7 @@ module Ifd = struct
     match e.field with
     | Short -> e.offset |> Int64.to_int
     | Long -> e.offset |> Int64.to_int
+    | Long8 -> e.offset |> Int64.to_int
     | _ ->
         raise
           (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e))
@@ -303,15 +319,21 @@ module Ifd = struct
     Int64.equal count 1L
     && match field with Byte | Short | Long -> true | _ -> false
 
-  let is_immediate (entry : entry) =
-    is_immediate_raw ~count:entry.count entry.field
+  let is_immediate_raw_big ~count field =
+    Int64.equal count 1L
+    && match field with Byte | Short | Long | Long8 -> true | _ -> false
 
-  let get_dataset_offsets endian entries reader =
+  let is_immediate kind (entry : entry) =
+    match kind with
+    | Tiff -> is_immediate_raw ~count:entry.count entry.field
+    | Bigtiff -> is_immediate_raw_big ~count:entry.count entry.field
+
+  let get_dataset_offsets kind endian entries reader =
     match lookup entries StripOffsets with
     | None -> []
     | Some strip_offsets ->
         let strip_count = Int64.to_int strip_offsets.count in
-        if is_immediate strip_offsets then [ read_entry strip_offsets ]
+        if is_immediate kind strip_offsets then [ read_entry strip_offsets ]
         else
           let strips = ref [] in
           let strip_bytes =
@@ -330,6 +352,7 @@ module Ifd = struct
           let get_offset ~offset buf = function
             | Short -> Endian.uint16 ~offset endian buf
             | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
+            | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
             | _ -> Fmt.failwith "Unsupported"
           in
           for i = 0 to strip_count - 1 do
@@ -339,11 +362,11 @@ module Ifd = struct
           done;
           List.rev !strips
 
-  let get_bytecounts endian entries reader =
+  let get_bytecounts kind endian entries reader =
     match lookup entries StripByteCounts with
     | None -> []
     | Some strip_offsets ->
-        if is_immediate strip_offsets then [ read_entry strip_offsets ]
+        if is_immediate kind strip_offsets then [ read_entry strip_offsets ]
         else
           let strip_count = Int64.to_int strip_offsets.count in
           let strips = ref [] in
@@ -363,7 +386,7 @@ module Ifd = struct
           let get_offset ~offset buf = function
             | Short -> Endian.uint16 ~offset endian buf
             | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
-            | Long8 -> failwith "TODO"
+            | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
             | _ ->
                 Fmt.failwith "Unsupported strip length: %a" pp_field
                   strip_offsets.field
@@ -437,6 +460,12 @@ module Ifd = struct
     let entry = lookup_exn t.entries ModelTiepoint in
     let scales = read_entry_raw entry t.ro in
     assert (List.length scales mod 6 = 0);
+    List.map (Endian.double t.header.byte_order) scales |> Array.of_list
+
+  let transformation t =
+    let entry = lookup_exn t.entries ModelTransformation in
+    let scales = read_entry_raw entry t.ro in
+    assert (List.length scales = 16);
     List.map (Endian.double t.header.byte_order) scales |> Array.of_list
 
   let geo_double_params t =
@@ -640,7 +669,7 @@ module Ifd = struct
 
   let predictor t =
     let entry = lookup_exn t.entries Predictor in
-    Int64.to_int entry.offset
+    Int64.to_int entry.offset |> predictor_of_int
 
   let tile_width t =
     let entry = lookup_exn t.entries TileWidth in
@@ -723,7 +752,7 @@ module Ifd = struct
           in
           let count = Endian.uint64 ~offset:(base_offset + 4) endian buf in
           let offset =
-            match (is_immediate_raw ~count field, field) with
+            match (is_immediate_raw_big ~count field, field) with
             | true, Byte ->
                 Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
             | true, Short ->
@@ -737,8 +766,8 @@ module Ifd = struct
           entries := { tag; field; count; offset } :: !entries
     done;
     let entries = List.rev !entries in
-    let data_offsets = get_dataset_offsets endian entries reader in
-    let data_bytecounts = get_bytecounts endian entries reader in
+    let data_offsets = get_dataset_offsets header.kind endian entries reader in
+    let data_bytecounts = get_bytecounts header.kind endian entries reader in
     { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
@@ -801,11 +830,26 @@ module Data = struct
 
       (* We iterate through every strip *)
       for strip = first_strip to last_strip - 1 do
-        let strip_buffer = Cstruct.create strip_bytecounts.(strip) in
+        let raw_strip_buffer = Cstruct.create strip_bytecounts.(strip) in
         let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
 
         (* Fill the strip buffer *)
-        ro ~file_offset:strip_offset [ strip_buffer ];
+        ro ~file_offset:strip_offset [ raw_strip_buffer ];
+
+        let expected_size = rows_per_strip * width * bytes_per_pixel in
+
+        let strip_buffer =
+          match Ifd.compression ifd with
+          | No_compression ->
+              if Cstruct.length raw_strip_buffer < expected_size then
+                failwith "Strip is unexpectedly short";
+              raw_strip_buffer
+          | LZW ->
+              let uncompressed_buffer = Cstruct.create expected_size in
+              Lzw.decode raw_strip_buffer uncompressed_buffer;
+              uncompressed_buffer
+          | _ -> failwith "Unsupported compression"
+        in
 
         (* Calculate the number of rows in the current strip *)
         let rows_in_strip =
@@ -881,3 +925,7 @@ let data (type repr kind) ?window t (f : File.ro)
   match data_type with
   | Data.Uint8 -> Data.read_data_uint8 t f window
   | Data.Float32 -> Data.read_data_float32 t f window
+
+module Private = struct
+  module Lzw = Lzw
+end
