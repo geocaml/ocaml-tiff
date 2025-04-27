@@ -1,3 +1,14 @@
-(tests
- (names test_basic test_lzw)
+(executable
+ (name test_basic)
  (libraries tiff eio_main ounit2 owl-base))
+
+(rule
+ (alias runtest)
+ (deps ./test_basic.exe)
+ (action
+  ; Important for OUnit2 to not use Unix.fork!
+  (run ./test_basic.exe -runner sequential)))
+
+(tests
+ (names test_lzw)
+ (libraries ounit2 tiff))

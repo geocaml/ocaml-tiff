@@ -1,8 +1,6 @@
 open OUnit2
 
-let test_load_uniform_tiff _ =
-  Eio_main.run @@ fun env ->
-  let fs = Eio.Stdenv.fs env in
+let test_load_uniform_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file ro in
@@ -24,9 +22,7 @@ let test_load_uniform_tiff _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 128) res
 
-let test_load_uniform_lzw_tiff _ =
-  Eio_main.run @@ fun env ->
-  let fs = Eio.Stdenv.fs env in
+let test_load_uniform_lzw_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform_lzw.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file ro in
@@ -47,9 +43,7 @@ let test_load_uniform_lzw_tiff _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 128) res
 
-let test_load_simple_uint8_tiff _ =
-  Eio_main.run @@ fun env ->
-  let fs = Eio.Stdenv.fs env in
+let test_load_simple_uint8_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/cea.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file ro in
@@ -68,9 +62,7 @@ let test_load_simple_uint8_tiff _ =
     [| 60.022136983193739; 60.022136983193739; 0.0 |]
     (Tiff.Ifd.pixel_scale header)
 
-let test_load_simple_float32_geotiff _ =
-  Eio_main.run @@ fun env ->
-  let fs = Eio.Stdenv.fs env in
+let test_load_simple_float32_geotiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/aoh.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file ro in
@@ -91,9 +83,7 @@ let test_load_simple_float32_geotiff _ =
     [| 0.016666666666667; 0.016666666666667; 0.0 |]
     (Tiff.Ifd.pixel_scale header)
 
-let test_load_simple_float32_tiff _ =
-  Eio_main.run @@ fun env ->
-  let fs = Eio.Stdenv.fs env in
+let test_load_simple_float32_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform_float32_lzw.tiff"))
   @@ fun r ->
   let ro = Eio.File.pread_exact r in
@@ -114,14 +104,18 @@ let test_load_simple_float32_tiff _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Float.to_string ~msg:"Value sum" 50. res
 
-let suite =
+let suite fs =
   "Basic tests"
   >::: [
-         "Test load simple uniform tiff" >:: test_load_uniform_tiff;
-         "Test load simple uniform LZW tiff" >:: test_load_uniform_lzw_tiff;
-         "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff;
-         "Test load simple float32 tiff" >:: test_load_simple_float32_tiff;
-         "Test load simple float32 geotiff" >:: test_load_simple_float32_geotiff;
+         "Test load simple uniform tiff" >:: test_load_uniform_tiff fs;
+         "Test load simple uniform LZW tiff" >:: test_load_uniform_lzw_tiff fs;
+         "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;
+         "Test load simple float32 tiff" >:: test_load_simple_float32_tiff fs;
+         "Test load simple float32 geotiff"
+         >:: test_load_simple_float32_geotiff fs;
        ]
 
-let () = run_test_tt_main suite
+let () =
+  Eio_main.run @@ fun env ->
+  let fs = Eio.Stdenv.fs env in
+  run_test_tt_main (suite fs)
