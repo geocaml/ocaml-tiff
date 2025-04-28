@@ -292,6 +292,27 @@ module Ifd = struct
     | HorizontalDifferencing -> 2
     | Unknown i -> i
 
+  type sample_format =
+    | UnsignedInteger
+    | SignedInteger
+    | IEEEFloatingPoint
+    | Undefined
+    | Unknown of int
+
+  let sample_format_of_int = function
+    | 1 -> UnsignedInteger
+    | 2 -> SignedInteger
+    | 3 -> IEEEFloatingPoint
+    | 4 -> Undefined
+    | i -> Unknown i
+
+  let sample_format_to_int = function
+    | UnsignedInteger -> 1
+    | SignedInteger -> 2
+    | IEEEFloatingPoint -> 3
+    | Undefined -> 4
+    | Unknown i -> i
+
   let entries t = t.entries
   let data_offsets t = t.data_offsets
   let data_bytecounts t = t.data_bytecounts
@@ -671,8 +692,16 @@ module Ifd = struct
   let geo_key_directory t = GeoKeys.entries t
 
   let predictor t =
-    let entry = lookup_exn t.entries Predictor in
-    Int64.to_int entry.offset |> predictor_of_int
+    try
+      let entry = lookup_exn t.entries Predictor in
+      Int64.to_int entry.offset |> predictor_of_int
+    with Not_found -> No_predictor
+
+  let sample_format t =
+    try
+      let entry = lookup_exn t.entries SampleFormat in
+      Int64.to_int entry.offset |> sample_format_of_int
+    with Not_found -> UnsignedInteger
 
   let tile_width t =
     let entry = lookup_exn t.entries TileWidth in

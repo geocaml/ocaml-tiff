@@ -63,9 +63,19 @@ module Ifd : sig
 
   type predictor = No_predictor | HorizontalDifferencing | Unknown of int
 
+  type sample_format =
+    | UnsignedInteger
+    | SignedInteger
+    | IEEEFloatingPoint
+    | Undefined
+    | Unknown of int
+
   val compression_to_string : compression -> string
   val compression_to_int : compression -> int
+  val predictor_of_int : int -> predictor
   val predictor_to_int : predictor -> int
+  val sample_format_of_int : int -> sample_format
+  val sample_format_to_int : sample_format -> int
 
   val pp_entry : entry Fmt.t
   (** A pretty printer for IFD entries *)
@@ -120,6 +130,12 @@ module Ifd : sig
   (** The number of bytes stored in each tile. *)
 
   val predictor : t -> predictor
+  (** The predictor is used in certain compression algorithms to improve
+      performance. *)
+
+  val sample_format : t -> sample_format
+  (** This field specifies how to interpret each data sample in a pixel. *)
+
   val planar_configuration : t -> int
 
   (** {3 GeoTIFF Specific} *)
