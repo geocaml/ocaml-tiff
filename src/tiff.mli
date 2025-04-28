@@ -204,7 +204,12 @@ type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 module Data : sig
   type ('repr, 'kind) kind =
     | Uint8 : (int, int8_unsigned_elt) kind
+    | Int8 : (int, int8_signed_elt) kind
+    | Uint16 : (int, int16_unsigned_elt) kind
+    | Int16 : (int, int16_signed_elt) kind
+    | Int32 : (int32, int32_elt) kind
     | Float32 : (float, float32_elt) kind  (** A subset of {! Bigarray.kind}. *)
+    | Float64 : (float, float64_elt) kind
 
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
   (** Raw TIFF data. *)
