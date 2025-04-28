@@ -23,6 +23,13 @@ let test_load_uniform_tiff fs _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 128) res
 
+let test_load_data_as_wrong_type_fails fs _ =
+  Eio.Path.(with_open_in (fs / "../testdata/uniform.tiff")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let tiff = Tiff.from_file ro in
+    let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+    assert_raises ~msg:"fail to load data as wrong type" (Invalid_argument "datatype not correct for plane") (fun _ -> Tiff.data ~window tiff ro Tiff.Data.Float32)
+
 let test_load_uniform_lzw_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform_lzw.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
@@ -223,6 +230,7 @@ let suite fs =
   "Basic tests"
   >::: [
          "Test load simple uniform tiff" >:: test_load_uniform_tiff fs;
+         "Test load data as wrong type" >:: test_load_data_as_wrong_type_fails fs;
          "Test load simple uniform LZW tiff" >:: test_load_uniform_lzw_tiff fs;
          "Test load simple int8 tiff" >:: test_load_simple_int8_tiff fs;
          "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;

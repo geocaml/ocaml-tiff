@@ -971,20 +971,24 @@ let data (type repr kind) ?window t (f : File.ro)
         let height = Ifd.height ifd in
         { xoff = 0; yoff = 0; xsize = width; ysize = height }
   in
-  match data_type with
-  | Data.Uint8 ->
+  let plane = 0 in
+  let sample_format = Ifd.sample_format ifd
+  and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
+  match data_type, sample_format, bpp with
+  | Data.Uint8, UnsignedInteger, 8 ->
       Data.read_data t f window Bigarray.int8_unsigned Data.read_uint8_value
-  | Data.Int8 ->
+  | Data.Int8, SignedInteger, 8 ->
       Data.read_data t f window Bigarray.int8_signed Data.read_int8_value
-  | Data.Uint16 ->
+  | Data.Uint16, UnsignedInteger, 16 ->
       Data.read_data t f window Bigarray.int16_unsigned Data.read_uint16_value
-  | Data.Int16 ->
+  | Data.Int16, SignedInteger, 16 ->
       Data.read_data t f window Bigarray.int16_signed Data.read_int16_value
-  | Data.Int32 -> Data.read_data t f window Bigarray.int32 Data.read_int32_value
-  | Data.Float32 ->
+  | Data.Int32, SignedInteger, 32 -> Data.read_data t f window Bigarray.int32 Data.read_int32_value
+  | Data.Float32, IEEEFloatingPoint, 32 ->
       Data.read_data t f window Bigarray.float32 Data.read_float32_value
-  | Data.Float64 ->
+  | Data.Float64, IEEEFloatingPoint, 64 ->
       Data.read_data t f window Bigarray.float64 Data.read_float64_value
+  | _ -> raise (Invalid_argument "datatype not correct for plane")
 
 module Private = struct
   module Lzw = Lzw
