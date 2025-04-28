@@ -974,7 +974,7 @@ let data (type repr kind) ?window t (f : File.ro)
   let plane = 0 in
   let sample_format = Ifd.sample_format ifd
   and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
-  match data_type, sample_format, bpp with
+  match (data_type, sample_format, bpp) with
   | Data.Uint8, UnsignedInteger, 8 ->
       Data.read_data t f window Bigarray.int8_unsigned Data.read_uint8_value
   | Data.Int8, SignedInteger, 8 ->
@@ -983,7 +983,8 @@ let data (type repr kind) ?window t (f : File.ro)
       Data.read_data t f window Bigarray.int16_unsigned Data.read_uint16_value
   | Data.Int16, SignedInteger, 16 ->
       Data.read_data t f window Bigarray.int16_signed Data.read_int16_value
-  | Data.Int32, SignedInteger, 32 -> Data.read_data t f window Bigarray.int32 Data.read_int32_value
+  | Data.Int32, SignedInteger, 32 ->
+      Data.read_data t f window Bigarray.int32 Data.read_int32_value
   | Data.Float32, IEEEFloatingPoint, 32 ->
       Data.read_data t f window Bigarray.float32 Data.read_float32_value
   | Data.Float64, IEEEFloatingPoint, 64 ->
