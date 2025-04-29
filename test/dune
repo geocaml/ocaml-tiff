@@ -1,14 +1,21 @@
-(executable
- (name test_basic)
- (modules test_basic)
+(executables
+ (names test_tiff test_geotiff)
+ (modules test_tiff test_geotiff)
  (libraries tiff eio_main ounit2 owl-base))
 
 (rule
  (alias runtest)
- (deps ./test_basic.exe)
+ (deps ./test_tiff.exe)
  (action
   ; Important for OUnit2 to not use Unix.fork!
-  (run ./test_basic.exe -runner sequential)))
+  (run ./test_tiff.exe -runner sequential)))
+
+(rule
+ (alias runtest)
+ (deps ./test_geotiff.exe)
+ (action
+  ; Important for OUnit2 to not use Unix.fork!
+  (run ./test_geotiff.exe -runner sequential)))
 
 (tests
  (names test_lzw)

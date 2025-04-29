@@ -15,6 +15,9 @@ module Endian = struct
     | Big -> Cstruct.BE.get_uint16 buf offset
     | Little -> Cstruct.LE.get_uint16 buf offset
 
+  let int16 ?(offset = 0) endian buf =
+    (uint16 ~offset endian buf lsl (Sys.int_size - 16)) asr (Sys.int_size - 16)
+
   let uint32 ?(offset = 0) endian buf =
     match endian with
     | Big -> Cstruct.BE.get_uint32 buf offset
@@ -287,6 +290,27 @@ module Ifd = struct
   let predictor_to_int = function
     | No_predictor -> 1
     | HorizontalDifferencing -> 2
+    | Unknown i -> i
+
+  type sample_format =
+    | UnsignedInteger
+    | SignedInteger
+    | IEEEFloatingPoint
+    | Undefined
+    | Unknown of int
+
+  let sample_format_of_int = function
+    | 1 -> UnsignedInteger
+    | 2 -> SignedInteger
+    | 3 -> IEEEFloatingPoint
+    | 4 -> Undefined
+    | i -> Unknown i
+
+  let sample_format_to_int = function
+    | UnsignedInteger -> 1
+    | SignedInteger -> 2
+    | IEEEFloatingPoint -> 3
+    | Undefined -> 4
     | Unknown i -> i
 
   let entries t = t.entries
@@ -668,8 +692,16 @@ module Ifd = struct
   let geo_key_directory t = GeoKeys.entries t
 
   let predictor t =
-    let entry = lookup_exn t.entries Predictor in
-    Int64.to_int entry.offset |> predictor_of_int
+    try
+      let entry = lookup_exn t.entries Predictor in
+      Int64.to_int entry.offset |> predictor_of_int
+    with Not_found -> No_predictor
+
+  let sample_format t =
+    try
+      let entry = lookup_exn t.entries SampleFormat in
+      Int64.to_int entry.offset |> sample_format_of_int
+    with Not_found -> UnsignedInteger
 
   let tile_width t =
     let entry = lookup_exn t.entries TileWidth in
@@ -787,15 +819,38 @@ module Data = struct
 
   type ('repr, 'kind) kind =
     | Uint8 : (int, int8_unsigned_elt) kind
-    | Float32 : (float, float32_elt) kind
+    | Int8 : (int, int8_signed_elt) kind
+    | Uint16 : (int, int16_unsigned_elt) kind
+    | Int16 : (int, int16_signed_elt) kind
+    | Int32 : (int32, int32_elt) kind
+    | Float32 : (float, float32_elt) kind  (** A subset of {! Bigarray.kind}. *)
+    | Float64 : (float, float64_elt) kind
 
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
 
   let read_uint8_value buf buf_index _ = Cstruct.get_uint8 buf buf_index
 
+  let read_int8_value buf buf_index _ =
+    (Cstruct.get_uint8 buf buf_index lsl (Sys.int_size - 8))
+    asr (Sys.int_size - 8)
+  (* as per Bytes.get_int8 *)
+
+  let read_uint16_value buf buf_index tiff_endianness =
+    Endian.uint16 ~offset:buf_index tiff_endianness buf
+
+  let read_int16_value buf buf_index tiff_endianness =
+    Endian.int16 ~offset:buf_index tiff_endianness buf
+
+  let read_int32_value buf buf_index tiff_endianness =
+    Endian.uint32 ~offset:buf_index tiff_endianness buf
+
   let read_float32_value buf buf_index tiff_endianness =
     let int_value = Endian.uint32 ~offset:buf_index tiff_endianness buf in
     Int32.float_of_bits int_value
+
+  let read_float64_value buf buf_index tiff_endianness =
+    let int_value = Endian.uint64 ~offset:buf_index tiff_endianness buf in
+    Int64.float_of_bits int_value
 
   let ceil a b = (a + b - 1) / b
 
@@ -902,12 +957,6 @@ module Data = struct
       raise
         (Invalid_argument
            "strip_offsets and strip_bytecounts are of different lengths")
-
-  let read_data_uint8 t ro window =
-    read_data t ro window int8_unsigned read_uint8_value
-
-  let read_data_float32 t ro window =
-    read_data t ro window float32 read_float32_value
 end
 
 (* have to specify all 4 or else it defaults to whole file*)
@@ -922,9 +971,25 @@ let data (type repr kind) ?window t (f : File.ro)
         let height = Ifd.height ifd in
         { xoff = 0; yoff = 0; xsize = width; ysize = height }
   in
-  match data_type with
-  | Data.Uint8 -> Data.read_data_uint8 t f window
-  | Data.Float32 -> Data.read_data_float32 t f window
+  let plane = 0 in
+  let sample_format = Ifd.sample_format ifd
+  and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
+  match (data_type, sample_format, bpp) with
+  | Data.Uint8, UnsignedInteger, 8 ->
+      Data.read_data t f window Bigarray.int8_unsigned Data.read_uint8_value
+  | Data.Int8, SignedInteger, 8 ->
+      Data.read_data t f window Bigarray.int8_signed Data.read_int8_value
+  | Data.Uint16, UnsignedInteger, 16 ->
+      Data.read_data t f window Bigarray.int16_unsigned Data.read_uint16_value
+  | Data.Int16, SignedInteger, 16 ->
+      Data.read_data t f window Bigarray.int16_signed Data.read_int16_value
+  | Data.Int32, SignedInteger, 32 ->
+      Data.read_data t f window Bigarray.int32 Data.read_int32_value
+  | Data.Float32, IEEEFloatingPoint, 32 ->
+      Data.read_data t f window Bigarray.float32 Data.read_float32_value
+  | Data.Float64, IEEEFloatingPoint, 64 ->
+      Data.read_data t f window Bigarray.float64 Data.read_float64_value
+  | _ -> raise (Invalid_argument "datatype not correct for plane")
 
 module Private = struct
   module Lzw = Lzw
