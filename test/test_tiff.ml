@@ -170,7 +170,9 @@ let test_load_simple_uint32_tiff fs _ =
   assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
     (Tiff.Ifd.sample_format header);
   assert_equal ~printer:Int.to_string ~msg:"Rows per strip" 10
-    (Tiff.Ifd.rows_per_strip header)
+    (Tiff.Ifd.rows_per_strip header);
+  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  assert_raises ~msg:"Can't load uint32" (Invalid_argument "datatype not correct for plane") (fun _ -> Tiff.data ~window tiff ro Tiff.Data.Int32)
 
 let test_load_simple_float32_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform_float32_lzw.tiff"))
