@@ -1,6 +1,5 @@
-(executable
- (name test_tiff)
- (modules test_tiff)
+(executables
+ (names test_tiff test_geotiff)
  (libraries tiff eio_main ounit2 owl-base))
 
 (rule
@@ -9,11 +8,6 @@
  (action
   ; Important for OUnit2 to not use Unix.fork!
   (run ./test_tiff.exe -runner sequential)))
-
-(executable
- (name test_geotiff)
- (modules test_geotiff)
- (libraries tiff eio_main ounit2 owl-base))
 
 (rule
  (alias runtest)

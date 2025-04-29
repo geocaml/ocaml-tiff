@@ -18,9 +18,14 @@ let test_load_simple_uint8_tiff fs _ =
     (Tiff.Ifd.sample_format header);
   assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
     (Tiff.Ifd.predictor header);
-  assert_equal ~msg:"Pixel width"
-    [| 60.022136983193739; 60.022136983193739; 0.0 |]
-    (Tiff.Ifd.pixel_scale header)
+  let pixel_scale = Array.to_list (Tiff.Ifd.pixel_scale header) in
+  let expected = [ 60.022136983193739; 60.022136983193739; 0.0 ] in
+  let matches =
+    List.fold_left2
+      (fun acc a b -> acc && cmp_float a b)
+      true expected pixel_scale
+  in
+  assert_bool "Pixel width" matches
 
 let test_load_simple_float32_geotiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/aoh.tiff")) @@ fun r ->
@@ -41,9 +46,14 @@ let test_load_simple_float32_geotiff fs _ =
     (Tiff.Ifd.sample_format header);
   assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
     (Tiff.Ifd.predictor header);
-  assert_equal ~msg:"Pixel width"
-    [| 0.016666666666667; 0.016666666666667; 0.0 |]
-    (Tiff.Ifd.pixel_scale header)
+  let pixel_scale = Array.to_list (Tiff.Ifd.pixel_scale header) in
+  let expected = [ 0.016666666666667; 0.016666666666667; 0.0 ] in
+  let matches =
+    List.fold_left2
+      (fun acc a b -> acc && cmp_float a b)
+      true expected pixel_scale
+  in
+  assert_bool "Pixel width" matches
 
 let suite fs =
   "Basic tests"

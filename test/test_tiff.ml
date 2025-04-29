@@ -203,7 +203,7 @@ let test_load_simple_float32_tiff fs _ =
   for _ = 0 to 99 do
     expected := !expected +. value
   done;
-  assert_equal ~printer:Float.to_string ~msg:"Value sum" !expected res
+  assert_bool "Value sum" (cmp_float !expected res)
 
 let test_load_simple_float64_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform_float64_lzw.tiff"))
@@ -230,9 +230,7 @@ let test_load_simple_float64_tiff fs _ =
   for _ = 0 to 99 do
     expected := !expected +. 1.2345
   done;
-  assert_equal
-    ~printer:(fun f -> Printf.sprintf "%H" f)
-    ~msg:"Value sum" !expected res
+  assert_bool "Value sum" (cmp_float !expected res)
 
 let suite fs =
   "Basic tests"
