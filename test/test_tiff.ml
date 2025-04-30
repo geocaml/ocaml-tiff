@@ -36,6 +36,23 @@ let test_load_data_as_wrong_type_fails fs _ =
     (Invalid_argument "datatype not correct for plane") (fun _ ->
       Tiff.data ~window tiff ro Tiff.Data.Float32)
 
+let test_read_single_plane_fails_when_specifying_plane fs _ =
+  Eio.Path.(with_open_in (fs / "../testdata/uniform.tiff")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let tiff = Tiff.from_file ro in
+  assert_raises ~msg:"fail to load data as wrong type"
+    (Invalid_argument "Can not select plane on single plane TIFFs") (fun _ ->
+      Tiff.data ~plane:1 tiff ro Tiff.Data.Uint8)
+
+let test_read_multi_plane_fails_when_without_specifying_plane fs _ =
+  Eio.Path.(with_open_in (fs / "../testdata/uniform_rgb_uint8_lzw.tiff"))
+  @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let tiff = Tiff.from_file ro in
+  assert_raises ~msg:"fail to load data as wrong type"
+    (Invalid_argument "Must specify plane for data read") (fun _ ->
+      Tiff.data tiff ro Tiff.Data.Uint8)
+
 let test_load_simple_int8_tiff fs _ =
   Eio.Path.(with_open_in (fs / "../testdata/uniform_int8_lzw.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
@@ -306,6 +323,10 @@ let suite fs =
          >:: test_load_uniform_tiff fs;
          "Test load data as wrong type"
          >:: test_load_data_as_wrong_type_fails fs;
+         "Test fail to read plane from single layer tiff"
+         >:: test_read_single_plane_fails_when_specifying_plane fs;
+         "Test fail reading from multi-plane TIFF if plane not specified"
+         >:: test_read_multi_plane_fails_when_without_specifying_plane fs;
          "Test load simple int8 tiff" >:: test_load_simple_int8_tiff fs;
          "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;
          "Test load simple int16 tiff" >:: test_load_simple_int16_tiff fs;

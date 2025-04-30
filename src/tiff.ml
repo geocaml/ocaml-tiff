@@ -883,7 +883,7 @@ module Data = struct
       match planar_configuration with
       | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
       | Planar -> List.nth bits_per_sample plane / 8
-      | _ ->
+      | Unknown _ ->
           failwith "Should not get this far if planar config isn't recognised."
     in
     let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
@@ -904,7 +904,7 @@ module Data = struct
         match planar_configuration with
         | Planar -> Array.length strip_offsets / List.length bits_per_sample
         | Chunky -> Array.length strip_offsets
-        | _ ->
+        | Unknown _ ->
             failwith "should not get this far if planar config isn't recognised"
       in
 
@@ -998,12 +998,10 @@ let data (type repr kind) ?plane ?window t (f : File.ro)
   let plane =
     match (planar_configuration, plane) with
     | Planar, Some p -> p
-    | Planar, None -> 0
-    | Chunky, None -> 0
-    | _ ->
-        raise
-          (Invalid_argument
-             "Can not select plane on chunky or unknown planar format TIFF")
+    | Planar, None -> invalid_arg "Must specify plane for data read"
+    | Chunky, None | Chunky, Some 0 -> 0
+    | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
+    | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
   in
   let window =
     match window with
