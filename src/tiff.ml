@@ -313,6 +313,18 @@ module Ifd = struct
     | Undefined -> 4
     | Unknown i -> i
 
+  type planar_configuration = Chunky | Planar | Unknown of int
+
+  let planar_configuration_of_int = function
+    | 1 -> Chunky
+    | 2 -> Planar
+    | i -> Unknown i
+
+  let planar_configuration_to_int = function
+    | Chunky -> 1
+    | Planar -> 2
+    | Unknown i -> i
+
   let entries t = t.entries
   let data_offsets t = t.data_offsets
   let data_bytecounts t = t.data_bytecounts
@@ -475,7 +487,9 @@ module Ifd = struct
       List.map (Endian.uint16 t.header.byte_order) scales
 
   let planar_configuration t =
-    lookup_exn t.entries PlanarConfiguration |> read_entry
+    try
+      lookup_exn t.entries PlanarConfiguration |> read_entry |> planar_configuration_of_int
+    with Not_found -> Chunky
 
   let compression t =
     lookup_exn t.entries Compression |> read_entry |> compression_of_int
