@@ -28,17 +28,20 @@ let decode input output_buffer =
     let code = get_bits input in_offset code_size in
     match code with
     | 257 -> () (* end code *)
-    | 256 ->
+    | 256 -> (
         (* clear code *)
         let next_code = get_bits input (in_offset + code_size) 9 in
-        let out_offset =
-          update_buffer output_buffer out_offset
-            [ Char.chr (next_code land 0xFF) ]
-        in
-        inner
-          (in_offset + code_size + 9)
-          out_offset 9 258
-          [ Char.chr (next_code land 0xFF) ]
+        match next_code with
+        | 257 -> ()
+        | _ ->
+            let out_offset =
+              update_buffer output_buffer out_offset
+                [ Char.chr (next_code land 0xFF) ]
+            in
+            inner
+              (in_offset + code_size + 9)
+              out_offset 9 258
+              [ Char.chr (next_code land 0xFF) ])
     | _ ->
         let entry =
           if code < 256 then [ Char.chr (code land 0xFF) ]
