@@ -245,6 +245,7 @@ val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
 val data :
+  ?plane:int ->
   ?window:window ->
   t ->
   File.ro ->

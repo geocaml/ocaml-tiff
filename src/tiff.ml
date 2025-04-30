@@ -348,7 +348,10 @@ module Ifd = struct
   let height e = lookup_exn e.entries ImageLength |> read_entry
   let width e = lookup_exn e.entries ImageWidth |> read_entry
   let rows_per_strip e = lookup_exn e.entries RowsPerStrip |> read_entry
-  let samples_per_pixel e = lookup_exn e.entries SamplesPerPixel |> read_entry
+
+  let samples_per_pixel e =
+    try lookup_exn e.entries SamplesPerPixel |> read_entry with Not_found -> 1
+
   let add_int optint i = Optint.Int63.(add optint (of_int i))
 
   let is_immediate_raw ~count field =
@@ -488,7 +491,8 @@ module Ifd = struct
 
   let planar_configuration t =
     try
-      lookup_exn t.entries PlanarConfiguration |> read_entry |> planar_configuration_of_int
+      lookup_exn t.entries PlanarConfiguration
+      |> read_entry |> planar_configuration_of_int
     with Not_found -> Chunky
 
   let compression t =
@@ -868,15 +872,20 @@ module Data = struct
 
   let ceil a b = (a + b - 1) / b
 
-  let read_data t ro window arr_type read_value =
+  let read_data t ro plane window arr_type read_value =
     let ifd = t.ifd in
-    let samples_per_pixel =
-      try Ifd.samples_per_pixel ifd with Not_found -> 1
-    in
+    let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
     let bits_per_sample = Ifd.bits_per_sample ifd in
-    let bytes_per_pixel = List.fold_left Int.add 0 bits_per_sample / 8 in
+    let planar_configuration = Ifd.planar_configuration ifd in
+    let bytes_per_pixel =
+      match planar_configuration with
+      | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
+      | Planar -> List.nth bits_per_sample plane / 8
+      | _ ->
+          failwith "Should not get this far if planar config isn't recognised."
+    in
     let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
     let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
     let rows_per_strip = Ifd.rows_per_strip ifd in
@@ -884,15 +893,25 @@ module Data = struct
     let strip_offsets_length = Array.length strip_offsets in
     if strip_offsets_length = Array.length strip_bytecounts then (
       let arr =
-        (* Supporting multi-channel TIFF files *)
-        if samples_per_pixel = 1 then
+        if samples_per_pixel = 1 || planar_configuration = Planar then
           Genarray.create arr_type c_layout [| window.ysize; window.xsize |]
         else
           Genarray.create arr_type c_layout
             [| window.ysize; window.xsize; samples_per_pixel |]
       in
+
+      let strips_per_plane =
+        match planar_configuration with
+        | Planar -> Array.length strip_offsets / List.length bits_per_sample
+        | Chunky -> Array.length strip_offsets
+        | _ ->
+            failwith "should not get this far if planar config isn't recognised"
+      in
+
       (* The strip where our first row will be found *)
-      let first_strip = window.yoff / rows_per_strip in
+      let first_strip =
+        (window.yoff / rows_per_strip) + (strips_per_plane * plane)
+      in
       (* The strip where our last row will be found *)
       let last_strip = first_strip + ceil window.ysize rows_per_strip in
       let row_index = ref window.yoff in
@@ -922,9 +941,8 @@ module Data = struct
 
         (* Calculate the number of rows in the current strip *)
         let rows_in_strip =
-          (* If we are the last strip, then we might have less rows *)
-          if strip = strip_offsets_length - 1 then
-            height - (strip * rows_per_strip)
+          (* If we are the last strip in a plane, then we might have fewer rows *)
+          if strip = strips_per_plane - 1 then height - (strip * rows_per_strip)
           else rows_per_strip
         in
 
@@ -941,7 +959,7 @@ module Data = struct
             while !x_offset <= window.xoff + window.xsize - 1 do
               (* The index into the strip buffer *)
               let index = !x_offset + (inner_row * width) in
-              if samples_per_pixel = 1 then
+              if samples_per_pixel = 1 || planar_configuration = Planar then
                 let value =
                   read_value strip_buffer (index * bytes_per_pixel)
                     tiff_endianness
@@ -949,7 +967,6 @@ module Data = struct
                 Genarray.set arr [| y_offset; !x_offset |] value
               else
                 for channel = 0 to samples_per_pixel - 1 do
-                  (* TODO: Perhaps only under chunky planar configuration? *)
                   let byte_off =
                     if channel > 0 then List.nth bits_per_sample channel / 8
                     else 0
@@ -974,9 +991,20 @@ module Data = struct
 end
 
 (* have to specify all 4 or else it defaults to whole file*)
-let data (type repr kind) ?window t (f : File.ro)
+let data (type repr kind) ?plane ?window t (f : File.ro)
     (data_type : (repr, kind) Data.kind) : (repr, kind) Data.t =
   let ifd = ifd t in
+  let planar_configuration = Ifd.planar_configuration ifd in
+  let plane =
+    match (planar_configuration, plane) with
+    | Planar, Some p -> p
+    | Planar, None -> 0
+    | Chunky, None -> 0
+    | _ ->
+        raise
+          (Invalid_argument
+             "Can not select plane on chunky or unknown planar format TIFF")
+  in
   let window =
     match window with
     | Some w -> w
@@ -985,24 +1013,26 @@ let data (type repr kind) ?window t (f : File.ro)
         let height = Ifd.height ifd in
         { xoff = 0; yoff = 0; xsize = width; ysize = height }
   in
-  let plane = 0 in
   let sample_format = Ifd.sample_format ifd
   and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
   match (data_type, sample_format, bpp) with
   | Data.Uint8, UnsignedInteger, 8 ->
-      Data.read_data t f window Bigarray.int8_unsigned Data.read_uint8_value
+      Data.read_data t f plane window Bigarray.int8_unsigned
+        Data.read_uint8_value
   | Data.Int8, SignedInteger, 8 ->
-      Data.read_data t f window Bigarray.int8_signed Data.read_int8_value
+      Data.read_data t f plane window Bigarray.int8_signed Data.read_int8_value
   | Data.Uint16, UnsignedInteger, 16 ->
-      Data.read_data t f window Bigarray.int16_unsigned Data.read_uint16_value
+      Data.read_data t f plane window Bigarray.int16_unsigned
+        Data.read_uint16_value
   | Data.Int16, SignedInteger, 16 ->
-      Data.read_data t f window Bigarray.int16_signed Data.read_int16_value
+      Data.read_data t f plane window Bigarray.int16_signed
+        Data.read_int16_value
   | Data.Int32, SignedInteger, 32 ->
-      Data.read_data t f window Bigarray.int32 Data.read_int32_value
+      Data.read_data t f plane window Bigarray.int32 Data.read_int32_value
   | Data.Float32, IEEEFloatingPoint, 32 ->
-      Data.read_data t f window Bigarray.float32 Data.read_float32_value
+      Data.read_data t f plane window Bigarray.float32 Data.read_float32_value
   | Data.Float64, IEEEFloatingPoint, 64 ->
-      Data.read_data t f window Bigarray.float64 Data.read_float64_value
+      Data.read_data t f plane window Bigarray.float64 Data.read_float64_value
   | _ -> raise (Invalid_argument "datatype not correct for plane")
 
 module Private = struct
