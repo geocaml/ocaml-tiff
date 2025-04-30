@@ -70,12 +70,16 @@ module Ifd : sig
     | Undefined
     | Unknown of int
 
+  type planar_configuration = Chunky | Planar | Unknown of int
+
   val compression_to_string : compression -> string
   val compression_to_int : compression -> int
   val predictor_of_int : int -> predictor
   val predictor_to_int : predictor -> int
   val sample_format_of_int : int -> sample_format
   val sample_format_to_int : sample_format -> int
+  val planar_configuration_of_int : int -> planar_configuration
+  val planar_configuration_to_int : planar_configuration -> int
 
   val pp_entry : entry Fmt.t
   (** A pretty printer for IFD entries *)
@@ -136,7 +140,7 @@ module Ifd : sig
   val sample_format : t -> sample_format
   (** This field specifies how to interpret each data sample in a pixel. *)
 
-  val planar_configuration : t -> int
+  val planar_configuration : t -> planar_configuration
 
   (** {3 GeoTIFF Specific} *)
 
@@ -241,6 +245,7 @@ val ifd : t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
 val data :
+  ?plane:int ->
   ?window:window ->
   t ->
   File.ro ->
