@@ -53,9 +53,8 @@ let test_read_multi_plane_fails_when_without_specifying_plane fs _ =
     (Invalid_argument "Must specify plane for data read") (fun _ ->
       Tiff.data tiff ro Tiff.Data.Uint8)
 
-let test_load_simple_int8_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_int8_lzw.tiff")) @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_int8_tiff _ =
+  Tiff_unix.with_open_in "../testdata/uniform_int8_lzw.tiff" @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 8
@@ -221,10 +220,8 @@ let test_load_simple_uint32_tiff fs _ =
     (Invalid_argument "datatype not correct for plane") (fun _ ->
       Tiff.data ~window tiff ro Tiff.Data.Int32)
 
-let test_load_simple_float32_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_float32_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_float32_tiff _ =
+  Tiff_unix.with_open_in "../testdata/uniform_float32_lzw.tiff" @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -327,13 +324,13 @@ let suite fs =
          >:: test_read_single_plane_fails_when_specifying_plane fs;
          "Test fail reading from multi-plane TIFF if plane not specified"
          >:: test_read_multi_plane_fails_when_without_specifying_plane fs;
-         "Test load simple int8 tiff" >:: test_load_simple_int8_tiff fs;
+         "Test load simple int8 tiff" >:: test_load_simple_int8_tiff;
          "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;
          "Test load simple int16 tiff" >:: test_load_simple_int16_tiff fs;
          "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff fs;
          "Test load simple int32 tiff" >:: test_load_simple_int32_tiff fs;
          "Test load simple uint32 tiff" >:: test_load_simple_uint32_tiff fs;
-         "Test load simple float32 tiff" >:: test_load_simple_float32_tiff fs;
+         "Test load simple float32 tiff" >:: test_load_simple_float32_tiff;
          "Test load simple float64 tiff" >:: test_load_simple_float64_tiff fs;
          "Test load three channel tiff" >:: uniform_rgb_uint8_lzw fs;
        ]

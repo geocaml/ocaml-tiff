@@ -1,0 +1,8 @@
+(library
+ (name tiff_unix)
+ (foreign_stubs
+  (language c)
+  (flags :standard -D_LARGEFILE64_SOURCE)
+  (names tiff_unix_stubs))
+ (public_name tiff.unix)
+ (libraries tiff unix))
