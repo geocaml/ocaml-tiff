@@ -1,7 +1,7 @@
 (executables
  (names test_tiff test_geotiff)
  (modules test_tiff test_geotiff)
- (libraries tiff eio_main ounit2 owl-base))
+ (libraries tiff tiff.unix eio_main ounit2 owl-base))
 
 (rule
  (alias runtest)
