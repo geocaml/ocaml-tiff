@@ -1,8 +1,18 @@
 open OUnit2
 
-let test_load_uniform_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform.tiff")) @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
+
+let with_ro backend path fn =
+  match backend with
+  | Eio fs ->
+      Eio.Path.(with_open_in (fs / path)) @@ fun r ->
+      let ro = Eio.File.pread_exact r in
+      fn ro
+  | Unix -> Tiff_unix.with_open_in path fn
+
+let test_load_uniform_tiff backend _ =
+  let data = "../testdata/uniform.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 256
@@ -27,27 +37,26 @@ let test_load_uniform_tiff fs _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 128) res
 
-let test_load_data_as_wrong_type_fails fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform.tiff")) @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_data_as_wrong_type_fails backend _ =
+  let data = "../testdata/uniform.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   assert_raises ~msg:"fail to load data as wrong type"
     (Invalid_argument "datatype not correct for plane") (fun _ ->
       Tiff.data ~window tiff ro Tiff.Data.Float32)
 
-let test_read_single_plane_fails_when_specifying_plane fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform.tiff")) @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_read_single_plane_fails_when_specifying_plane backend _ =
+  let data = "../testdata/uniform.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   assert_raises ~msg:"fail to load data as wrong type"
     (Invalid_argument "Can not select plane on single plane TIFFs") (fun _ ->
       Tiff.data ~plane:1 tiff ro Tiff.Data.Uint8)
 
-let test_read_multi_plane_fails_when_without_specifying_plane fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_rgb_uint8_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
+  let data = "../testdata/uniform_rgb_uint8_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   assert_raises ~msg:"fail to load data as wrong type"
     (Invalid_argument "Must specify plane for data read") (fun _ ->
@@ -81,10 +90,9 @@ let test_load_simple_int8_tiff _ =
   (* uses alternating +ve and -ve values, so sum should be zero *)
   assert_equal ~printer:Int.to_string ~msg:"Value sum" 0 res
 
-let test_load_simple_uint8_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_uint8_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_uint8_tiff backend _ =
+  let data = "../testdata/uniform_uint8_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -111,10 +119,9 @@ let test_load_simple_uint8_tiff fs _ =
   (* uses alternating +ve and -ve values, so sum should be zero *)
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 234) res
 
-let test_load_simple_int16_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_int16_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_int16_tiff backend _ =
+  let data = "../testdata/uniform_int16_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -138,10 +145,9 @@ let test_load_simple_int16_tiff fs _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 1234) res
 
-let test_load_simple_uint16_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_uint16_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_uint16_tiff backend _ =
+  let data = "../testdata/uniform_uint16_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -165,10 +171,9 @@ let test_load_simple_uint16_tiff fs _ =
   let res = Owl_base_dense_ndarray_generic.sum' data in
   assert_equal ~printer:Int.to_string ~msg:"Value sum" (10 * 10 * 61234) res
 
-let test_load_simple_int32_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_int32_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_int32_tiff backend _ =
+  let data = "../testdata/uniform_int32_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -193,10 +198,9 @@ let test_load_simple_int32_tiff fs _ =
   (* sum of data is 0 as it is an equal mix of +ve and -ve values *)
   assert_equal ~printer:Int32.to_string ~msg:"Value sum" Int32.zero res
 
-let test_load_simple_uint32_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_uint32_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_uint32_tiff backend _ =
+  let data = "../testdata/uniform_uint32_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -220,8 +224,9 @@ let test_load_simple_uint32_tiff fs _ =
     (Invalid_argument "datatype not correct for plane") (fun _ ->
       Tiff.data ~window tiff ro Tiff.Data.Int32)
 
-let test_load_simple_float32_tiff _ =
-  Tiff_unix.with_open_in "../testdata/uniform_float32_lzw.tiff" @@ fun ro ->
+let test_load_simple_float32_tiff backend _ =
+  let data = "../testdata/uniform_float32_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -251,10 +256,9 @@ let test_load_simple_float32_tiff _ =
   done;
   assert_bool "Value sum" (cmp_float !expected res)
 
-let test_load_simple_float64_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_float64_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let test_load_simple_float64_tiff backend _ =
+  let data = "../testdata/uniform_float64_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -282,10 +286,9 @@ let test_load_simple_float64_tiff fs _ =
   done;
   assert_bool "Value sum" (cmp_float !expected res)
 
-let uniform_rgb_uint8_lzw fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/uniform_rgb_uint8_lzw.tiff"))
-  @@ fun r ->
-  let ro = Eio.File.pread_exact r in
+let uniform_rgb_uint8_lzw backend _ =
+  let data = "../testdata/uniform_rgb_uint8_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file ro in
   let header = Tiff.ifd tiff in
   assert_equal ~printer:Int.to_string ~msg:"Image width" 10
@@ -314,26 +317,28 @@ let uniform_rgb_uint8_lzw fs _ =
   done
 
 let suite fs =
-  "Basic tests"
-  >::: [
-         "Test load simple uniform uncompressed tiff"
-         >:: test_load_uniform_tiff fs;
-         "Test load data as wrong type"
-         >:: test_load_data_as_wrong_type_fails fs;
-         "Test fail to read plane from single layer tiff"
-         >:: test_read_single_plane_fails_when_specifying_plane fs;
-         "Test fail reading from multi-plane TIFF if plane not specified"
-         >:: test_read_multi_plane_fails_when_without_specifying_plane fs;
-         "Test load simple int8 tiff" >:: test_load_simple_int8_tiff;
-         "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;
-         "Test load simple int16 tiff" >:: test_load_simple_int16_tiff fs;
-         "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff fs;
-         "Test load simple int32 tiff" >:: test_load_simple_int32_tiff fs;
-         "Test load simple uint32 tiff" >:: test_load_simple_uint32_tiff fs;
-         "Test load simple float32 tiff" >:: test_load_simple_float32_tiff;
-         "Test load simple float64 tiff" >:: test_load_simple_float64_tiff fs;
-         "Test load three channel tiff" >:: uniform_rgb_uint8_lzw fs;
-       ]
+  let tests backend =
+    [
+      "Test load simple uniform uncompressed tiff"
+      >:: test_load_uniform_tiff backend;
+      "Test load data as wrong type"
+      >:: test_load_data_as_wrong_type_fails backend;
+      "Test fail to read plane from single layer tiff"
+      >:: test_read_single_plane_fails_when_specifying_plane backend;
+      "Test fail reading from multi-plane TIFF if plane not specified"
+      >:: test_read_multi_plane_fails_when_without_specifying_plane backend;
+      "Test load simple int8 tiff" >:: test_load_simple_int8_tiff;
+      "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff backend;
+      "Test load simple int16 tiff" >:: test_load_simple_int16_tiff backend;
+      "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff backend;
+      "Test load simple int32 tiff" >:: test_load_simple_int32_tiff backend;
+      "Test load simple uint32 tiff" >:: test_load_simple_uint32_tiff backend;
+      "Test load simple float32 tiff" >:: test_load_simple_float32_tiff backend;
+      "Test load simple float64 tiff" >:: test_load_simple_float64_tiff backend;
+      "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
+    ]
+  in
+  "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
 
 let () =
   Eio_main.run @@ fun env ->
