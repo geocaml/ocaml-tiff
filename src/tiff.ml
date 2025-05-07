@@ -821,14 +821,22 @@ module Ifd = struct
     { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
-type t = { header : header; ifd : Ifd.t }
+(* I imagine one day we will also have `Some of int` as an option here *)
+type caching_policy = NoCaching | CacheAll
+
+type t = {
+  header : header;
+  caching_policy : caching_policy;
+  ifd : Ifd.t;
+  mutable strip_cache : (int * Cstruct.t) list;
+}
 
 let ifd t = t.ifd
 
-let from_file (f : File.ro) =
+let from_file ?(caching_policy = NoCaching) (f : File.ro) =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
-  { header; ifd }
+  { header; caching_policy; ifd; strip_cache = [] }
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
@@ -920,25 +928,37 @@ module Data = struct
 
       (* We iterate through every strip *)
       for strip = first_strip to last_strip - 1 do
-        let raw_strip_buffer = Cstruct.create strip_bytecounts.(strip) in
-        let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
-
-        (* Fill the strip buffer *)
-        ro ~file_offset:strip_offset [ raw_strip_buffer ];
-
-        let expected_size = rows_per_strip * width * bytes_per_pixel in
-
         let strip_buffer =
-          match Ifd.compression ifd with
-          | No_compression ->
-              if Cstruct.length raw_strip_buffer < expected_size then
-                failwith "Strip is unexpectedly short";
-              raw_strip_buffer
-          | LZW ->
-              let uncompressed_buffer = Cstruct.create expected_size in
-              Lzw.decode raw_strip_buffer uncompressed_buffer;
-              uncompressed_buffer
-          | _ -> failwith "Unsupported compression"
+          match List.assoc_opt strip t.strip_cache with
+          | Some strip -> strip
+          | None ->
+              let raw_strip_buffer = Cstruct.create strip_bytecounts.(strip) in
+              let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
+
+              (* Fill the strip buffer *)
+              ro ~file_offset:strip_offset [ raw_strip_buffer ];
+
+              let expected_size = rows_per_strip * width * bytes_per_pixel in
+
+              let strip_buffer =
+                match Ifd.compression ifd with
+                | No_compression ->
+                    if Cstruct.length raw_strip_buffer < expected_size then
+                      failwith "Strip is unexpectedly short";
+                    raw_strip_buffer
+                | LZW ->
+                    let uncompressed_buffer = Cstruct.create expected_size in
+                    Lzw.decode raw_strip_buffer uncompressed_buffer;
+                    uncompressed_buffer
+                | _ -> failwith "Unsupported compression"
+              in
+
+              t.strip_cache <-
+                (match t.caching_policy with
+                | NoCaching -> t.strip_cache
+                | CacheAll -> (strip, strip_buffer) :: t.strip_cache);
+
+              strip_buffer
         in
 
         (* Calculate the number of rows in the current strip *)
