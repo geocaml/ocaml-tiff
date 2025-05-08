@@ -914,7 +914,9 @@ module Data = struct
       in
       (* The strip where our last row will be found *)
       let last_strip = first_strip + ceil window.ysize rows_per_strip in
-      let row_index = ref window.yoff in
+      let row_index =
+        ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
+      in
 
       (* We iterate through every strip *)
       for strip = first_strip to last_strip - 1 do
@@ -951,7 +953,8 @@ module Data = struct
           (* The actual y offset we are at *)
           let y_offset = !row_index + inner_row in
 
-          if y_offset >= window.ysize then ()
+          if y_offset >= window.yoff + window.ysize || y_offset < window.yoff
+          then ()
           else
             (* The x offset we are at *)
             let x_offset = ref window.xoff in
@@ -964,7 +967,7 @@ module Data = struct
                   read_value strip_buffer (index * bytes_per_pixel)
                     tiff_endianness
                 in
-                Genarray.set arr [| y_offset; !x_offset |] value
+                Genarray.set arr [| y_offset - window.yoff; !x_offset |] value
               else
                 for channel = 0 to samples_per_pixel - 1 do
                   let byte_off =
