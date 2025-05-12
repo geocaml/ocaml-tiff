@@ -13,6 +13,8 @@
    fmt
    cstruct
    optint
+   (bechamel :with-test)
+   (bechamel-notty :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
    (eio_main :with-test)

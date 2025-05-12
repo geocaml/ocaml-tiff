@@ -1,0 +1,12 @@
+(executable
+ (name bench)
+ (libraries notty.unix tiff.unix bechamel bechamel-notty))
+
+(rule
+ (alias runbench)
+ (package tiff)
+ (deps
+  (source_tree ../testdata)
+  (:bench bench.exe))
+ (action
+  (run %{bench})))
