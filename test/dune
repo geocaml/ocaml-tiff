@@ -12,12 +12,16 @@
 
 (rule
  (alias runtest)
- (deps ./test_geotiff.exe)
+ (deps
+  (source_tree ../testdata)
+  ./test_geotiff.exe)
  (action
   ; Important for OUnit2 to not use Unix.fork!
   (run ./test_geotiff.exe -runner sequential)))
 
 (tests
  (names test_lzw)
+ (deps
+  (source_tree ../testdata))
  (modules test_lzw)
  (libraries ounit2 tiff))
