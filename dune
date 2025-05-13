@@ -1,15 +1,3 @@
-(mdx
- (files README.md)
- (libraries eio unix ounit2 eio.core eio.unix fmt eio_main owl-base tiff))
-
 (executable
  (name main)
  (libraries eio_main owl-base cstruct tiff))
-
-(rule
- (alias runtest)
- (deps
-  (glob_files testdata/*.tiff))
- (targets cea.tiff)
- (action
-  (copy testdata/cea.tiff cea.tiff)))
