@@ -20,8 +20,8 @@
   (run ./test_geotiff.exe -runner sequential)))
 
 (tests
- (names test_lzw)
+ (names test_lzw test_caching)
  (deps
   (source_tree ../testdata))
- (modules test_lzw)
- (libraries ounit2 tiff))
+ (modules test_lzw test_caching)
+ (libraries ounit2 tiff tiff.unix owl-base))

@@ -221,6 +221,11 @@ end
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 (** A window can be used to reduce the size of data returned by {! data} *)
 
+type caching_policy =
+  | NoCaching
+  | CacheAll
+      (** Policy for whether strips read from disk should be cached in memory *)
+
 module Data : sig
   type ('repr, 'kind) kind =
     | Uint8 : (int, int8_unsigned_elt) kind
@@ -238,7 +243,7 @@ end
 type t
 (** A TIFF file *)
 
-val from_file : File.ro -> t
+val from_file : ?caching_policy:caching_policy -> File.ro -> t
 (** Start reading a TIFF file. *)
 
 val ifd : t -> Ifd.t
