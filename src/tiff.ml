@@ -5,8 +5,13 @@ module File = struct
   *)
 end
 
-type header = { kind : kind; byte_order : endianness; offset : Optint.Int63.t }
-and kind = Tiff | Bigtiff
+type header = {
+  kind : tiff_kind;
+  byte_order : endianness;
+  offset : Optint.Int63.t;
+}
+
+and tiff_kind = Tiff | Bigtiff
 and endianness = Big | Little
 
 module Endian = struct
@@ -821,28 +826,32 @@ module Ifd = struct
     { entries; data_offsets; data_bytecounts; ro = reader; header }
 end
 
-type t = { header : header; ifd : Ifd.t }
+type ('repr, 'kind) kind =
+  | Uint8 : (int, Bigarray.int8_unsigned_elt) kind
+  | Int8 : (int, Bigarray.int8_signed_elt) kind
+  | Uint16 : (int, Bigarray.int16_unsigned_elt) kind
+  | Int16 : (int, Bigarray.int16_signed_elt) kind
+  | Int32 : (int32, Bigarray.int32_elt) kind
+  | Float32 : (float, Bigarray.float32_elt) kind
+  | Float64 : (float, Bigarray.float64_elt) kind
+
+type ('repr, 'kind) t = {
+  data_type : ('repr, 'kind) kind;
+  header : header;
+  ifd : Ifd.t;
+}
 
 let ifd t = t.ifd
 
-let from_file (f : File.ro) =
+let from_file (type a b) (f : File.ro) (data_type : (a, b) kind) : (a, b) t =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
-  { header; ifd }
+  { data_type; header; ifd }
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
   open Bigarray
-
-  type ('repr, 'kind) kind =
-    | Uint8 : (int, int8_unsigned_elt) kind
-    | Int8 : (int, int8_signed_elt) kind
-    | Uint16 : (int, int16_unsigned_elt) kind
-    | Int16 : (int, int16_signed_elt) kind
-    | Int32 : (int32, int32_elt) kind
-    | Float32 : (float, float32_elt) kind  (** A subset of {! Bigarray.kind}. *)
-    | Float64 : (float, float64_elt) kind
 
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
 
@@ -994,8 +1003,8 @@ module Data = struct
 end
 
 (* have to specify all 4 or else it defaults to whole file*)
-let data (type repr kind) ?plane ?window t (f : File.ro)
-    (data_type : (repr, kind) Data.kind) : (repr, kind) Data.t =
+let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
+    (repr, kind) Data.t =
   let ifd = ifd t in
   let planar_configuration = Ifd.planar_configuration ifd in
   let plane =
@@ -1016,23 +1025,23 @@ let data (type repr kind) ?plane ?window t (f : File.ro)
   in
   let sample_format = Ifd.sample_format ifd
   and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
-  match (data_type, sample_format, bpp) with
-  | Data.Uint8, UnsignedInteger, 8 ->
+  match (t.data_type, sample_format, bpp) with
+  | Uint8, UnsignedInteger, 8 ->
       Data.read_data t f plane window Bigarray.int8_unsigned
         Data.read_uint8_value
-  | Data.Int8, SignedInteger, 8 ->
+  | Int8, SignedInteger, 8 ->
       Data.read_data t f plane window Bigarray.int8_signed Data.read_int8_value
-  | Data.Uint16, UnsignedInteger, 16 ->
+  | Uint16, UnsignedInteger, 16 ->
       Data.read_data t f plane window Bigarray.int16_unsigned
         Data.read_uint16_value
-  | Data.Int16, SignedInteger, 16 ->
+  | Int16, SignedInteger, 16 ->
       Data.read_data t f plane window Bigarray.int16_signed
         Data.read_int16_value
-  | Data.Int32, SignedInteger, 32 ->
+  | Int32, SignedInteger, 32 ->
       Data.read_data t f plane window Bigarray.int32 Data.read_int32_value
-  | Data.Float32, IEEEFloatingPoint, 32 ->
+  | Float32, IEEEFloatingPoint, 32 ->
       Data.read_data t f plane window Bigarray.float32 Data.read_float32_value
-  | Data.Float64, IEEEFloatingPoint, 64 ->
+  | Float64, IEEEFloatingPoint, 64 ->
       Data.read_data t f plane window Bigarray.float64 Data.read_float64_value
   | _ -> raise (Invalid_argument "datatype not correct for plane")
 

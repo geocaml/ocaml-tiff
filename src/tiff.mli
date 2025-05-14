@@ -221,38 +221,37 @@ end
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 (** A window can be used to reduce the size of data returned by {! data} *)
 
-module Data : sig
-  type ('repr, 'kind) kind =
-    | Uint8 : (int, int8_unsigned_elt) kind
-    | Int8 : (int, int8_signed_elt) kind
-    | Uint16 : (int, int16_unsigned_elt) kind
-    | Int16 : (int, int16_signed_elt) kind
-    | Int32 : (int32, int32_elt) kind
-    | Float32 : (float, float32_elt) kind  (** A subset of {! Bigarray.kind}. *)
-    | Float64 : (float, float64_elt) kind
+type ('repr, 'kind) kind =
+  | Uint8 : (int, int8_unsigned_elt) kind
+  | Int8 : (int, int8_signed_elt) kind
+  | Uint16 : (int, int16_unsigned_elt) kind
+  | Int16 : (int, int16_signed_elt) kind
+  | Int32 : (int32, int32_elt) kind
+  | Float32 : (float, float32_elt) kind
+  | Float64 : (float, float64_elt) kind
+      (** Type of data held within the TIFF *)
 
+module Data : sig
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
   (** Raw TIFF data. *)
 end
 
-type t
+type ('repr, 'kind) t
 (** A TIFF file *)
 
-val from_file : File.ro -> t
-(** Start reading a TIFF file. *)
+val from_file : File.ro -> ('repr, 'kind) kind -> ('repr, 'kind) t
+(** Start reading a TIFF file with the type of data specified. *)
 
-val ifd : t -> Ifd.t
+val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
 val data :
   ?plane:int ->
   ?window:window ->
-  t ->
+  ('repr, 'kind) t ->
   File.ro ->
-  ('repr, 'kind) Data.kind ->
   ('repr, 'kind) Data.t
-(** Low-level access to the raw data inside the TIFF file. The user must specify
-    the data kind.
+(** Low-level access to the raw data inside the TIFF file.
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
