@@ -929,8 +929,9 @@ module Data = struct
 
       (* We iterate through every strip *)
       for strip = first_strip to last_strip - 1 do
-        let raw_strip_buffer = Cstruct.create strip_bytecounts.(strip) in
-        let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
+        let raw_strip_length = strip_bytecounts.(strip)
+        and raw_strip_offset = strip_offsets.(strip) in
+        let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
 
         (* Calculate the number of rows in the current strip *)
         let rows_in_strip =
@@ -939,18 +940,25 @@ module Data = struct
           else rows_per_strip
         in
 
-        (* Fill the strip buffer *)
-        ro ~file_offset:strip_offset [ raw_strip_buffer ];
-
         let expected_size = rows_in_strip * width * bytes_per_pixel in
 
+        let strip_length =
+          match sparse with false -> raw_strip_length | true -> expected_size
+        in
+
+        let raw_strip_buffer = Cstruct.create strip_length in
+        let strip_offset = Optint.Int63.of_int raw_strip_offset in
+
+        (* Fill the strip buffer *)
+        if sparse = false then ro ~file_offset:strip_offset [ raw_strip_buffer ];
+
         let strip_buffer =
-          match Ifd.compression ifd with
-          | No_compression ->
+          match (sparse, Ifd.compression ifd) with
+          | true, _ | false, No_compression ->
               if Cstruct.length raw_strip_buffer < expected_size then
                 failwith "Strip is unexpectedly short";
               raw_strip_buffer
-          | LZW ->
+          | false, LZW ->
               let uncompressed_buffer = Cstruct.create expected_size in
               Lzw.decode raw_strip_buffer uncompressed_buffer;
               uncompressed_buffer

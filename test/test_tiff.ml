@@ -413,6 +413,40 @@ let test_lzw_cea backend _ =
   in
   assert_equal_int ~msg:"sum" (sum_data data) (sum_data data_compressed)
 
+let test_gdal_sparse_tiff backend _ =
+  let data = "../testdata/sparse_uint8_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let header = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width header in
+  let height = Tiff.Ifd.height header in
+  assert_equal_int ~msg:"Image width" 10 width;
+  assert_equal_int ~msg:"Image height" 10 height;
+  assert_equal_int ~msg:"Rows per strip" 1 (Tiff.Ifd.rows_per_strip header);
+  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
+  assert_equal_int ~msg:"Samples per pixel" 1
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
+  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
+    (Tiff.Ifd.sample_format header);
+  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
+    (Tiff.Ifd.predictor header);
+  assert_raises ~msg:"Pixel width" Not_found (fun () ->
+      Tiff.Ifd.pixel_scale header);
+  assert_equal
+    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
+    ~msg:"Planar configuration" Tiff.Ifd.Chunky
+    (Tiff.Ifd.planar_configuration header);
+  for y = 0 to height - 1 do
+    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let data = Tiff.data ~window tiff ro in
+    let data2d = Bigarray.array2_of_genarray data in
+    assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
+    assert_equal_int ~msg:"data width" 10 (Bigarray.Array2.dim2 data2d);
+    let res = Owl_base_dense_ndarray_generic.sum' data in
+    assert_equal_int ~msg:"Value sum" ((y + 1) mod 2 * width) res
+  done
+
 let suite fs =
   let tests backend =
     [
@@ -441,6 +475,7 @@ let suite fs =
       >:: test_load_odd_striped_uint8_lzw_tiff backend;
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
+      "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
