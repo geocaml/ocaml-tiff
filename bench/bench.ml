@@ -1,27 +1,27 @@
 open Bechamel
 open Toolkit
 
-type test_case = E : ('a, 'b) Tiff.Data.kind * string -> test_case
+type test_case = E : ('a, 'b) Tiff.kind * string -> test_case
 
 let tests =
   [
-    E (Tiff.Data.Uint8, "../testdata/uniform_uint8_lzw.tiff");
-    E (Tiff.Data.Uint8, "../testdata/striped_uint8_uncompressed.tiff");
-    E (Tiff.Data.Uint16, "../testdata/uniform_uint16_lzw.tiff");
-    E (Tiff.Data.Float32, "../testdata/uniform_float32_lzw.tiff");
+    E (Tiff.Uint8, "../testdata/uniform_uint8_lzw.tiff");
+    E (Tiff.Uint8, "../testdata/striped_uint8_uncompressed.tiff");
+    E (Tiff.Uint16, "../testdata/uniform_uint16_lzw.tiff");
+    E (Tiff.Float32, "../testdata/uniform_float32_lzw.tiff");
   ]
 
 let get_dims (E (kind, file)) =
   Staged.stage @@ fun () ->
   Tiff_unix.with_open_in file @@ fun ro ->
-  let tiff = Tiff.from_file ro in
-  let data = Tiff.data tiff ro kind in
+  let tiff = Tiff.from_file kind ro in
+  let data = Tiff.data tiff ro in
   Sys.opaque_identity (ignore data)
 
-let get_ifd (E (_, file)) =
+let get_ifd (E (kind, file)) =
   Staged.stage @@ fun () ->
   Tiff_unix.with_open_in file @@ fun ro ->
-  let tiff = Tiff.from_file ro in
+  let tiff = Tiff.from_file kind ro in
   let ifd = Tiff.ifd tiff in
   let compression = Tiff.Ifd.compression ifd in
   assert (compression = LZW || compression = No_compression);
