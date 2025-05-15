@@ -843,7 +843,7 @@ type ('repr, 'kind) t = {
 
 let ifd t = t.ifd
 
-let from_file (type a b) (f : File.ro) (data_type : (a, b) kind) : (a, b) t =
+let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
   let header = header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { data_type; header; ifd }

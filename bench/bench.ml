@@ -14,14 +14,14 @@ let tests =
 let get_dims (E (kind, file)) =
   Staged.stage @@ fun () ->
   Tiff_unix.with_open_in file @@ fun ro ->
-  let tiff = Tiff.from_file ro kind in
+  let tiff = Tiff.from_file kind ro in
   let data = Tiff.data tiff ro in
   Sys.opaque_identity (ignore data)
 
 let get_ifd (E (kind, file)) =
   Staged.stage @@ fun () ->
   Tiff_unix.with_open_in file @@ fun ro ->
-  let tiff = Tiff.from_file ro kind in
+  let tiff = Tiff.from_file kind ro in
   let ifd = Tiff.ifd tiff in
   let compression = Tiff.Ifd.compression ifd in
   assert (compression = LZW || compression = No_compression);

@@ -239,7 +239,7 @@ end
 type ('repr, 'kind) t
 (** A TIFF file *)
 
-val from_file : File.ro -> ('repr, 'kind) kind -> ('repr, 'kind) t
+val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
 val ifd : ('repr, 'kind) t -> Ifd.t

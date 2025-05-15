@@ -15,7 +15,7 @@ let with_ro backend path fn =
 let test_load_uniform_tiff backend _ =
   let data = "../testdata/uniform.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 256 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 256 (Tiff.Ifd.height header);
@@ -40,7 +40,7 @@ let test_load_uniform_tiff backend _ =
 let test_load_data_as_wrong_type_fails backend _ =
   let data = "../testdata/uniform.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Float32 in
+  let tiff = Tiff.from_file Tiff.Float32 ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   assert_raises ~msg:"fail to load data as wrong type"
     (Invalid_argument "datatype not correct for plane") (fun _ ->
@@ -49,7 +49,7 @@ let test_load_data_as_wrong_type_fails backend _ =
 let test_read_single_plane_fails_when_specifying_plane backend _ =
   let data = "../testdata/uniform.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   assert_raises ~msg:"fail to load data as wrong type"
     (Invalid_argument "Can not select plane on single plane TIFFs") (fun _ ->
       Tiff.data ~plane:1 tiff ro)
@@ -57,14 +57,14 @@ let test_read_single_plane_fails_when_specifying_plane backend _ =
 let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
   let data = "../testdata/uniform_rgb_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   assert_raises ~msg:"fail to load data as wrong type"
     (Invalid_argument "Must specify plane for data read") (fun _ ->
       Tiff.data tiff ro)
 
 let test_load_simple_int8_tiff _ =
   Tiff_unix.with_open_in "../testdata/uniform_int8_lzw.tiff" @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Int8 in
+  let tiff = Tiff.from_file Tiff.Int8 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 8 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -91,7 +91,7 @@ let test_load_simple_int8_tiff _ =
 let test_load_simple_uint8_tiff backend _ =
   let data = "../testdata/uniform_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -118,7 +118,7 @@ let test_load_simple_uint8_tiff backend _ =
 let test_load_simple_int16_tiff backend _ =
   let data = "../testdata/uniform_int16_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Int16 in
+  let tiff = Tiff.from_file Tiff.Int16 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -141,7 +141,7 @@ let test_load_simple_int16_tiff backend _ =
 let test_load_simple_uint16_tiff backend _ =
   let data = "../testdata/uniform_uint16_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint16 in
+  let tiff = Tiff.from_file Tiff.Uint16 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -164,7 +164,7 @@ let test_load_simple_uint16_tiff backend _ =
 let test_load_simple_int32_tiff backend _ =
   let data = "../testdata/uniform_int32_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Int32 in
+  let tiff = Tiff.from_file Tiff.Int32 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -188,7 +188,7 @@ let test_load_simple_int32_tiff backend _ =
 let test_load_simple_uint32_tiff backend _ =
   let data = "../testdata/uniform_uint32_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Int32 in
+  let tiff = Tiff.from_file Tiff.Int32 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -211,7 +211,7 @@ let test_load_simple_uint32_tiff backend _ =
 let test_load_simple_float32_tiff backend _ =
   let data = "../testdata/uniform_float32_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Float32 in
+  let tiff = Tiff.from_file Tiff.Float32 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -240,7 +240,7 @@ let test_load_simple_float32_tiff backend _ =
 let test_load_simple_float64_tiff backend _ =
   let data = "../testdata/uniform_float64_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Float64 in
+  let tiff = Tiff.from_file Tiff.Float64 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -267,7 +267,7 @@ let test_load_simple_float64_tiff backend _ =
 let uniform_rgb_uint8_lzw backend _ =
   let data = "../testdata/uniform_rgb_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -295,7 +295,7 @@ let uniform_rgb_uint8_lzw backend _ =
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "../testdata/striped_uint8_uncompressed.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
@@ -330,7 +330,7 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
 let test_load_striped_uint8_lzw_tiff backend _ =
   let data = "../testdata/striped_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
@@ -364,7 +364,7 @@ let test_load_striped_uint8_lzw_tiff backend _ =
 let test_load_odd_striped_uint8_lzw_tiff backend _ =
   let data = "../testdata/striped_uint8_lzw_odd_strip_size.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file ro Tiff.Uint8 in
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
