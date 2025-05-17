@@ -32,7 +32,7 @@ let update_buffer buffer offset codestr =
 let max_dict_size = 4096
 
 let init_table () =
-  Array.init 4096 (function
+  Array.init max_dict_size (function
     | i when i < 256 -> String.make 1 (Char.chr i)
     | _ -> String.empty)
 
