@@ -1,7 +1,7 @@
 let () =
   Eio_main.run @@ fun env ->
   let fs = Eio.Stdenv.fs env in
-  Eio.Path.(with_open_in (fs / "testdata/uniform.tiff")) @@ fun r ->
+  Eio.Path.(with_open_in (fs / "./testdata/cea_lzw.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file Tiff.Uint8 ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
