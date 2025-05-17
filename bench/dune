@@ -6,6 +6,7 @@
  (alias runbench)
  (package tiff)
  (deps
+  (source_tree corpus)
   (source_tree ../testdata)
   (:bench bench.exe))
  (action

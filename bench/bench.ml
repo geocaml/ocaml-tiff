@@ -28,6 +28,25 @@ let get_ifd (E (kind, file)) =
   let width = Tiff.Ifd.width ifd in
   Sys.opaque_identity (ignore (compression, width))
 
+let read_data path =
+  let size = (Unix.stat path).st_size in
+  let buf = Bigarray.Array1.create Bigarray.Char Bigarray.C_layout size in
+  In_channel.with_open_bin path @@ fun ic ->
+  let () =
+    match In_channel.really_input_bigarray ic buf 0 size with
+    | Some () -> ()
+    | None -> assert false
+  in
+  Cstruct.of_bigarray buf
+
+let lzw_bufs = [ ("cea", read_data "./corpus/raw_cea_lzw", 264_710) ]
+
+let lzw (name, buf, expected_size) =
+  Test.make ~name @@ Staged.stage
+  @@ fun () ->
+  let output = Cstruct.create expected_size in
+  Tiff.Private.Lzw.decode buf output
+
 let tests fn =
   List.map
     (fun (E (_, file) as e) ->
@@ -42,11 +61,12 @@ let benchmark () =
     Instance.[ minor_allocated; major_allocated; monotonic_clock ]
   in
   let cfg =
-    Benchmark.cfg ~limit:2000 ~quota:(Time.second 1.5) ~kde:(Some 1000) ()
+    Benchmark.cfg ~limit:3000 ~quota:(Time.second 2.5) ~kde:(Some 1000) ()
   in
   let read = Test.make_grouped ~name:"read" (tests get_dims) in
   let ifd = Test.make_grouped ~name:"ifd" (tests get_ifd) in
-  let test = Test.make_grouped ~name:"tiff" [ ifd; read ] in
+  let lzw = Test.make_grouped ~name:"lzw" (List.map lzw lzw_bufs) in
+  let test = Test.make_grouped ~name:"tiff" [ lzw; ifd; read ] in
   let raw_results = Benchmark.all cfg instances test in
   let results =
     List.map (fun instance -> Analyze.all ols instance raw_results) instances
