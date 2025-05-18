@@ -932,10 +932,17 @@ module Data = struct
         let raw_strip_buffer = Cstruct.create strip_bytecounts.(strip) in
         let strip_offset = Optint.Int63.of_int strip_offsets.(strip) in
 
+        (* Calculate the number of rows in the current strip *)
+        let rows_in_strip =
+          (* If we are the last strip in a plane, then we might have fewer rows *)
+          if strip = strips_per_plane - 1 then height - (strip * rows_per_strip)
+          else rows_per_strip
+        in
+
         (* Fill the strip buffer *)
         ro ~file_offset:strip_offset [ raw_strip_buffer ];
 
-        let expected_size = rows_per_strip * width * bytes_per_pixel in
+        let expected_size = rows_in_strip * width * bytes_per_pixel in
 
         let strip_buffer =
           match Ifd.compression ifd with
@@ -948,13 +955,6 @@ module Data = struct
               Lzw.decode raw_strip_buffer uncompressed_buffer;
               uncompressed_buffer
           | _ -> failwith "Unsupported compression"
-        in
-
-        (* Calculate the number of rows in the current strip *)
-        let rows_in_strip =
-          (* If we are the last strip in a plane, then we might have fewer rows *)
-          if strip = strips_per_plane - 1 then height - (strip * rows_per_strip)
-          else rows_per_strip
         in
 
         (* Iterating through the rows of the current strip *)
