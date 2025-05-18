@@ -39,8 +39,8 @@ let init_table () =
 let reset_table dict =
   Array.iteri
     (fun i _ ->
-      Array.set dict i
-        (if i < 256 then String.make 1 (Char.chr i) else String.empty))
+      (* Only non-ASCII characters need resetting *)
+      if i >= 256 then Array.set dict i String.empty)
     dict
 
 let decode input output_buffer =
@@ -80,6 +80,8 @@ let decode input output_buffer =
           | 4095 -> (prev_code, code_size, next_code_index)
           | _ ->
               let new_code_size =
+                (* We increase the code_size after inserting the 2^code_size - 1 element
+                   into the dictionary *)
                 match next_code_index with
                 | 510 | 1022 | 2046 -> code_size + 1
                 | _ -> code_size
