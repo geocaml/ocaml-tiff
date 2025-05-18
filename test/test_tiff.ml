@@ -395,6 +395,14 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_uneven_rows_per_strip backend _ =
+  let data = "../testdata/uneven_rows_per_strip.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let d = Tiff.data tiff ro in
+  let res = Owl_base_dense_ndarray_generic.sum' d in
+  ignore res
+
 let suite fs =
   let tests backend =
     [
@@ -421,6 +429,7 @@ let suite fs =
       >:: test_load_striped_uint8_lzw_tiff backend;
       "Test load odd striped uint8 lzw tiff"
       >:: test_load_odd_striped_uint8_lzw_tiff backend;
+      "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
