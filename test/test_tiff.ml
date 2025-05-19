@@ -403,6 +403,16 @@ let test_uneven_rows_per_strip backend _ =
   let res = Owl_base_dense_ndarray_generic.sum' d in
   ignore res
 
+let test_lzw_cea backend _ =
+  let data = "../testdata/cea.tiff" in
+  let data_compressed = "../testdata/cea_lzw.tiff" in
+  let sum_data d =
+    with_ro backend d @@ fun ro ->
+    let tiff = Tiff.from_file Tiff.Uint8 ro in
+    Tiff.data tiff ro |> Owl_base_dense_ndarray_generic.sum'
+  in
+  assert_equal_int ~msg:"sum" (sum_data data) (sum_data data_compressed)
+
 let suite fs =
   let tests backend =
     [
@@ -430,6 +440,7 @@ let suite fs =
       "Test load odd striped uint8 lzw tiff"
       >:: test_load_odd_striped_uint8_lzw_tiff backend;
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
+      "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
