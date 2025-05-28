@@ -950,7 +950,7 @@ module Data = struct
         let strip_offset = Optint.Int63.of_int raw_strip_offset in
 
         (* Fill the strip buffer *)
-        if sparse = false then ro ~file_offset:strip_offset [ raw_strip_buffer ];
+        if not sparse then ro ~file_offset:strip_offset [ raw_strip_buffer ];
 
         let strip_buffer =
           match (sparse, Ifd.compression ifd) with
