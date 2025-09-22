@@ -13,6 +13,7 @@
    fmt
    cstruct
    optint
+   (ocamlformat (and (= "0.27.0") :with-dev-setup)) 
    (bechamel :with-test)
    (bechamel-notty :with-test)
    (mdx :with-test)

@@ -13,7 +13,7 @@
 (rule
  (alias runtest)
  (deps
-  (source_tree ../testdata)
+  (source_tree data)
   ./test_geotiff.exe)
  (action
   ; Important for OUnit2 to not use Unix.fork!

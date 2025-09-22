@@ -4,7 +4,7 @@ let cmp_float_list a b =
   List.fold_left2 (fun acc a b -> acc && cmp_float a b) true a b
 
 let test_load_simple_uint8_tiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/cea.tiff")) @@ fun r ->
+  Eio.Path.(with_open_in (fs / "./data/cea.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
@@ -31,7 +31,7 @@ let test_load_simple_uint8_tiff fs _ =
     (Tiff.Ifd.geo_ascii_params header)
 
 let test_load_simple_float32_geotiff fs _ =
-  Eio.Path.(with_open_in (fs / "../testdata/aoh.tiff")) @@ fun r ->
+  Eio.Path.(with_open_in (fs / "./data/aoh.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file Tiff.Float32 ro in
   let header = Tiff.ifd tiff in
