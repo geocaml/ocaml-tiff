@@ -1,4 +1,5 @@
 (library
  (name tiff)
  (public_name tiff)
- (libraries fmt cstruct optint))
+ (libraries fmt cstruct optint decompress.de bigstringaf)
+ (modules tiff lzw deflate))
