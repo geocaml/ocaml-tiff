@@ -7,14 +7,14 @@ type model_type = Projected | Geographic | Geocentric | Other of int
 type raster_type = RasterPixelIsArea | RasterPixelIsPoint | Other of int
 
 type angular_units =
-    | Radian
-    | Degree
-    | Arc_minute
-    | Arc_second
-    | Grad
-    | Gon
-    | DMS
-    | DMS_hemisphere
+  | Radian
+  | Degree
+  | Arc_minute
+  | Arc_second
+  | Grad
+  | Gon
+  | DMS
+  | DMS_hemisphere
 
 val angular_units_to_string : angular_units -> string
 val entries : ifd -> t

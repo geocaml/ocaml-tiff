@@ -147,11 +147,11 @@ type entry = {
 
 let pp_field ppf = function
   | `Immediate -> Fmt.pf ppf "imm"
-  | `Loc i -> pp_tag ppf (tag_of_int i)
+  | `Loc i -> Shared.pp_tag ppf (Shared.tag_of_int i)
 
 let pp_entry ppf e =
-  Fmt.pf ppf "geokey: %a, field: %a, count: %i, value/offset: %Ld" pp_key
-    e.key pp_field e.field e.count e.offset
+  Fmt.pf ppf "geokey: %a, field: %a, count: %i, value/offset: %Ld" pp_key e.key
+    pp_field e.field e.count e.offset
 
 type t = {
   version : int;
@@ -161,7 +161,7 @@ type t = {
 }
 
 let entries t =
-  let entry = lookup_exn t.entries GeoKeyDirectory in
+  let entry = Shared.lookup_exn t.entries GeoKeyDirectory in
   let ascii = read_entry_raw entry t.ro in
   let values = List.map (Endian.uint16 t.header.byte_order) ascii in
   match values with
@@ -170,9 +170,7 @@ let entries t =
         | key :: field :: count :: voff :: more ->
             let k = key_of_id key in
             let f = if field = 0 then `Immediate else `Loc field in
-            let e =
-              { key = k; field = f; count; offset = Int64.of_int voff }
-            in
+            let e = { key = k; field = f; count; offset = Int64.of_int voff } in
             loop (e :: acc) more
         | _ -> List.rev acc
       in
