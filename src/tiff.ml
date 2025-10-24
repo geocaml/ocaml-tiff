@@ -1,8 +1,7 @@
-(* type header = {
-  kind : Ifd.tiff_kind;
-  byte_order : Ifd.endianness;
-  offset : Optint.Int63.t;
-} *)
+module File = File
+module Endian = Endian
+module Ifd = Ifd
+
 type header = Ifd.header
 
 type ('repr, 'kind) kind =

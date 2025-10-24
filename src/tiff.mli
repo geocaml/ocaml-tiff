@@ -4,6 +4,9 @@
     way to provide {i raster} images. *)
 
 open Bigarray
+module File = File
+module Endian = Endian
+module Ifd = Ifd
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 (** A window can be used to reduce the size of data returned by {! data} *)

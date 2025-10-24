@@ -8,49 +8,53 @@ let test_load_simple_uint8_tiff fs _ =
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file Tiff.Uint8 ro in
   let header = Tiff.ifd tiff in
-  assert_equal ~printer:Int.to_string ~msg:"Image width" 514 (Ifd.width header);
+  assert_equal ~printer:Int.to_string ~msg:"Image width" 514
+    (Tiff.Ifd.width header);
   assert_equal ~printer:Int.to_string ~msg:"Image height" 515
-    (Ifd.height header);
+    (Tiff.Ifd.height header);
   assert_equal ~printer:Int.to_string ~msg:"Samples per pixel" 1
-    (Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Ifd.UnsignedInteger
-    (Ifd.sample_format header);
-  let pixel_scale = Array.to_list (Ifd.pixel_scale header) in
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
+  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
+    (Tiff.Ifd.sample_format header);
+  let pixel_scale = Array.to_list (Tiff.Ifd.pixel_scale header) in
   let expected = [ 60.022136983193739; 60.022136983193739; 0.0 ] in
   assert_bool "Pixel width" (cmp_float_list expected pixel_scale);
 
-  let tie_point = Array.to_list (Ifd.tiepoint header) in
+  let tie_point = Array.to_list (Tiff.Ifd.tiepoint header) in
   let expected =
     [ 0.; 0.; 0.; -28493.166784412522247; 4255884.543802191503346; 0. ]
   in
   assert_bool "Pixel width" (cmp_float_list expected tie_point);
 
   assert_equal ~msg:"ascii params" [ "unnamed"; "NAD27" ]
-    (Ifd.geo_ascii_params header)
+    (Tiff.Ifd.geo_ascii_params header)
 
 let test_load_simple_float32_geotiff fs _ =
   Eio.Path.(with_open_in (fs / "./data/aoh.tiff")) @@ fun r ->
   let ro = Eio.File.pread_exact r in
   let tiff = Tiff.from_file Tiff.Float32 ro in
   let header = Tiff.ifd tiff in
-  assert_equal ~printer:Int.to_string ~msg:"Image width" 7 (Ifd.width header);
-  assert_equal ~printer:Int.to_string ~msg:"Image height" 3 (Ifd.height header);
+  assert_equal ~printer:Int.to_string ~msg:"Image width" 7
+    (Tiff.Ifd.width header);
+  assert_equal ~printer:Int.to_string ~msg:"Image height" 3
+    (Tiff.Ifd.height header);
   assert_equal ~printer:Int.to_string ~msg:"Samples per pixel" 1
-    (Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 32 ] (Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Ifd.IEEEFloatingPoint
-    (Ifd.sample_format header);
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 32 ] (Tiff.Ifd.bits_per_sample header);
+  assert_equal ~msg:"sample format" Tiff.Ifd.IEEEFloatingPoint
+    (Tiff.Ifd.sample_format header);
 
-  let pixel_scale = Array.to_list (Ifd.pixel_scale header) in
+  let pixel_scale = Array.to_list (Tiff.Ifd.pixel_scale header) in
   let expected = [ 0.016666666666667; 0.016666666666667; 0.0 ] in
   assert_bool "Pixel width" (cmp_float_list expected pixel_scale);
 
-  let tie_point = Array.to_list (Ifd.tiepoint header) in
+  let tie_point = Array.to_list (Tiff.Ifd.tiepoint header) in
   let expected = [ 0.; 0.; 0.; -73.566666666664560; 22.637233333845138; 0. ] in
   assert_bool "Pixel width" (cmp_float_list expected tie_point);
 
-  assert_equal ~msg:"ascii params" [ "WGS 84" ] (Ifd.geo_ascii_params header)
+  assert_equal ~msg:"ascii params" [ "WGS 84" ]
+    (Tiff.Ifd.geo_ascii_params header)
 
 let suite fs =
   "Basic tests"

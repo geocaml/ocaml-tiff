@@ -23,9 +23,9 @@ let get_ifd (E (kind, file)) =
   Tiff_unix.with_open_in file @@ fun ro ->
   let tiff = Tiff.from_file kind ro in
   let ifd = Tiff.ifd tiff in
-  let compression = Ifd.compression ifd in
+  let compression = Tiff.Ifd.compression ifd in
   assert (compression = LZW || compression = No_compression);
-  let width = Ifd.width ifd in
+  let width = Tiff.Ifd.width ifd in
   Sys.opaque_identity (ignore (compression, width))
 
 let read_data path =
