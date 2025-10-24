@@ -450,12 +450,15 @@ let test_gdal_sparse_tiff backend _ =
 let test_deflate_compression_types _ =
   (* Test that DEFLATE compression types exist *)
   assert_equal ~msg:"DEFLATE compression type" Tiff.Ifd.DEFLATE Tiff.Ifd.DEFLATE;
-  assert_equal ~msg:"ADOBE_DEFLATE compression type" Tiff.Ifd.ADOBE_DEFLATE Tiff.Ifd.ADOBE_DEFLATE;
-  
+  assert_equal ~msg:"ADOBE_DEFLATE compression type" Tiff.Ifd.ADOBE_DEFLATE
+    Tiff.Ifd.ADOBE_DEFLATE;
+
   (* Test that compression type strings are correct *)
-  assert_equal ~msg:"DEFLATE string" "DEFLATE" (Tiff.Ifd.compression_to_string Tiff.Ifd.DEFLATE);
-  assert_equal ~msg:"ADOBE_DEFLATE string" "ADOBE_DEFLATE" (Tiff.Ifd.compression_to_string Tiff.Ifd.ADOBE_DEFLATE);
-  
+  assert_equal ~msg:"DEFLATE string" "DEFLATE"
+    (Tiff.Ifd.compression_to_string Tiff.Ifd.DEFLATE);
+  assert_equal ~msg:"ADOBE_DEFLATE string" "ADOBE_DEFLATE"
+    (Tiff.Ifd.compression_to_string Tiff.Ifd.ADOBE_DEFLATE);
+
   (* Test that Deflate module is accessible *)
   let _ = Tiff.Private.Deflate.decode in
   ()
