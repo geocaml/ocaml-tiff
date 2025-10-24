@@ -447,9 +447,23 @@ let test_gdal_sparse_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) mod 2 * width) res
   done
 
+let test_deflate_compression_types _ =
+  (* Test that DEFLATE compression types exist *)
+  assert_equal ~msg:"DEFLATE compression type" Tiff.Ifd.DEFLATE Tiff.Ifd.DEFLATE;
+  assert_equal ~msg:"ADOBE_DEFLATE compression type" Tiff.Ifd.ADOBE_DEFLATE Tiff.Ifd.ADOBE_DEFLATE;
+  
+  (* Test that compression type strings are correct *)
+  assert_equal ~msg:"DEFLATE string" "DEFLATE" (Tiff.Ifd.compression_to_string Tiff.Ifd.DEFLATE);
+  assert_equal ~msg:"ADOBE_DEFLATE string" "ADOBE_DEFLATE" (Tiff.Ifd.compression_to_string Tiff.Ifd.ADOBE_DEFLATE);
+  
+  (* Test that Deflate module is accessible *)
+  let _ = Tiff.Private.Deflate.decode in
+  ()
+
 let suite fs =
   let tests backend =
     [
+      "Test DEFLATE compression types" >:: test_deflate_compression_types;
       "Test load simple uniform uncompressed tiff"
       >:: test_load_uniform_tiff backend;
       "Test load data as wrong type"
