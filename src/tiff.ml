@@ -1,30 +1,9 @@
-type header = {
+(* type header = {
   kind : Ifd.tiff_kind;
   byte_order : Ifd.endianness;
   offset : Optint.Int63.t;
-}
-
-let header ro =
-  (* We may get more bytes than we want, but this is to support Bigtiffs *)
-  let buf = Cstruct.create 16 in
-  ro ~file_offset:Optint.Int63.zero [ buf ];
-  let byte_order =
-    match Cstruct.to_string ~off:0 ~len:2 buf with
-    | "II" -> Endian.Little
-    | "MM" -> Endian.Big
-    | e -> failwith ("Unknown endianness of TIFF file " ^ e)
-  in
-  let magic = Endian.uint16 ~offset:2 byte_order buf in
-  let kind, offset =
-    match magic with
-    | 42 ->
-        (Ifd.Tiff, Endian.uint32 ~offset:4 byte_order buf |> Optint.Int63.of_int32)
-    | 43 ->
-        ( Ifd.Bigtiff,
-          Endian.uint64 ~offset:8 byte_order buf |> Optint.Int63.of_int64 )
-    | i -> failwith ("Unknown magic number: " ^ string_of_int i)
-  in
-  { byte_order; kind; offset }
+} *)
+type header = Ifd.header
 
 type ('repr, 'kind) kind =
   | Uint8 : (int, Bigarray.int8_unsigned_elt) kind
@@ -44,7 +23,7 @@ type ('repr, 'kind) t = {
 let ifd t = t.ifd
 
 let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
-  let header = header f in
+  let header = Ifd.header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { data_type; header; ifd }
 
