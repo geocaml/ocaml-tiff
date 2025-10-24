@@ -1,7 +1,7 @@
 external preadv : Unix.file_descr -> Cstruct.t array -> Optint.Int63.t -> int
   = "caml_tiff_preadv"
 
-let of_fd (fd : Unix.file_descr) : Tiff.File.ro =
+let of_fd (fd : Unix.file_descr) : File.ro =
  fun ~file_offset bufs ->
   let _ : int = preadv fd (Array.of_list bufs) file_offset in
   ()

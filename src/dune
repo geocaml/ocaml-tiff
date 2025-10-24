@@ -1,4 +1,23 @@
 (library
- (name tiff)
- (public_name tiff)
+ (name file)
+ (modules file)
+ (public_name tiff.file)
  (libraries fmt cstruct optint))
+
+(library
+ (name endian)
+ (modules endian)
+ (public_name tiff.endian)
+ (libraries cstruct))
+
+(library
+ (name ifd)
+ (modules ifd)
+ (public_name tiff.ifd)
+ (libraries endian file optint cstruct fmt))
+
+(library
+ (name tiff)
+ (modules tiff lzw)
+ (public_name tiff)
+ (libraries file endian ifd cstruct optint))
