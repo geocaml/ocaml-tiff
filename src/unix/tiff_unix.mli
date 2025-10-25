@@ -1,3 +1,5 @@
+(* Interface for Unix-specific utilities to read TIFF files *)
+
 val of_fd : Unix.file_descr -> Tiff.File.ro
 (** Creates a readable file abstraction from an {e open} file descriptor.
 

@@ -1,3 +1,5 @@
+(* Parses TIFF headers, IFDs (Image File Directories), interprets TIFF tags, manages reading image metadata and pixel data, and handles dispatching decompression logic depending on tag values *)
+
 module File = struct
   type ro = file_offset:Optint.Int63.t -> Cstruct.t list -> unit
   (** Read-only access to a file that supports reading at a particular offset.

@@ -1,3 +1,5 @@
+// C stubs for the OCaml TIFF decoder for performing low-level systems operations
+
 /*
 
 From Eio.

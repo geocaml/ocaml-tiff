@@ -1,3 +1,5 @@
+(* Implements the LZW decompression algorithm used for TIFF image strips *)
+
 (* In TIFF and GIF LZW chars are at most 12 bits *)
 type lzwstring = string
 

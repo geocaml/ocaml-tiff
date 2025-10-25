@@ -1,3 +1,5 @@
+(* Unit tests for GeoTIFF file parsing and geospatial metadata extraction *)
+
 open OUnit2
 
 let cmp_float_list a b =

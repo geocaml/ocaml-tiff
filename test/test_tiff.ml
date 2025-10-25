@@ -1,3 +1,5 @@
+(* End-to-end validation of TIFF file reading and decoding, checking both header interpretation and pixel data output *)
+
 open OUnit2
 
 type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
