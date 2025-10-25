@@ -4,7 +4,7 @@ type header = {
   offset : Optint.Int63.t;
 }
 
-and tiff_kind = Endian.tiff_kind
+and tiff_kind = Tiff | Bigtiff
 and endianness = Endian.endianness
 
 let header ro =
@@ -21,10 +21,9 @@ let header ro =
   let kind, offset =
     match magic with
     | 42 ->
-        ( Endian.Tiff,
-          Endian.uint32 ~offset:4 byte_order buf |> Optint.Int63.of_int32 )
+        (Tiff, Endian.uint32 ~offset:4 byte_order buf |> Optint.Int63.of_int32)
     | 43 ->
-        ( Endian.Bigtiff,
+        ( Bigtiff,
           Endian.uint64 ~offset:8 byte_order buf |> Optint.Int63.of_int64 )
     | i -> failwith ("Unknown magic number: " ^ string_of_int i)
   in
@@ -339,8 +338,8 @@ let is_immediate_raw_big ~count field =
 
 let is_immediate kind (entry : entry) =
   match kind with
-  | Endian.Tiff -> is_immediate_raw ~count:entry.count entry.field
-  | Endian.Bigtiff -> is_immediate_raw_big ~count:entry.count entry.field
+  | Tiff -> is_immediate_raw ~count:entry.count entry.field
+  | Bigtiff -> is_immediate_raw_big ~count:entry.count entry.field
 
 let get_dataset_offsets kind endian entries reader =
   match lookup entries StripOffsets with

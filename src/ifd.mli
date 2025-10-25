@@ -4,7 +4,7 @@ type header = {
   offset : Optint.Int63.t;
 }
 
-and tiff_kind = Endian.tiff_kind
+and tiff_kind = Tiff | Bigtiff
 and endianness = Endian.endianness
 
 val header : (file_offset:Optint.Int63.t -> Cstruct.t list -> unit) -> header

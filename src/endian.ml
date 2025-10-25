@@ -1,5 +1,4 @@
 type endianness = Big | Little
-type tiff_kind = Tiff | Bigtiff
 
 let uint16 ?(offset = 0) endian buf =
   match endian with
