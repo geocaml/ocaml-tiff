@@ -5,7 +5,9 @@
 
 (rule
  (alias runtest)
- (deps ./test_tiff.exe)
+ (deps
+  (source_tree data)
+  ./test_tiff.exe)
  (action
   ; Important for OUnit2 to not use Unix.fork!
   (run ./test_tiff.exe -runner sequential)))
