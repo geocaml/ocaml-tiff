@@ -489,12 +489,12 @@ let test_load_deflate_compressed_tiff backend _ =
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
-
 let suite fs =
   let tests backend =
     [
       "Test DEFLATE compression types" >:: test_deflate_compression_types;
-      "Test load DEFLATE compressed TIFF" >:: test_load_deflate_compressed_tiff backend;
+      "Test load DEFLATE compressed TIFF"
+      >:: test_load_deflate_compressed_tiff backend;
       "Test load simple uniform uncompressed tiff"
       >:: test_load_uniform_tiff backend;
       "Test load data as wrong type"
