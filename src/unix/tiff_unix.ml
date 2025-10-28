@@ -1,4 +1,4 @@
-(* Provides utilities for working with TIFF files using Unix file descriptors *)
+(* Provides utilities for working with TIFF files *)
 
 external preadv : Unix.file_descr -> Cstruct.t array -> Optint.Int63.t -> int
   = "caml_tiff_preadv"

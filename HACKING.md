@@ -6,7 +6,8 @@ The ocaml-tiff library provides a pure OCaml implementation for reading and deco
 
 
 ## TIFF decoding process
-The decoding process begins with reading the TIFF file into a memory buffer, represented as `Cstruct.t`, which holds raw bytes. This buffer is then passed to the main decoding logic in (`tiff.ml`), which begins by parsing the TIFF header to determine byte order (endianness) and file format (Classic TIFF or BigTIFF). The library then navigates through IFDs (Image File Directories), extracting metadata and locating pointers to image data. If compression is detected (like LZW), it may dispatch decompression tasks to the appropriate module (`lzw.ml`). The final output is pixel data structured in a 2D Bigarray, along with extracted metadata stored in memory.
+
+The decoding process begins with reading the TIFF file into a memory buffer, represented as `Cstruct.t`, which holds raw bytes. This buffer is then passed to the main decoding logic in `tiff.ml`, which coordinates the entire decoding workflow. The process begins by calling `ifd.ml` to parse the TIFF header, determine the byte order (handled by `endian.ml`), and detect the file type (Classic TIFF or BigTIFF). The decoder then naigates through the Image File Directories (IFDs) to extract metadata, compression details, and offsets to image data. Depending on the compression scheme (LZW or Deflate), the library dispatches decompression to the appropriate module (e.g.,`lzw.ml`) . The decoded pixel data is organised into a 2D Bigarray, while metadata is stored im memory.
 
 ## Current state of the codebase
 
