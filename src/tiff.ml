@@ -142,6 +142,10 @@ module Data = struct
               let uncompressed_buffer = Cstruct.create expected_size in
               Lzw.decode raw_strip_buffer uncompressed_buffer;
               uncompressed_buffer
+          | false, DEFLATE | false, ADOBE_DEFLATE ->
+              let uncompressed_buffer = Cstruct.create expected_size in
+              Deflate.decode raw_strip_buffer uncompressed_buffer;
+              uncompressed_buffer
           | _ -> failwith "Unsupported compression"
         in
 
@@ -235,4 +239,5 @@ let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
 
 module Private = struct
   module Lzw = Lzw
+  module Deflate = Deflate
 end

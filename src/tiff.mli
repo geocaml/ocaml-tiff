@@ -50,4 +50,5 @@ val data :
 
 module Private : sig
   module Lzw = Lzw
+  module Deflate = Deflate
 end

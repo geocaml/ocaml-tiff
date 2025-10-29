@@ -2,4 +2,5 @@
  (name tiff)
  (modules tiff lzw file endian ifd)
  (public_name tiff)
- (libraries fmt cstruct optint))
+ (libraries fmt cstruct optint decompress.zl bigstringaf)
+ (modules tiff lzw deflate))
