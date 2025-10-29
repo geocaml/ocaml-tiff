@@ -28,7 +28,8 @@ let decode input output_buffer =
     else
       let to_read = min remaining (Bigstringaf.length buf) in
       (* Blit directly from input_bigstring to buf using offsets - no sub needed *)
-      Bigstringaf.blit input_bigstring ~src_off:!input_pos buf ~dst_off:0 ~len:to_read;
+      Bigstringaf.blit input_bigstring ~src_off:!input_pos buf ~dst_off:0
+        ~len:to_read;
       input_pos := !input_pos + to_read;
       to_read
   in
@@ -37,7 +38,8 @@ let decode input output_buffer =
     let to_write = min len (output_len - !output_pos) in
     if to_write > 0 then (
       (* Blit directly from buf to output_bigstring using offsets - no sub needed *)
-      Bigstringaf.blit buf ~src_off:0 output_bigstring ~dst_off:!output_pos ~len:to_write;
+      Bigstringaf.blit buf ~src_off:0 output_bigstring ~dst_off:!output_pos
+        ~len:to_write;
       output_pos := !output_pos + to_write)
   in
 
