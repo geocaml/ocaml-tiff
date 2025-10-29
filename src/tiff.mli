@@ -1,3 +1,5 @@
+(* Declares the types and exposed functions used for interaction with the TIFF decoding API *)
+
 (** {1 TIFF}
 
     This library provides functions for accessing TIFF files. A TIFF file is a

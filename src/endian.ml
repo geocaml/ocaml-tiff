@@ -1,3 +1,5 @@
+(* TIFF file data is interpreted according to its specified byte order *)
+
 type endianness = Big | Little
 
 let uint16 ?(offset = 0) endian buf =

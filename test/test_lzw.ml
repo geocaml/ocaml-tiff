@@ -1,3 +1,5 @@
+(* Tests the correctness of the LZW decompression algorithm with pre-compressed test data *)
+
 open OUnit2
 
 let test_get_bits_basic _ =

@@ -1,3 +1,5 @@
+(* Core TIFF decoder module. Handles image data extraction, decompression and window-based access using metadata from the IFD *)
+
 module File = File
 module Endian = Endian
 module Ifd = Ifd

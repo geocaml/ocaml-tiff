@@ -1,3 +1,5 @@
+(* Parses and interprets TIFF Image File Directory (IFD) metadata *)
+
 type header = {
   kind : tiff_kind;
   byte_order : endianness;
