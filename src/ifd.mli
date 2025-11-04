@@ -186,6 +186,10 @@ module GeoKeys : sig
   val model_type : t -> model_type
   val raster_type : t -> raster_type
   val angular_units : t -> angular_units
+
+  val projected_crs : t -> int
+  (** The Projected CRS of the TIFF file *)
+
   val geo_citation : ifd -> t -> string
   val semi_major_axis : ifd -> t -> float
   val inv_flattening : ifd -> t -> float

@@ -522,6 +522,7 @@ module GeoKeys = struct
     | GeogAngularUnitsGeoKey
     | GeogSemiMajorAxisGeoKey
     | GeogInvFlatteningGeoKey
+    | ProjectedCRS
     | Unknown of int
 
   let pp_key ppf = function
@@ -533,6 +534,7 @@ module GeoKeys = struct
     | GeogAngularUnitsGeoKey -> Fmt.string ppf "geog-angular-units"
     | GeogSemiMajorAxisGeoKey -> Fmt.string ppf "geog-semi-major-axis"
     | GeogInvFlatteningGeoKey -> Fmt.string ppf "geog-inv-flattening"
+    | ProjectedCRS -> Fmt.string ppf "projected-crs"
 
   let key_of_id = function
     | 1024 -> GTModelTypeGeoKey
@@ -542,6 +544,7 @@ module GeoKeys = struct
     | 2054 -> GeogAngularUnitsGeoKey
     | 2057 -> GeogSemiMajorAxisGeoKey
     | 2059 -> GeogInvFlatteningGeoKey
+    | 3072 -> ProjectedCRS
     | i -> Unknown i
 
   type model_type = Projected | Geographic | Geocentric | Other of int
@@ -653,6 +656,10 @@ module GeoKeys = struct
   let raster_type e =
     let key = lookup_key_exn e.geo_entries GTRasterTypeGeoKey in
     key.offset |> Int64.to_int |> raster_type_of_int
+
+  let projected_crs e =
+    let entry = lookup_key_exn e.geo_entries ProjectedCRS in
+    Int64.to_int entry.offset
 
   let geo_citation t e =
     let key = lookup_key_exn e.geo_entries GeogCitationGeoKey in
