@@ -1,5 +1,15 @@
 (* Core TIFF decoder module. Handles image data extraction, decompression and window-based access using metadata from the IFD *)
 
+(* Strip cache design (planned implementation)
+The decoder can optionally maintain a cache of decompressed strips. Each strip, once decompressed would be stored in memory and reused when accessed again. This avoids redundant decompression operations.
+
+Cache design:
+- Data structure: Hashtbl (int -> Cstruct.t)
+- Key: strip index
+- Value: decompressed strip buffer 
+- Eviction: none, memory freed by garbage collector or manual reset
+- Implementation status: only described as comments here *)
+
 module File = File
 module Endian = Endian
 module Ifd = Ifd
@@ -14,6 +24,9 @@ type ('repr, 'kind) kind =
   | Int32 : (int32, Bigarray.int32_elt) kind
   | Float32 : (float, Bigarray.float32_elt) kind
   | Float64 : (float, Bigarray.float64_elt) kind
+
+(* In the caching implementation, this record would include an optional strip cache,
+  mutable strip_cache : (int, Cstruct.t) Hashtbl.t option; *)
 
 type ('repr, 'kind) t = {
   data_type : ('repr, 'kind) kind;
@@ -60,6 +73,16 @@ module Data = struct
     Int64.float_of_bits int_value
 
   let ceil a b = (a + b - 1) / b
+
+  (* Main image data reader - this function performs:
+    1. Strip iteration
+    2. Decompression per strip (LZW, Deflate) 
+    3. Writing pixel values into a Bigarray
+    A cache integration would include:
+    - Looking up each strip index in a Hashtbl before decompressing
+    - If found, reusing the decompressed buffer
+    - If not found, decompressing and inserting it into the cache
+    Optional clear or reset cache when memory must be freed *)
 
   let read_data t ro plane window arr_type read_value =
     let ifd = t.ifd in
@@ -109,6 +132,7 @@ module Data = struct
 
       (* We iterate through every strip *)
       for strip = first_strip to last_strip - 1 do
+        (* Iterate through each strip to read/decompress/cache it *)
         let raw_strip_length = strip_bytecounts.(strip)
         and raw_strip_offset = strip_offsets.(strip) in
         let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
@@ -129,6 +153,9 @@ module Data = struct
         let raw_strip_buffer = Cstruct.create strip_length in
         let strip_offset = Optint.Int63.of_int raw_strip_offset in
 
+        (* Step 1: Check if the strip is already in the cache. 
+        If cached decompressed strip found -> reuse it *)
+        (* Step 2: If strip not cached - decompress *)
         (* Fill the strip buffer *)
         if not sparse then ro ~file_offset:strip_offset [ raw_strip_buffer ];
 
@@ -148,6 +175,7 @@ module Data = struct
               uncompressed_buffer
           | _ -> failwith "Unsupported compression"
         in
+        (* Step 3: Once decompressed, this strip could be inserted into the cache here *)
 
         (* Iterating through the rows of the current strip *)
         for inner_row = 0 to rows_in_strip - 1 do
