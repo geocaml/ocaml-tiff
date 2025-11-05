@@ -168,7 +168,9 @@ module Data = struct
                   read_value strip_buffer (index * bytes_per_pixel)
                     tiff_endianness
                 in
-                Genarray.set arr [| y_offset - window.yoff; !x_offset |] value
+                Genarray.set arr
+                  [| y_offset - window.yoff; !x_offset - window.xoff |]
+                  value
               else
                 for channel = 0 to samples_per_pixel - 1 do
                   let byte_off =
@@ -180,7 +182,11 @@ module Data = struct
                       ((index * bytes_per_pixel) + byte_off)
                       tiff_endianness
                   in
-                  Genarray.set arr [| y_offset; !x_offset; channel |] value
+                  Genarray.set arr
+                    [|
+                      y_offset - window.yoff; !x_offset - window.xoff; channel;
+                    |]
+                    value
                 done;
               x_offset := !x_offset + 1
             done
@@ -194,10 +200,25 @@ module Data = struct
            "strip_offsets and strip_bytecounts are of different lengths")
 end
 
+let pp_window fmt window =
+  Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff window.yoff
+    window.xsize window.ysize
+
 (* have to specify all 4 or else it defaults to whole file*)
 let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
     (repr, kind) Data.t =
   let ifd = ifd t in
+  (* Check the window, if any, makes sense for the TIFF file *)
+  let () =
+    match window with
+    | None -> ()
+    | Some window ->
+        let w = Ifd.width ifd and h = Ifd.height ifd in
+        let win_w = window.xoff + window.xsize in
+        let win_h = window.yoff + window.ysize in
+        if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
+          Fmt.invalid_arg "Window %a for data (%i, %i)" pp_window window w h
+  in
   let planar_configuration = Ifd.planar_configuration ifd in
   let plane =
     match (planar_configuration, plane) with
