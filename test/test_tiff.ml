@@ -1,3 +1,5 @@
+(* End-to-end validation of TIFF file reading and decoding, checking both header interpretation and pixel data output *)
+
 open OUnit2
 
 type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
@@ -447,9 +449,54 @@ let test_gdal_sparse_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) mod 2 * width) res
   done
 
+let test_deflate_compression_types _ =
+  (* Test that DEFLATE compression types exist *)
+  assert_equal ~msg:"DEFLATE compression type" Tiff.Ifd.DEFLATE Tiff.Ifd.DEFLATE;
+  assert_equal ~msg:"ADOBE_DEFLATE compression type" Tiff.Ifd.ADOBE_DEFLATE
+    Tiff.Ifd.ADOBE_DEFLATE;
+
+  (* Test that compression type strings are correct *)
+  assert_equal ~msg:"DEFLATE string" "DEFLATE"
+    (Tiff.Ifd.compression_to_string Tiff.Ifd.DEFLATE);
+  assert_equal ~msg:"ADOBE_DEFLATE string" "ADOBE_DEFLATE"
+    (Tiff.Ifd.compression_to_string Tiff.Ifd.ADOBE_DEFLATE);
+
+  (* Test that Deflate module is accessible *)
+  let _ = Tiff.Private.Deflate.decode in
+  ()
+
+let test_load_deflate_compressed_tiff backend _ =
+  let data = "./data/test_deflate.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
+  assert_equal ~msg:"Compression" Tiff.Ifd.ADOBE_DEFLATE
+    (Tiff.Ifd.compression header);
+  assert_equal_int ~msg:"Samples per pixel" 1
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
+  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
+    (Tiff.Ifd.sample_format header);
+  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
+    (Tiff.Ifd.predictor header);
+  assert_equal
+    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
+    ~msg:"Planar configuration" Tiff.Ifd.Chunky
+    (Tiff.Ifd.planar_configuration header);
+  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let data = Tiff.data ~window tiff ro in
+  let res = Owl_base_dense_ndarray_generic.sum' data in
+  (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
+  assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
+
 let suite fs =
   let tests backend =
     [
+      "Test DEFLATE compression types" >:: test_deflate_compression_types;
+      "Test load DEFLATE compressed TIFF"
+      >:: test_load_deflate_compressed_tiff backend;
       "Test load simple uniform uncompressed tiff"
       >:: test_load_uniform_tiff backend;
       "Test load data as wrong type"
