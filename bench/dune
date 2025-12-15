@@ -9,7 +9,7 @@
  (package tiff)
  (deps
   (source_tree corpus)
-  (source_tree ../testdata)
+  (source_tree ../test/data)
   (:bench bench.exe))
  (action
   (run %{bench})))

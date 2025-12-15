@@ -5,10 +5,10 @@ type test_case = E : ('a, 'b) Tiff.kind * string -> test_case
 
 let tests =
   [
-    E (Tiff.Uint8, "../testdata/uniform_uint8_lzw.tiff");
-    E (Tiff.Uint8, "../testdata/striped_uint8_uncompressed.tiff");
-    E (Tiff.Uint16, "../testdata/uniform_uint16_lzw.tiff");
-    E (Tiff.Float32, "../testdata/uniform_float32_lzw.tiff");
+    E (Tiff.Uint8, "../test/data/uniform_uint8_lzw.tiff");
+    E (Tiff.Uint8, "../test/data/striped_uint8_uncompressed.tiff");
+    E (Tiff.Uint16, "../test/data/uniform_uint16_lzw.tiff");
+    E (Tiff.Float32, "../test/data/uniform_float32_lzw.tiff");
   ]
 
 let get_dims (E (kind, file)) =
