@@ -2,28 +2,31 @@ open Bechamel
 open Toolkit
 
 type test_case = E : ('a, 'b) Tiff.kind * string -> test_case
+type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
+
+let with_ro backend path fn =
+  match backend with
+  | Eio fs -> Tiff_eio.with_open_in fs path fn
+  | Unix -> Tiff_unix.with_open_in path fn
 
 let tests =
   [
-    E (Tiff.Uint8, "../test/data/chief_mountain.tiff");
     E (Tiff.Uint8, "../test/data/uniform_uint8_lzw.tiff");
     E (Tiff.Uint8, "../test/data/striped_uint8_uncompressed.tiff");
     E (Tiff.Uint16, "../test/data/uniform_uint16_lzw.tiff");
     E (Tiff.Float32, "../test/data/uniform_float32_lzw.tiff");
-    E (Tiff.Uint8, "../test/data/english_kitchen.tiff");
-    E (Tiff.Uint8, "../test/data/ammunition.tiff");
   ]
 
-let get_dims fs (E (kind, file)) =
+let get_dims backend (E (kind, file)) =
   Staged.stage @@ fun () ->
-  Tiff_eio.with_open_in fs file @@ fun ro ->
+  with_ro backend file @@ fun ro ->
   let tiff = Tiff.from_file kind ro in
   let data = Tiff.data tiff ro in
   Sys.opaque_identity (ignore data)
 
-let get_ifd fs (E (kind, file)) =
+let get_ifd backend (E (kind, file)) =
   Staged.stage @@ fun () ->
-  Tiff_eio.with_open_in fs file @@ fun ro ->
+  with_ro backend file @@ fun ro ->
   let tiff = Tiff.from_file kind ro in
   let ifd = Tiff.ifd tiff in
   let compression = Tiff.Ifd.compression ifd in
@@ -50,12 +53,12 @@ let lzw (name, buf, expected_size) =
   let output = Cstruct.create expected_size in
   Tiff.Private.Lzw.decode buf output
 
-let tests fn fs =
+let tests fn backend =
   List.map
     (fun (E (_, file) as e) ->
       Test.make
         ~name:(Filename.basename file |> Filename.chop_extension)
-        (fn fs e))
+        (fn backend e))
     tests
 
 let benchmark fs () =
@@ -68,10 +71,20 @@ let benchmark fs () =
   let cfg =
     Benchmark.cfg ~limit:3000 ~quota:(Time.second 2.5) ~kde:(Some 1000) ()
   in
-  let read = Test.make_grouped ~name:"read" (tests get_dims fs) in
-  let ifd = Test.make_grouped ~name:"ifd" (tests get_ifd fs) in
+
+  let backends = [ ("Unix", Unix); ("Eio", Eio fs) ] in
+
+  let backend_tests =
+    List.map
+      (fun (name, backend) ->
+        let read = Test.make_grouped ~name:"read" (tests get_dims backend) in
+        let ifd = Test.make_grouped ~name:"ifd" (tests get_ifd backend) in
+        Test.make_grouped ~name:("tiff_" ^ name) [ read; ifd ])
+      backends
+  in
   let lzw = Test.make_grouped ~name:"lzw" (List.map lzw lzw_bufs) in
-  let test = Test.make_grouped ~name:"tiff" [ lzw; ifd; read ] in
+  let test = Test.make_grouped ~name:"tiff" (backend_tests @ [ lzw ]) in
+
   let raw_results = Benchmark.all cfg instances test in
   let results =
     List.map (fun instance -> Analyze.all ols instance raw_results) instances
