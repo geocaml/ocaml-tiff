@@ -1,4 +1,4 @@
 (library
  (name tiff_eio)
  (public_name tiff.eio)
- (libraries eio_main tiff))
+ (libraries eio tiff))
