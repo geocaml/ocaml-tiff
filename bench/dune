@@ -2,7 +2,7 @@
  (name bench)
  (enabled_if
   (>= %{ocaml_version} "5.3.0"))
- (libraries notty.unix tiff.unix bechamel bechamel-notty))
+ (libraries notty.unix tiff.unix bechamel bechamel-notty tiff.eio eio_main))
 
 (rule
  (alias runbench)
