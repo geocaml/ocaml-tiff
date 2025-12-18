@@ -4,10 +4,12 @@ open Toolkit
 type test_case = E : ('a, 'b) Tiff.kind * string -> test_case
 type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
 
-let with_ro backend path fn =
+let with_ro backend file fn =
   match backend with
-  | Eio fs -> Tiff_eio.with_open_in fs path fn
-  | Unix -> Tiff_unix.with_open_in path fn
+  | Eio fs ->
+      let path = Eio.Path.(fs / file) in
+      Tiff_eio.with_open_in path fn
+  | Unix -> Tiff_unix.with_open_in file fn
 
 let tests =
   [
