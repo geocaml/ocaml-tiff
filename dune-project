@@ -21,4 +21,4 @@
    (mdx :with-test)
    (ounit2 :with-test)
    (eio_main :with-test)
-   (owl-base :with-test)))
+   (nx (and (>= 1.0.0~alpha2) :with-test))))

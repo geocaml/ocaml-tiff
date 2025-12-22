@@ -16,7 +16,7 @@ depends: [
   "mdx" {with-test}
   "ounit2" {with-test}
   "eio_main" {with-test}
-  "owl-base" {with-test}
+  "nx" {>= "1.0.0~alpha2" & with-test}
   "odoc" {with-doc}
 ]
 build: [
