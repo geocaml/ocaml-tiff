@@ -11,9 +11,21 @@ type ('repr, 'kind) kind =
   | Int8 : (int, Bigarray.int8_signed_elt) kind
   | Uint16 : (int, Bigarray.int16_unsigned_elt) kind
   | Int16 : (int, Bigarray.int16_signed_elt) kind
+  | Uint32 : (int32, Bigarray.int32_elt) kind
   | Int32 : (int32, Bigarray.int32_elt) kind
   | Float32 : (float, Bigarray.float32_elt) kind
   | Float64 : (float, Bigarray.float64_elt) kind
+
+let pp_kind (type r k) : (r, k) kind Fmt.t =
+ fun ppf -> function
+  | Uint8 -> Fmt.string ppf "unit8"
+  | Int8 -> Fmt.string ppf "int8"
+  | Uint16 -> Fmt.string ppf "uint16"
+  | Int16 -> Fmt.string ppf "int16"
+  | Int32 -> Fmt.string ppf "int32"
+  | Uint32 -> Fmt.string ppf "uint32"
+  | Float32 -> Fmt.string ppf "float32"
+  | Float64 -> Fmt.string ppf "float64"
 
 type ('repr, 'kind) t = {
   data_type : ('repr, 'kind) kind;
@@ -47,6 +59,9 @@ module Data = struct
 
   let read_int16_value buf buf_index tiff_endianness =
     Endian.int16 ~offset:buf_index tiff_endianness buf
+
+  let _read_uint32_value buf buf_index tiff_endianness =
+    Endian.uint32 ~offset:buf_index tiff_endianness buf
 
   let read_int32_value buf buf_index tiff_endianness =
     Endian.uint32 ~offset:buf_index tiff_endianness buf
@@ -250,13 +265,17 @@ let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
   | Int16, SignedInteger, 16 ->
       Data.read_data t f plane window Bigarray.int16_signed
         Data.read_int16_value
+  | Uint32, UnsignedInteger, 32 ->
+      Fmt.invalid_arg "Unsigned 32-bit coming soon..."
   | Int32, SignedInteger, 32 ->
       Data.read_data t f plane window Bigarray.int32 Data.read_int32_value
   | Float32, IEEEFloatingPoint, 32 ->
       Data.read_data t f plane window Bigarray.float32 Data.read_float32_value
   | Float64, IEEEFloatingPoint, 64 ->
       Data.read_data t f plane window Bigarray.float64 Data.read_float64_value
-  | _ -> raise (Invalid_argument "datatype not correct for plane")
+  | typ, fmt, bpp ->
+      Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind
+        typ Ifd.pp_sample_format fmt bpp
 
 module Private = struct
   module Lzw = Lzw

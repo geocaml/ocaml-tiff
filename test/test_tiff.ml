@@ -45,8 +45,9 @@ let test_load_data_as_wrong_type_fails backend _ =
   let tiff = Tiff.from_file Tiff.Float32 ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument "datatype not correct for plane") (fun _ ->
-      Tiff.data ~window tiff ro)
+    (Invalid_argument
+       "datatype not correct for plane: float32, Unsigned Integer, 8 bpp")
+    (fun _ -> Tiff.data ~window tiff ro)
 
 let test_read_single_plane_fails_when_specifying_plane backend _ =
   let data = "./data/uniform.tiff" in
@@ -189,7 +190,7 @@ let test_load_simple_int32_tiff backend _ =
 let test_load_simple_uint32_tiff backend _ =
   let data = "./data/uniform_uint32_lzw.tiff" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Int32 ro in
+  let tiff = Tiff.from_file Tiff.Uint32 ro in
   let header = Tiff.ifd tiff in
   assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
@@ -204,10 +205,11 @@ let test_load_simple_uint32_tiff backend _ =
     ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
     ~msg:"Planar configuration" Tiff.Ifd.Chunky
     (Tiff.Ifd.planar_configuration header);
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
-  assert_raises ~msg:"Can't load uint32"
-    (Invalid_argument "datatype not correct for plane") (fun _ ->
-      Tiff.data ~window tiff ro)
+  assert_raises (Invalid_argument "Unsigned 32-bit coming soon...") (fun () ->
+      let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+      let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
+      let res = Nx.sum (Nx.cast Int32 data) |> Nx.item [] in
+      assert_equal ~printer:Int32.to_string ~msg:"Value sum" Int32.zero res)
 
 let test_load_simple_float32_tiff backend _ =
   let data = "./data/uniform_float32_lzw.tiff" in
