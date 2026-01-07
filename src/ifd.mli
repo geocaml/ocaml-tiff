@@ -66,6 +66,8 @@ type sample_format =
   | Undefined
   | Unknown of int
 
+val pp_sample_format : sample_format Fmt.t
+
 type planar_configuration = Chunky | Planar | Unknown of int
 
 val compression_to_string : compression -> string

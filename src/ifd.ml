@@ -275,6 +275,13 @@ type sample_format =
   | Undefined
   | Unknown of int
 
+let pp_sample_format ppf = function
+  | UnsignedInteger -> Fmt.string ppf "Unsigned Integer"
+  | SignedInteger -> Fmt.string ppf "Signed Integer"
+  | IEEEFloatingPoint -> Fmt.string ppf "IEEEFloatingPoint"
+  | Undefined -> Fmt.string ppf "Undefined"
+  | Unknown n -> Fmt.pf ppf "Unknown %i" n
+
 let sample_format_of_int = function
   | 1 -> UnsignedInteger
   | 2 -> SignedInteger
@@ -460,7 +467,24 @@ let bits_per_sample t =
   else if entry.count = 2L then (
     let buf = Cstruct.create 8 in
     Cstruct.BE.set_uint64 buf 0 entry.offset;
-    [ Cstruct.BE.get_uint16 buf 4; Cstruct.BE.get_uint16 buf 6 ])
+    [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
+  else if entry.count = 3L && t.header.kind = Bigtiff then (
+    let buf = Cstruct.create 8 in
+    Cstruct.BE.set_uint64 buf 0 entry.offset;
+    [
+      Cstruct.BE.get_uint16 buf 2;
+      Cstruct.BE.get_uint16 buf 2;
+      Cstruct.BE.get_uint16 buf 4;
+    ])
+  else if entry.count = 4L && t.header.kind = Bigtiff then (
+    let buf = Cstruct.create 8 in
+    Cstruct.BE.set_uint64 buf 0 entry.offset;
+    [
+      Cstruct.BE.get_uint16 buf 2;
+      Cstruct.BE.get_uint16 buf 2;
+      Cstruct.BE.get_uint16 buf 4;
+      Cstruct.BE.get_uint16 buf 6;
+    ])
   else
     let scales = read_entry_raw entry t.ro in
     List.map (Endian.uint16 t.header.byte_order) scales

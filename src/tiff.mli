@@ -18,6 +18,7 @@ type ('repr, 'kind) kind =
   | Int8 : (int, int8_signed_elt) kind
   | Uint16 : (int, int16_unsigned_elt) kind
   | Int16 : (int, int16_signed_elt) kind
+  | Uint32 : (int32, int32_elt) kind
   | Int32 : (int32, int32_elt) kind
   | Float32 : (float, float32_elt) kind
   | Float64 : (float, float64_elt) kind
