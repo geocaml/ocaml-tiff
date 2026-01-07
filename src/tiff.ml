@@ -3,6 +3,7 @@
 module File = File
 module Endian = Endian
 module Ifd = Ifd
+module Write = Write
 
 type header = Ifd.header
 
