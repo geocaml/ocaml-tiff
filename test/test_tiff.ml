@@ -9,10 +9,33 @@ let assert_equal_int = assert_equal ~printer:Int.to_string
 let with_ro backend path fn =
   match backend with
   | Eio fs ->
-      Eio.Path.(with_open_in (fs / path)) @@ fun r ->
-      let ro = Eio.File.pread_exact r in
-      fn ro
+      let path = Eio.Path.(fs / path) in
+      Tiff_eio.with_open_in path fn
   | Unix -> Tiff_unix.with_open_in path fn
+
+let with_wo backend path fn =
+  match backend with
+  | Eio fs ->
+      let path = Eio.Path.(fs / path) in
+      Tiff_eio.with_open_out path fn
+
+let test_normal_header_roundtrip backend _ =
+  with_ro backend "./data/uniform.tiff" @@ fun r ->
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r2 ->
+  let header1 = Tiff.Ifd.header r in
+  Tiff.Ifd.write_header w header1;
+  let header2 = Tiff.Ifd.header r2 in
+  assert_equal ~msg:"Equal headers" header1 header2
+
+let test_bigtiff_header_roundtrip backend _ =
+  with_ro backend "./data/color.tiff" @@ fun r ->
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r2 ->
+  let header1 = Tiff.Ifd.header r in
+  Tiff.Ifd.write_header w header1;
+  let header2 = Tiff.Ifd.header r2 in
+  assert_equal ~msg:"Equal headers" header1 header2
 
 let test_load_uniform_tiff backend _ =
   let data = "./data/uniform.tiff" in
@@ -519,6 +542,8 @@ let test_load_deflate_compressed_tiff backend _ =
 let suite fs =
   let tests backend =
     [
+      "Test header roundtrip" >:: test_normal_header_roundtrip backend;
+      "Test Bigtiff header roundtrip" >:: test_bigtiff_header_roundtrip backend;
       "Test normal tiff" >:: test_load_normal backend;
       "Test DEFLATE compression types" >:: test_deflate_compression_types;
       "Test load DEFLATE compressed TIFF"

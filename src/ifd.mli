@@ -9,6 +9,9 @@ and endianness = Endian.endianness
 
 val header : (file_offset:Optint.Int63.t -> Cstruct.t list -> unit) -> header
 
+val write_header :
+  (file_offset:Optint.Int63.t -> Cstruct.t list -> unit) -> header -> unit
+
 type t
 (** An image file directory *)
 

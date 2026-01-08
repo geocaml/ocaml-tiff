@@ -31,6 +31,25 @@ let header ro =
   in
   { byte_order; kind; offset }
 
+let write_header wo header =
+  let buf = Cstruct.create 16 in
+
+  Cstruct.blit_from_string
+    (match header.byte_order with Endian.Little -> "II" | Endian.Big -> "MM")
+    0 buf 0 2;
+
+  (match header.kind with
+  | Tiff ->
+      Endian.set_uint16 ~offset:2 header.byte_order buf 42;
+      Endian.set_uint32 ~offset:4 header.byte_order buf
+        (header.offset |> Optint.Int63.to_int32)
+  | Bigtiff ->
+      Endian.set_uint16 ~offset:2 header.byte_order buf 43;
+      Endian.set_uint64 ~offset:8 header.byte_order buf
+        (header.offset |> Optint.Int63.to_int64));
+
+  wo ~file_offset:Optint.Int63.zero [ buf ]
+
 type field =
   | Byte
   | Ascii

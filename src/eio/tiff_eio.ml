@@ -4,3 +4,8 @@ let with_open_in path fn =
   Eio.Path.with_open_in path @@ fun r ->
   let ro = Eio.File.pread_exact r in
   fn ro
+
+let with_open_out path fn =
+  Eio.Path.with_open_out ~create:(`If_missing 0o644) path @@ fun w ->
+  let wo = Eio.File.pwrite_all w in
+  fn wo
