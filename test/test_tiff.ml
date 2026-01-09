@@ -24,18 +24,18 @@ let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r2 ->
-  let header1 = Tiff.Ifd.header r in
+  let header1 = Tiff.Ifd.read_header r in
   Tiff.Ifd.write_header w header1;
-  let header2 = Tiff.Ifd.header r2 in
+  let header2 = Tiff.Ifd.read_header r2 in
   assert_equal ~msg:"Equal headers" header1 header2
 
 let test_bigtiff_header_roundtrip backend _ =
   with_ro backend "./data/color.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r2 ->
-  let header1 = Tiff.Ifd.header r in
+  let header1 = Tiff.Ifd.read_header r in
   Tiff.Ifd.write_header w header1;
-  let header2 = Tiff.Ifd.header r2 in
+  let header2 = Tiff.Ifd.read_header r2 in
   assert_equal ~msg:"Equal headers" header1 header2
 
 let test_load_uniform_tiff backend _ =

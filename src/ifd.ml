@@ -9,7 +9,7 @@ type header = {
 and tiff_kind = Tiff | Bigtiff
 and endianness = Endian.endianness
 
-let header ro =
+let read_header ro =
   (* We may get more bytes than we want, but this is to support Bigtiffs *)
   let buf = Cstruct.create 16 in
   ro ~file_offset:Optint.Int63.zero [ buf ];

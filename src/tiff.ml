@@ -37,7 +37,7 @@ type ('repr, 'kind) t = {
 let ifd t = t.ifd
 
 let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
-  let header = Ifd.header f in
+  let header = Ifd.read_header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { data_type; header; ifd }
 
