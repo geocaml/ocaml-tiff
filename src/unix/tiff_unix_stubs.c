@@ -97,3 +97,20 @@ CAMLprim value caml_tiff_preadv(value v_fd, value v_bufs, value v_offset) {
 
   CAMLreturn(Val_long(r));
 }
+
+CAMLprim value caml_tiff_pwritev(value v_fd, value v_bufs, value v_offset) {
+  CAMLparam2(v_bufs, v_offset);
+  ssize_t r;
+  int n_bufs = Wosize_val(v_bufs);
+  struct iovec *iov;
+  off_t offset = Int63_val(v_offset);
+
+  iov = alloc_iov(v_bufs);
+  caml_enter_blocking_section();
+  r = pwritev(Int_val(v_fd), iov, n_bufs, offset);
+  caml_leave_blocking_section();
+  caml_stat_free_preserving_errno(iov);
+  if (r < 0) uerror("pwritev", Nothing);
+
+  CAMLreturn(Val_long(r));
+}

@@ -18,6 +18,7 @@ let with_wo backend path fn =
   | Eio fs ->
       let path = Eio.Path.(fs / path) in
       Tiff_eio.with_open_out path fn
+  | Unix -> Tiff_unix.with_open_out path fn
 
 let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->
