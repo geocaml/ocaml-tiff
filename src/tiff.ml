@@ -3,7 +3,6 @@
 module File = File
 module Endian = Endian
 module Ifd = Ifd
-module Write = Write
 
 type header = Ifd.header
 
@@ -40,6 +39,10 @@ let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
   let header = Ifd.read_header f in
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { data_type; header; ifd }
+
+let to_file (ifd : Ifd.t) (header : Ifd.header) (w : File.wo) =
+  Ifd.write_header w header;
+  Ifd.write_ifd ~file_offset:header.offset header w ifd
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 

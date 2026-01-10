@@ -38,6 +38,24 @@ let test_bigtiff_header_roundtrip backend _ =
   let header2 = Tiff.Ifd.read_header r2 in
   assert_equal ~msg:"Equal headers" header1 header2
 
+let test_write_entries_roundtrip backend _ =
+  with_ro backend "./data/uniform.tiff" @@ fun r ->
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r2 ->
+  let header = Tiff.Ifd.read_header r in
+  let tiff = Tiff.from_file Tiff.Uint8 r in
+  let ifd = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width ifd in
+  let samples_per_pixel = Tiff.Ifd.samples_per_pixel ifd in
+  let predictor = Tiff.Ifd.predictor ifd in
+  Tiff.to_file ifd header w;
+  let tiff = Tiff.from_file Tiff.Uint8 r2 in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Image widths" width (Tiff.Ifd.width ifd);
+  assert_equal ~msg:"Samples per pixel" samples_per_pixel
+    (Tiff.Ifd.samples_per_pixel ifd);
+  assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd)
+
 let test_load_uniform_tiff backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
@@ -62,26 +80,6 @@ let test_load_uniform_tiff backend _ =
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
-
-let test_load_normal backend _ =
-  let data = "./data/normal.tiff" in
-  with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Uint8 ro in
-  let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.No_compression
-    (Tiff.Ifd.compression header);
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 5; ysize = 5 } in
-  let data = Tiff.data ~window tiff ro in
-  let original_data_sum = Nx.of_bigarray data |> Nx.sum in
-  let () = Tiff.Write.write_tiff "../../../test/data/normal_copy.tiff" data in
-  let data = "../../../test/data/normal_copy.tiff" in
-  let copied_data_sum =
-    Tiff.Write.read_created_tiff data |> Nx.of_bigarray |> Nx.sum
-  in
-  assert_equal ~msg:"Data in copied file is equal" original_data_sum
-    copied_data_sum
 
 let test_load_data_as_wrong_type_fails backend _ =
   let data = "./data/uniform.tiff" in
@@ -543,9 +541,9 @@ let test_load_deflate_compressed_tiff backend _ =
 let suite fs =
   let tests backend =
     [
+      "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
       "Test Bigtiff header roundtrip" >:: test_bigtiff_header_roundtrip backend;
-      "Test normal tiff" >:: test_load_normal backend;
       "Test DEFLATE compression types" >:: test_deflate_compression_types;
       "Test load DEFLATE compressed TIFF"
       >:: test_load_deflate_compressed_tiff backend;

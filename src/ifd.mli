@@ -136,6 +136,9 @@ val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 (** Reads the file offset, header, and reader. Computes the IFD of the tiff file
 *)
 
+val write_ifd : file_offset:Optint.Int63.t -> header -> File.wo -> t -> unit
+(** Writes the ifd entries to the TIFF file*)
+
 val predictor : t -> predictor
 (** The predictor is used in certain compression algorithms to improve
     performance. *)
