@@ -35,6 +35,9 @@ type ('repr, 'kind) t
 val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
+val to_file : Ifd.t -> Ifd.header -> File.wo -> unit
+(** Start writing the header and entries to a TIFF file. *)
+
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 

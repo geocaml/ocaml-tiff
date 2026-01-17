@@ -7,7 +7,8 @@ type header = {
 and tiff_kind = Tiff | Bigtiff
 and endianness = Endian.endianness
 
-val header : (file_offset:Optint.Int63.t -> Cstruct.t list -> unit) -> header
+val read_header : File.ro -> header
+val write_header : File.wo -> header -> unit
 
 type t
 (** An image file directory *)
@@ -134,6 +135,9 @@ val tile_byte_counts : t -> Int64.t list
 val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 (** Reads the file offset, header, and reader. Computes the IFD of the tiff file
 *)
+
+val write_ifd : file_offset:Optint.Int63.t -> header -> File.wo -> t -> unit
+(** Writes the ifd entries to the TIFF file*)
 
 val predictor : t -> predictor
 (** The predictor is used in certain compression algorithms to improve
