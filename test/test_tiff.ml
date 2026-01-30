@@ -56,6 +56,24 @@ let test_write_entries_roundtrip backend _ =
     (Tiff.Ifd.samples_per_pixel ifd);
   assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd)
 
+let test_bigtiff_write_entries_roundtrip backend _ =
+  with_ro backend "./data/color.tiff" @@ fun r ->
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r2 ->
+  let header = Tiff.Ifd.read_header r in
+  let tiff = Tiff.from_file Tiff.Uint8 r in
+  let ifd = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width ifd in
+  let samples_per_pixel = Tiff.Ifd.samples_per_pixel ifd in
+  let predictor = Tiff.Ifd.predictor ifd in
+  Tiff.to_file ifd header w;
+  let tiff = Tiff.from_file Tiff.Uint8 r2 in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Image widths" width (Tiff.Ifd.width ifd);
+  assert_equal ~msg:"Samples per pixel" samples_per_pixel
+    (Tiff.Ifd.samples_per_pixel ifd);
+  assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd)
+
 let test_load_uniform_tiff backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
@@ -542,6 +560,8 @@ let suite fs =
   let tests backend =
     [
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
+      "Test write bigtiff ifd roundtrip"
+      >:: test_bigtiff_write_entries_roundtrip backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
       "Test Bigtiff header roundtrip" >:: test_bigtiff_header_roundtrip backend;
       "Test DEFLATE compression types" >:: test_deflate_compression_types;

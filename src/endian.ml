@@ -37,3 +37,6 @@ let set_uint64 ?(offset = 0) endian buf value =
 
 let double ?(offset = 0) endian buf =
   Int64.float_of_bits (uint64 ~offset endian buf)
+
+let set_double ?(offset = 0) endian buf value =
+  Int64.bits_of_float value |> set_uint64 ~offset endian buf

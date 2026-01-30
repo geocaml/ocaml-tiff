@@ -267,6 +267,7 @@ and entry = {
   field : field;
   count : int64;
   offset : int64; (* Overallocate for normal tiffs but needed for bigtiffs *)
+  is_immediate : bool;
 }
 
 type compression =
@@ -403,24 +404,19 @@ let samples_per_pixel e =
 let add_int optint i = Optint.Int63.(add optint (of_int i))
 
 let is_immediate_raw ~count field =
-  Int64.equal count 1L
-  && match field with Byte | Short | Long -> true | _ -> false
+  let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
+  Int64.compare total_size 4L <= 0
 
 let is_immediate_raw_big ~count field =
-  Int64.equal count 1L
-  && match field with Byte | Short | Long | Long8 -> true | _ -> false
+  let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
+  Int64.compare total_size 8L <= 0
 
-let is_immediate kind (entry : entry) =
-  match kind with
-  | Tiff -> is_immediate_raw ~count:entry.count entry.field
-  | Bigtiff -> is_immediate_raw_big ~count:entry.count entry.field
-
-let get_dataset_offsets kind endian entries reader =
+let get_dataset_offsets endian entries reader =
   match lookup entries StripOffsets with
   | None -> []
   | Some strip_offsets ->
       let strip_count = Int64.to_int strip_offsets.count in
-      if is_immediate kind strip_offsets then [ read_entry strip_offsets ]
+      if strip_offsets.is_immediate then [ read_entry strip_offsets ]
       else
         let strips = ref [] in
         let strip_bytes =
@@ -449,11 +445,11 @@ let get_dataset_offsets kind endian entries reader =
         done;
         List.rev !strips
 
-let get_bytecounts kind endian entries reader =
+let get_bytecounts endian entries reader =
   match lookup entries StripByteCounts with
   | None -> []
   | Some strip_offsets ->
-      if is_immediate kind strip_offsets then [ read_entry strip_offsets ]
+      if strip_offsets.is_immediate then [ read_entry strip_offsets ]
       else
         let strip_count = Int64.to_int strip_offsets.count in
         let strips = ref [] in
@@ -849,8 +845,9 @@ let v ~file_offset header reader =
         let count =
           Endian.uint32 ~offset:(base_offset + 4) endian buf |> Int64.of_int32
         in
+        let is_immediate = is_immediate_raw ~count field in
         let offset =
-          match (is_immediate_raw ~count field, field) with
+          match (is_immediate, field) with
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 8) |> Int64.of_int
           | true, Short ->
@@ -859,7 +856,7 @@ let v ~file_offset header reader =
               Endian.uint32 ~offset:(base_offset + 8) endian buf
               |> Int64.of_int32
         in
-        let entry = { tag; field; count; offset } in
+        let entry = { tag; field; count; offset; is_immediate } in
         entries := entry :: !entries
     | Bigtiff ->
         let base_offset = i * entry_size in
@@ -868,8 +865,9 @@ let v ~file_offset header reader =
           Endian.uint16 ~offset:(base_offset + 2) endian buf |> field_of_int
         in
         let count = Endian.uint64 ~offset:(base_offset + 4) endian buf in
+        let is_immediate = is_immediate_raw_big ~count field in
         let offset =
-          match (is_immediate_raw_big ~count field, field) with
+          match (is_immediate, field) with
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
           | true, Short ->
@@ -880,12 +878,44 @@ let v ~file_offset header reader =
               |> Int64.of_int32
           | _ -> Endian.uint64 ~offset:(base_offset + 12) endian buf
         in
-        entries := { tag; field; count; offset } :: !entries
+        entries := { tag; field; count; offset; is_immediate } :: !entries
   done;
   let entries = List.rev !entries in
-  let data_offsets = get_dataset_offsets header.kind endian entries reader in
-  let data_bytecounts = get_bytecounts header.kind endian entries reader in
+  let data_offsets = get_dataset_offsets endian entries reader in
+  let data_bytecounts = get_bytecounts endian entries reader in
   { entries; data_offsets; data_bytecounts; ro = reader; header }
+
+let write_entry_raw entry endian values writer =
+  let field_size = field_byte_size entry.field in
+  let file_offset = entry.offset |> Optint.Int63.of_int64 in
+  let length = (entry.count |> Int64.to_int) * field_size in
+  let data = Cstruct.create length in
+
+  (match entry.field with
+  | Ascii ->
+      List.map (fun v -> Cstruct.get_char v 0) values
+      |> List.iteri (fun i v -> Cstruct.set_char data (i * field_size) v)
+  | Byte ->
+      List.mapi (fun i v -> Cstruct.get_uint8 v (i * field_size)) values
+      |> List.iteri (fun i v -> Cstruct.set_uint8 data (i * field_size) v)
+  | Short ->
+      List.map (Endian.uint16 endian) values
+      |> List.iteri (fun i v ->
+          Endian.set_uint16 ~offset:(i * field_size) endian data v)
+  | Long ->
+      List.map (Endian.uint32 endian) values
+      |> List.iteri (fun i v ->
+          Endian.set_uint32 ~offset:(i * field_size) endian data v)
+  | Double ->
+      List.map (Endian.double endian) values
+      |> List.iteri (fun i v ->
+          Endian.set_double ~offset:(i * field_size) endian data v)
+  | _ ->
+      List.map (Endian.uint64 endian) values
+      |> List.iteri (fun i v ->
+          Endian.set_uint64 ~offset:(i * field_size) endian data v));
+
+  writer ~file_offset [ data ]
 
 let write_ifd ~file_offset header writer (ifd : t) =
   let endian = header.byte_order in
@@ -912,23 +942,25 @@ let write_ifd ~file_offset header writer (ifd : t) =
       | Tiff -> (
           Endian.set_uint32 ~offset:(base_offset + 4) endian buf
             (entry.count |> Int64.to_int32);
-          match
-            (is_immediate_raw ~count:entry.count entry.field, entry.field)
-          with
+          match (entry.is_immediate, entry.field) with
           | true, Byte ->
               Cstruct.set_uint8 buf (base_offset + 8)
                 (entry.offset |> Int64.to_int)
           | true, Short ->
               Endian.set_uint16 ~offset:(base_offset + 8) endian buf
                 (entry.offset |> Int64.to_int)
+          | false, _ ->
+              Endian.set_uint32 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int32);
+
+              let values = read_entry_raw entry ifd.ro in
+              write_entry_raw entry endian values writer
           | _ ->
               Endian.set_uint32 ~offset:(base_offset + 8) endian buf
                 (entry.offset |> Int64.to_int32))
       | Bigtiff -> (
           Endian.set_uint64 ~offset:(base_offset + 4) endian buf entry.count;
-          match
-            (is_immediate_raw_big ~count:entry.count entry.field, entry.field)
-          with
+          match (entry.is_immediate, entry.field) with
           | true, Byte ->
               Cstruct.set_uint8 buf (base_offset + 12)
                 (entry.offset |> Int64.to_int)
@@ -938,6 +970,11 @@ let write_ifd ~file_offset header writer (ifd : t) =
           | true, Long ->
               Endian.set_uint32 ~offset:(base_offset + 12) endian buf
                 (entry.offset |> Int64.to_int32)
+          | false, _ ->
+              Endian.set_uint64 ~offset:(base_offset + 12) endian buf
+                entry.offset;
+              let values = read_entry_raw entry ifd.ro in
+              write_entry_raw entry endian values writer
           | _ ->
               Endian.set_uint64 ~offset:(base_offset + 12) endian buf
                 entry.offset))

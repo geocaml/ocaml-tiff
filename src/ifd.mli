@@ -226,3 +226,6 @@ val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
     layout of the entry. For example, if the count is [10] and the tag is
     [Double] then you will gexwt back a list of [10] buffers each of length [2].
 *)
+
+val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
+(** Write data of an entry to an offset location *)
