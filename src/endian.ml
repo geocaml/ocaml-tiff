@@ -15,6 +15,9 @@ let set_uint16 ?(offset = 0) endian buf magic =
 let int16 ?(offset = 0) endian buf =
   (uint16 ~offset endian buf lsl (Sys.int_size - 16)) asr (Sys.int_size - 16)
 
+let set_int16 ?(offset = 0) endian buf value =
+  set_uint16 ~offset endian buf (value land ((1 lsl 16) - 1))
+
 let uint32 ?(offset = 0) endian buf =
   match endian with
   | Big -> Cstruct.BE.get_uint32 buf offset
@@ -34,6 +37,12 @@ let set_uint64 ?(offset = 0) endian buf value =
   match endian with
   | Big -> Cstruct.BE.set_uint64 buf offset value
   | Little -> Cstruct.LE.set_uint64 buf offset value
+
+let float32 ?(offset = 0) endian buf =
+  Int32.float_of_bits (uint32 ~offset endian buf)
+
+let set_float32 ?(offset = 0) endian buf value =
+  Int32.bits_of_float value |> set_uint32 ~offset endian buf
 
 let double ?(offset = 0) endian buf =
   Int64.float_of_bits (uint64 ~offset endian buf)

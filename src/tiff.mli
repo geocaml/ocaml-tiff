@@ -52,6 +52,14 @@ val data :
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
 
+val add_data :
+  ?plane:int option ->
+  ?window:window option ->
+  ('repr, 'kind) t ->
+  ('repr, 'kind) Data.t ->
+  File.wo ->
+  unit
+
 module Private : sig
   module Lzw = Lzw
   module Deflate = Deflate

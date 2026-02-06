@@ -48,13 +48,18 @@ let test_write_entries_roundtrip backend _ =
   let width = Tiff.Ifd.width ifd in
   let samples_per_pixel = Tiff.Ifd.samples_per_pixel ifd in
   let predictor = Tiff.Ifd.predictor ifd in
+
+  let data = Tiff.data tiff r in
   Tiff.to_file ifd header w;
+  Tiff.add_data tiff data w;
   let tiff = Tiff.from_file Tiff.Uint8 r2 in
   let ifd = Tiff.ifd tiff in
+  let data2 = Tiff.data tiff r2 in
   assert_equal ~msg:"Image widths" width (Tiff.Ifd.width ifd);
   assert_equal ~msg:"Samples per pixel" samples_per_pixel
     (Tiff.Ifd.samples_per_pixel ifd);
-  assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd)
+  assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd);
+  assert_equal ~msg:"Data" data data2
 
 let test_bigtiff_write_entries_roundtrip backend _ =
   with_ro backend "./data/color.tiff" @@ fun r ->

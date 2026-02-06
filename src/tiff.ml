@@ -78,7 +78,45 @@ module Data = struct
     let int_value = Endian.uint64 ~offset:buf_index tiff_endianness buf in
     Int64.float_of_bits int_value
 
+  let write_uint8_value buf buf_index value _ =
+    Cstruct.set_uint8 buf buf_index value
+
+  let write_int8_value buf buf_index value _ =
+    Cstruct.set_uint8 buf buf_index (value land ((1 lsl 8) - 1))
+
+  let write_uint16_value buf buf_index value tiff_endianness =
+    Endian.set_uint16 ~offset:buf_index tiff_endianness buf value
+
+  let write_int16_value buf buf_index value tiff_endianness =
+    Endian.set_int16 ~offset:buf_index tiff_endianness buf value
+
+  let write_uint32_value buf buf_index value tiff_endianness =
+    Endian.set_uint32 ~offset:buf_index tiff_endianness buf value
+
+  let write_float32_value buf buf_index value tiff_endianness =
+    Endian.set_float32 ~offset:buf_index tiff_endianness buf value
+
+  let write_float64_value buf buf_index value tiff_endianness =
+    Endian.set_double ~offset:buf_index tiff_endianness buf value
+
   let ceil a b = (a + b - 1) / b
+
+  let get_window ifd window =
+    match window with
+    | Some w -> w
+    | None ->
+        let width = Ifd.width ifd in
+        let height = Ifd.height ifd in
+        { xoff = 0; yoff = 0; xsize = width; ysize = height }
+
+  let get_plane ifd plane =
+    let planar_configuration = Ifd.planar_configuration ifd in
+    match (planar_configuration, plane) with
+    | Planar, Some p -> p
+    | Planar, None -> invalid_arg "Must specify plane for data read"
+    | Chunky, None | Chunky, Some 0 -> 0
+    | Chunky, Some _ -> invalid_arg "Can not select plane on single TIFFs"
+    | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
 
   let read_data t ro plane window arr_type read_value =
     let ifd = t.ifd in
@@ -122,6 +160,7 @@ module Data = struct
       in
       (* The strip where our last row will be found *)
       let last_strip = first_strip + ceil window.ysize rows_per_strip in
+
       let row_index =
         ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
       in
@@ -182,6 +221,7 @@ module Data = struct
             while !x_offset <= window.xoff + window.xsize - 1 do
               (* The index into the strip buffer *)
               let index = !x_offset + (inner_row * width) in
+
               if samples_per_pixel = 1 || planar_configuration = Planar then
                 let value =
                   read_value strip_buffer (index * bytes_per_pixel)
@@ -193,7 +233,8 @@ module Data = struct
               else
                 for channel = 0 to samples_per_pixel - 1 do
                   let byte_off =
-                    if channel > 0 then List.nth bits_per_sample channel / 8
+                    if channel > 0 then
+                      (List.nth bits_per_sample channel / 8) + channel - 1
                     else 0
                   in
                   let value =
@@ -210,9 +251,114 @@ module Data = struct
               x_offset := !x_offset + 1
             done
         done;
+
         row_index := !row_index + rows_in_strip
       done;
       arr)
+    else
+      raise
+        (Invalid_argument
+           "strip_offsets and strip_bytecounts are of different lengths")
+
+  let write_data plane window tiff data w write_value =
+    let ifd = ifd tiff in
+    let height = Ifd.height ifd in
+    let width = Ifd.width ifd in
+    let samples_per_pixel = Ifd.samples_per_pixel ifd in
+    let bits_per_sample = Ifd.bits_per_sample ifd in
+    let strip_offsets = Ifd.data_offsets ifd in
+    let strip_bytecounts = Ifd.data_bytecounts ifd in
+    let planar_configuration = Ifd.planar_configuration ifd in
+    let bytes_per_pixel =
+      match planar_configuration with
+      | Planar -> List.length strip_offsets / List.length bits_per_sample
+      | Chunky -> List.length strip_offsets
+      | Unknown _ ->
+          failwith "should not get this far if planar config isn't recognised"
+    in
+    let rows_per_strip = Ifd.rows_per_strip ifd in
+    let endian = tiff.header.byte_order in
+    let strips_per_plane =
+      List.length strip_offsets / List.length bits_per_sample
+    in
+
+    let first_strip =
+      (window.yoff / rows_per_strip) + (strips_per_plane * plane)
+    in
+
+    let row_index =
+      ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
+    in
+
+    let strip_offsets_length = List.length strip_offsets in
+    if strip_offsets_length = List.length strip_bytecounts then
+      (*Iterate through every strip *)
+      List.iteri
+        (fun strip_index strip ->
+          let raw_strip_length = List.nth strip_bytecounts strip_index in
+          let sparse = raw_strip_length = 0 && strip = 0 in
+          (*Calculate the number of rows in the current strip*)
+          let rows_in_strip =
+            (*The last strip in the plane might have fewer rows*)
+            if strip_index = strips_per_plane - 1 then
+              height - (strip_index * rows_per_strip)
+            else rows_per_strip
+          in
+
+          let expected_size = rows_in_strip * width * bytes_per_pixel in
+          let strip_length =
+            match sparse with
+            | false -> raw_strip_length
+            | true -> expected_size
+          in
+          let raw_strip_buffer = Cstruct.create strip_length in
+          let strip_offset = Optint.Int63.of_int strip in
+
+          for inner_row = 0 to rows_in_strip - 1 do
+            let y_offset = inner_row + !row_index in
+            if y_offset >= window.yoff + window.ysize || y_offset < window.yoff
+            then ()
+            else
+              let x_offset = ref window.xoff in
+
+              while !x_offset <= window.xoff + window.xsize - 1 do
+                let index = !x_offset + (inner_row * width) in
+                if samples_per_pixel = 1 then
+                  let value =
+                    Genarray.get data
+                      [| y_offset - window.yoff; !x_offset - window.xoff |]
+                  in
+
+                  write_value raw_strip_buffer
+                    (index * samples_per_pixel)
+                    value endian
+                else
+                  for channel = 0 to samples_per_pixel - 1 do
+                    let byte_off =
+                      if channel > 0 then
+                        (List.nth bits_per_sample channel / 8) + channel - 1
+                      else 0
+                    in
+                    let value =
+                      Genarray.get data
+                        [|
+                          y_offset - window.yoff;
+                          !x_offset - window.xoff;
+                          channel;
+                        |]
+                    in
+                    write_value raw_strip_buffer
+                      ((index * samples_per_pixel) + byte_off)
+                      value endian
+                  done;
+
+                x_offset := !x_offset + 1
+              done
+          done;
+          row_index := !row_index + rows_in_strip;
+
+          w ~file_offset:strip_offset [ raw_strip_buffer ])
+        strip_offsets
     else
       raise
         (Invalid_argument
@@ -280,6 +426,46 @@ let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
   | typ, fmt, bpp ->
       Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind
         typ Ifd.pp_sample_format fmt bpp
+
+let add_data (type repr kind) ?(plane = None) ?(window = None)
+    (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) : _ =
+  let ifd = ifd tiff in
+
+  let () =
+    match window with
+    | None -> ()
+    | Some window ->
+        let w = Ifd.width ifd and h = Ifd.height ifd in
+        let win_w = window.xoff + window.xsize in
+        let win_h = window.yoff + window.ysize in
+        if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
+          Fmt.invalid_arg "Window %a for data (%i %i)" pp_window window w h
+  in
+  let window = Data.get_window ifd window in
+  let plane = Data.get_plane ifd plane in
+  let sample_format = Ifd.sample_format ifd in
+  let bpp = List.nth (Ifd.bits_per_sample ifd) plane in
+
+  match (tiff.data_type, sample_format, bpp) with
+  | Uint8, UnsignedInteger, 8 ->
+      Data.write_data plane window tiff data w Data.write_uint8_value
+  | Int8, SignedInteger, 8 ->
+      Data.write_data plane window tiff data w Data.write_int8_value
+  | Uint16, UnsignedInteger, 16 ->
+      Data.write_data plane window tiff data w Data.write_uint16_value
+  | Int16, SignedInteger, 16 ->
+      Data.write_data plane window tiff data w Data.write_int16_value
+  | Uint32, UnsignedInteger, 32 ->
+      Data.write_data plane window tiff data w Data.write_uint32_value
+  | Int32, SignedInteger, 32 ->
+      Data.write_data plane window tiff data w Data.write_uint32_value
+  | Float32, IEEEFloatingPoint, 32 ->
+      Data.write_data plane window tiff data w Data.write_float32_value
+  | Float64, IEEEFloatingPoint, 64 ->
+      Data.write_data plane window tiff data w Data.write_float64_value
+  | typ, fmt, bpp ->
+      Fmt.invalid_arg "datatype not correct for plane %a %a %i bpp" pp_kind typ
+        Ifd.pp_sample_format fmt bpp
 
 module Private = struct
   module Lzw = Lzw
