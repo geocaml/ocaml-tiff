@@ -39,20 +39,20 @@ let test_bigtiff_header_roundtrip backend _ =
   assert_equal ~msg:"Equal headers" header1 header2
 
 let test_write_entries_roundtrip backend _ =
-  with_ro backend "./data/uniform.tiff" @@ fun r ->
+  with_ro backend "./data/u16bit.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r2 ->
   let header = Tiff.Ifd.read_header r in
-  let tiff = Tiff.from_file Tiff.Uint8 r in
+  let tiff = Tiff.from_file Tiff.Uint16 r in
   let ifd = Tiff.ifd tiff in
   let width = Tiff.Ifd.width ifd in
   let samples_per_pixel = Tiff.Ifd.samples_per_pixel ifd in
   let predictor = Tiff.Ifd.predictor ifd in
 
   let data = Tiff.data tiff r in
-  Tiff.to_file ifd header w;
-  Tiff.add_data tiff data w;
-  let tiff = Tiff.from_file Tiff.Uint8 r2 in
+  Tiff.to_file ifd header tiff data w;
+
+  let tiff = Tiff.from_file Tiff.Uint16 r2 in
   let ifd = Tiff.ifd tiff in
   let data2 = Tiff.data tiff r2 in
   assert_equal ~msg:"Image widths" width (Tiff.Ifd.width ifd);
@@ -71,13 +71,17 @@ let test_bigtiff_write_entries_roundtrip backend _ =
   let width = Tiff.Ifd.width ifd in
   let samples_per_pixel = Tiff.Ifd.samples_per_pixel ifd in
   let predictor = Tiff.Ifd.predictor ifd in
-  Tiff.to_file ifd header w;
+  let data = Tiff.data tiff r in
+
+  Tiff.to_file ifd header tiff data w;
   let tiff = Tiff.from_file Tiff.Uint8 r2 in
   let ifd = Tiff.ifd tiff in
+  let data2 = Tiff.data tiff r2 in
   assert_equal ~msg:"Image widths" width (Tiff.Ifd.width ifd);
   assert_equal ~msg:"Samples per pixel" samples_per_pixel
     (Tiff.Ifd.samples_per_pixel ifd);
-  assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd)
+  assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd);
+  assert_equal ~msg:"Data" data data2
 
 let test_load_uniform_tiff backend _ =
   let data = "./data/uniform.tiff" in

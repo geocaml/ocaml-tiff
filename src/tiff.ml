@@ -40,10 +40,6 @@ let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
   let ifd = Ifd.v ~file_offset:header.offset header f in
   { data_type; header; ifd }
 
-let to_file (ifd : Ifd.t) (header : Ifd.header) (w : File.wo) =
-  Ifd.write_header w header;
-  Ifd.write_ifd ~file_offset:header.offset header w ifd
-
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
@@ -232,10 +228,9 @@ module Data = struct
                   value
               else
                 for channel = 0 to samples_per_pixel - 1 do
+                  (*Calculate offset for each byte in the pixel*)
                   let byte_off =
-                    if channel > 0 then
-                      (List.nth bits_per_sample channel / 8) + channel - 1
-                    else 0
+                    bytes_per_pixel / List.length bits_per_sample * channel
                   in
                   let value =
                     read_value strip_buffer
@@ -271,10 +266,10 @@ module Data = struct
     let planar_configuration = Ifd.planar_configuration ifd in
     let bytes_per_pixel =
       match planar_configuration with
-      | Planar -> List.length strip_offsets / List.length bits_per_sample
-      | Chunky -> List.length strip_offsets
+      | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
+      | Planar -> List.nth bits_per_sample plane / 8
       | Unknown _ ->
-          failwith "should not get this far if planar config isn't recognised"
+          failwith "Should not get this far if planar config isn't recognised."
     in
     let rows_per_strip = Ifd.rows_per_strip ifd in
     let endian = tiff.header.byte_order in
@@ -334,10 +329,9 @@ module Data = struct
                     value endian
                 else
                   for channel = 0 to samples_per_pixel - 1 do
+                    (*Calculate offset for each byte in the pixel*)
                     let byte_off =
-                      if channel > 0 then
-                        (List.nth bits_per_sample channel / 8) + channel - 1
-                      else 0
+                      bytes_per_pixel / List.length bits_per_sample * channel
                     in
                     let value =
                       Genarray.get data
@@ -348,7 +342,7 @@ module Data = struct
                         |]
                     in
                     write_value raw_strip_buffer
-                      ((index * samples_per_pixel) + byte_off)
+                      ((index * bytes_per_pixel) + byte_off)
                       value endian
                   done;
 
@@ -466,6 +460,13 @@ let add_data (type repr kind) ?(plane = None) ?(window = None)
   | typ, fmt, bpp ->
       Fmt.invalid_arg "datatype not correct for plane %a %a %i bpp" pp_kind typ
         Ifd.pp_sample_format fmt bpp
+
+let to_file (type repr kind) ?(plane = None) ?(window = None) (ifd : Ifd.t)
+    (header : Ifd.header) (tiff : (repr, kind) t) (data : (repr, kind) Data.t)
+    (w : File.wo) =
+  Ifd.write_header w header;
+  Ifd.write_ifd ~file_offset:header.offset header w ifd;
+  add_data ~plane ~window tiff data w
 
 module Private = struct
   module Lzw = Lzw
