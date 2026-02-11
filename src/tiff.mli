@@ -35,6 +35,17 @@ type ('repr, 'kind) t
 val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
+val to_file :
+  ?plane:int option ->
+  ?window:window option ->
+  Ifd.t ->
+  Ifd.header ->
+  ('repr, 'kind) t ->
+  ('repr, 'kind) Data.t ->
+  File.wo ->
+  unit
+(** Start writing the header, entries, and data to a TIFF file. *)
+
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the IFD of the TIFF file *)
 
@@ -48,6 +59,14 @@ val data :
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
+
+val add_data :
+  ?plane:int option ->
+  ?window:window option ->
+  ('repr, 'kind) t ->
+  ('repr, 'kind) Data.t ->
+  File.wo ->
+  unit
 
 module Private : sig
   module Lzw = Lzw

@@ -7,7 +7,8 @@ type header = {
 and tiff_kind = Tiff | Bigtiff
 and endianness = Endian.endianness
 
-val header : (file_offset:Optint.Int63.t -> Cstruct.t list -> unit) -> header
+val read_header : File.ro -> header
+val write_header : File.wo -> header -> unit
 
 type t
 (** An image file directory *)
@@ -135,6 +136,9 @@ val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 (** Reads the file offset, header, and reader. Computes the IFD of the tiff file
 *)
 
+val write_ifd : file_offset:Optint.Int63.t -> header -> File.wo -> t -> unit
+(** Writes the ifd entries to the TIFF file*)
+
 val predictor : t -> predictor
 (** The predictor is used in certain compression algorithms to improve
     performance. *)
@@ -222,3 +226,6 @@ val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
     layout of the entry. For example, if the count is [10] and the tag is
     [Double] then you will gexwt back a list of [10] buffers each of length [2].
 *)
+
+val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
+(** Write data of an entry to an offset location *)
