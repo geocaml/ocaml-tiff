@@ -42,7 +42,6 @@ let test_write_entries_roundtrip backend _ =
   with_ro backend "./data/u16bit.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r2 ->
-  let header = Tiff.Ifd.read_header r in
   let tiff = Tiff.from_file Tiff.Uint16 r in
   let ifd = Tiff.ifd tiff in
   let width = Tiff.Ifd.width ifd in
@@ -50,7 +49,7 @@ let test_write_entries_roundtrip backend _ =
   let predictor = Tiff.Ifd.predictor ifd in
 
   let data = Tiff.data tiff r in
-  Tiff.to_file ifd header tiff data w;
+  Tiff.to_file tiff data w;
 
   let tiff = Tiff.from_file Tiff.Uint16 r2 in
   let ifd = Tiff.ifd tiff in
@@ -65,7 +64,6 @@ let test_bigtiff_write_entries_roundtrip backend _ =
   with_ro backend "./data/color.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r2 ->
-  let header = Tiff.Ifd.read_header r in
   let tiff = Tiff.from_file Tiff.Uint8 r in
   let ifd = Tiff.ifd tiff in
   let width = Tiff.Ifd.width ifd in
@@ -73,7 +71,7 @@ let test_bigtiff_write_entries_roundtrip backend _ =
   let predictor = Tiff.Ifd.predictor ifd in
   let data = Tiff.data tiff r in
 
-  Tiff.to_file ifd header tiff data w;
+  Tiff.to_file tiff data w;
   let tiff = Tiff.from_file Tiff.Uint8 r2 in
   let ifd = Tiff.ifd tiff in
   let data2 = Tiff.data tiff r2 in

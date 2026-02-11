@@ -461,11 +461,10 @@ let add_data (type repr kind) ?(plane = None) ?(window = None)
       Fmt.invalid_arg "datatype not correct for plane %a %a %i bpp" pp_kind typ
         Ifd.pp_sample_format fmt bpp
 
-let to_file (type repr kind) ?(plane = None) ?(window = None) (ifd : Ifd.t)
-    (header : Ifd.header) (tiff : (repr, kind) t) (data : (repr, kind) Data.t)
-    (w : File.wo) =
-  Ifd.write_header w header;
-  Ifd.write_ifd ~file_offset:header.offset header w ifd;
+let to_file (type repr kind) ?(plane = None) ?(window = None)
+    (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) =
+  Ifd.write_header w tiff.header;
+  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifd;
   add_data ~plane ~window tiff data w
 
 module Private = struct

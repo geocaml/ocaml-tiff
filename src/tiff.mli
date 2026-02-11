@@ -38,13 +38,15 @@ val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 val to_file :
   ?plane:int option ->
   ?window:window option ->
-  Ifd.t ->
-  Ifd.header ->
   ('repr, 'kind) t ->
   ('repr, 'kind) Data.t ->
   File.wo ->
   unit
-(** Start writing the header, entries, and data to a TIFF file. *)
+(** [to_file t data w] writes the tiff [t] along with the [data] to a file using
+    [w].
+
+    Note that it is up to the user to ensure the metadata in [t] is related and
+    accruate with respect to [data]. *)
 
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the IFD of the TIFF file *)
@@ -59,14 +61,6 @@ val data :
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
-
-val add_data :
-  ?plane:int option ->
-  ?window:window option ->
-  ('repr, 'kind) t ->
-  ('repr, 'kind) Data.t ->
-  File.wo ->
-  unit
 
 module Private : sig
   module Lzw = Lzw
