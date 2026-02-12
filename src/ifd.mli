@@ -114,6 +114,10 @@ val bits_per_sample : t -> int list
 val compression : t -> compression
 (** Compression scheme used in the image data *)
 
+val is_tiled : t -> bool
+(** [is_tiled t] returns [true] if the TIFF uses tiled storage rather than
+    strips. *)
+
 val tile_width : t -> int
 (** If the tiff is tiled, then the width of individual tiles. *)
 
