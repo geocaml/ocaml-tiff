@@ -396,12 +396,7 @@ let read_entry e =
 
 let height e = lookup_exn e.entries ImageLength |> read_entry
 let width e = lookup_exn e.entries ImageWidth |> read_entry
-
-let rows_per_strip e =
-  match lookup e.entries RowsPerStrip with
-  | Some entry -> read_entry entry
-  | None -> height e (* tiled TIFFs don't have RowsPerStrip *)
-
+let rows_per_strip e = lookup_exn e.entries RowsPerStrip |> read_entry
 let is_tiled e = Option.is_some (lookup e.entries TileWidth)
 
 let samples_per_pixel e =
@@ -438,11 +433,8 @@ let read_offset_array endian entry reader =
       | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
       | _ -> Fmt.failwith "Unsupported"
     in
-    let result = ref [] in
-    for i = 0 to count - 1 do
-      result := get_offset ~offset:(i * item_bytes) buf entry.field :: !result
-    done;
-    List.rev !result
+    List.init count (fun i ->
+        get_offset ~offset:(i * item_bytes) buf entry.field)
 
 let get_dataset_offsets endian entries reader =
   match lookup entries StripOffsets with

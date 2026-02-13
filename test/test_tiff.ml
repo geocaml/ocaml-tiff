@@ -563,6 +563,75 @@ let test_load_deflate_compressed_tiff backend _ =
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
+(* Helper to test a tiled TIFF: verifies is_tiled, reads data, checks row sums.
+   Each row y should have all pixels = y+1, so row sum = width * (y+1). *)
+let test_tiled_tiff path ~expected_width ~expected_height ~expected_compression
+    backend _ =
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let header = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width header in
+  let height = Tiff.Ifd.height header in
+  assert_equal_int ~msg:"Image width" expected_width width;
+  assert_equal_int ~msg:"Image height" expected_height height;
+  assert_equal ~msg:"Compression" expected_compression
+    (Tiff.Ifd.compression header);
+  assert_equal ~msg:"Is tiled" true (Tiff.Ifd.is_tiled header);
+  for y = 0 to height - 1 do
+    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
+    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    assert_equal_int ~msg:(Printf.sprintf "Row %d sum" y) ((y + 1) * width) res
+  done
+
+let test_tiled_uint8_uncompressed =
+  test_tiled_tiff "./data/tiled_uint8_uncompressed.tiff" ~expected_width:20
+    ~expected_height:20 ~expected_compression:Tiff.Ifd.No_compression
+
+let test_tiled_uint8_lzw =
+  test_tiled_tiff "./data/tiled_uint8_lzw.tiff" ~expected_width:20
+    ~expected_height:20 ~expected_compression:Tiff.Ifd.LZW
+
+let test_tiled_uint8_deflate =
+  test_tiled_tiff "./data/tiled_uint8_deflate.tiff" ~expected_width:20
+    ~expected_height:20 ~expected_compression:Tiff.Ifd.ADOBE_DEFLATE
+
+let test_tiled_uint8_lzw_predictor backend _ =
+  let path = "./data/tiled_uint8_lzw_predictor.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let header = Tiff.ifd tiff in
+  assert_equal ~msg:"Predictor" Tiff.Ifd.HorizontalDifferencing
+    (Tiff.Ifd.predictor header);
+  assert_equal ~msg:"Is tiled" true (Tiff.Ifd.is_tiled header);
+  let width = Tiff.Ifd.width header in
+  let height = Tiff.Ifd.height header in
+  for y = 0 to height - 1 do
+    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
+    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    assert_equal_int ~msg:(Printf.sprintf "Row %d sum" y) ((y + 1) * width) res
+  done
+
+let test_tiled_uint8_lzw_odd =
+  test_tiled_tiff "./data/tiled_uint8_lzw_odd.tiff" ~expected_width:30
+    ~expected_height:25 ~expected_compression:Tiff.Ifd.LZW
+
+let test_tiled_window backend _ =
+  let path = "./data/tiled_uint8_lzw.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  (* Read a sub-window that spans tile boundaries: rows 5-14, cols 5-14 *)
+  let window = Tiff.{ xoff = 5; yoff = 5; xsize = 10; ysize = 10 } in
+  let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
+  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  (* Rows 5..14 each have pixel value (y+1), window width is 10 *)
+  let expected = ref 0 in
+  for y = 5 to 14 do
+    expected := !expected + ((y + 1) * 10)
+  done;
+  assert_equal_int ~msg:"Windowed tiled sum" !expected res
+
 let suite fs =
   let tests backend =
     [
@@ -600,6 +669,13 @@ let suite fs =
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
+      "Test tiled uint8 uncompressed" >:: test_tiled_uint8_uncompressed backend;
+      "Test tiled uint8 LZW" >:: test_tiled_uint8_lzw backend;
+      "Test tiled uint8 DEFLATE" >:: test_tiled_uint8_deflate backend;
+      "Test tiled uint8 LZW with predictor"
+      >:: test_tiled_uint8_lzw_predictor backend;
+      "Test tiled uint8 LZW odd dimensions" >:: test_tiled_uint8_lzw_odd backend;
+      "Test tiled windowed read" >:: test_tiled_window backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
