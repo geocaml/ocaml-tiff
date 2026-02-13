@@ -114,7 +114,62 @@ module Data = struct
     | Chunky, Some _ -> invalid_arg "Can not select plane on single TIFFs"
     | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
 
-  let read_data t ro plane window arr_type read_value =
+  (* Apply horizontal differencing predictor (TIFF predictor=2).
+     Each row: first pixel is absolute, subsequent pixels are deltas.
+     bytes_per_sample is the size of each sample component.
+     row_bytes is the number of bytes per row.
+     samples_per_pixel is the number of components per pixel. *)
+  let apply_horizontal_differencing buf ~row_bytes ~bytes_per_sample
+      ~samples_per_pixel ~num_rows =
+    for row = 0 to num_rows - 1 do
+      let row_off = row * row_bytes in
+      (* Start from the second pixel (first pixel is absolute) *)
+      for i = samples_per_pixel * bytes_per_sample to row_bytes - 1 do
+        let prev =
+          Cstruct.get_uint8 buf
+            (row_off + i - (samples_per_pixel * bytes_per_sample))
+        in
+        let cur = Cstruct.get_uint8 buf (row_off + i) in
+        Cstruct.set_uint8 buf (row_off + i) ((prev + cur) land 0xff)
+      done
+    done
+
+  let make_set_pixel ~samples_per_pixel ~planar_configuration ~bytes_per_pixel
+      ~bits_per_sample ~tiff_endianness read_value =
+    let bytes_per_channel = bytes_per_pixel / List.length bits_per_sample in
+    fun arr buf buf_idx y x ->
+      if samples_per_pixel = 1 || planar_configuration = Ifd.Planar then
+        Genarray.set arr [| y; x |] (read_value buf buf_idx tiff_endianness)
+      else
+        for channel = 0 to samples_per_pixel - 1 do
+          let byte_off = bytes_per_channel * channel in
+          Genarray.set arr [| y; x; channel |]
+            (read_value buf (buf_idx + byte_off) tiff_endianness)
+        done
+
+  let decompress ~sparse raw_buf expected_size compression =
+    match (sparse, compression) with
+    | true, _ | false, Ifd.No_compression -> raw_buf
+    | false, LZW ->
+        let out = Cstruct.create expected_size in
+        Lzw.decode raw_buf out;
+        out
+    | false, DEFLATE | false, ADOBE_DEFLATE ->
+        let out = Cstruct.create expected_size in
+        Deflate.decode raw_buf out;
+        out
+    | _ -> failwith "Unsupported compression"
+
+  let maybe_apply_predictor buf ~predictor ~bits_per_sample ~row_bytes
+      ~samples_per_pixel ~num_rows =
+    match predictor with
+    | Ifd.HorizontalDifferencing ->
+        let bytes_per_sample = List.hd bits_per_sample / 8 in
+        apply_horizontal_differencing buf ~row_bytes ~bytes_per_sample
+          ~samples_per_pixel ~num_rows
+    | _ -> ()
+
+  let read_stripped_data t ro plane window arr_type read_value =
     let ifd = t.ifd in
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let height = Ifd.height ifd in
@@ -132,6 +187,8 @@ module Data = struct
     let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
     let rows_per_strip = Ifd.rows_per_strip ifd in
     let tiff_endianness = t.header.byte_order in
+    let compression = Ifd.compression ifd in
+    let predictor = Ifd.predictor ifd in
     let strip_offsets_length = Array.length strip_offsets in
     if strip_offsets_length = Array.length strip_bytecounts then (
       let arr =
@@ -140,6 +197,11 @@ module Data = struct
         else
           Genarray.create arr_type c_layout
             [| window.ysize; window.xsize; samples_per_pixel |]
+      in
+
+      let set_pixel =
+        make_set_pixel ~samples_per_pixel ~planar_configuration ~bytes_per_pixel
+          ~bits_per_sample ~tiff_endianness read_value
       in
 
       let strips_per_plane =
@@ -187,21 +249,17 @@ module Data = struct
         if not sparse then ro ~file_offset:strip_offset [ raw_strip_buffer ];
 
         let strip_buffer =
-          match (sparse, Ifd.compression ifd) with
+          match (sparse, compression) with
           | true, _ | false, No_compression ->
               if Cstruct.length raw_strip_buffer < expected_size then
                 failwith "Strip is unexpectedly short";
               raw_strip_buffer
-          | false, LZW ->
-              let uncompressed_buffer = Cstruct.create expected_size in
-              Lzw.decode raw_strip_buffer uncompressed_buffer;
-              uncompressed_buffer
-          | false, DEFLATE | false, ADOBE_DEFLATE ->
-              let uncompressed_buffer = Cstruct.create expected_size in
-              Deflate.decode raw_strip_buffer uncompressed_buffer;
-              uncompressed_buffer
-          | _ -> failwith "Unsupported compression"
+          | _ -> decompress ~sparse raw_strip_buffer expected_size compression
         in
+
+        maybe_apply_predictor strip_buffer ~predictor ~bits_per_sample
+          ~row_bytes:(width * bytes_per_pixel) ~samples_per_pixel
+          ~num_rows:rows_in_strip;
 
         (* Iterating through the rows of the current strip *)
         for inner_row = 0 to rows_in_strip - 1 do
@@ -217,32 +275,8 @@ module Data = struct
             while !x_offset <= window.xoff + window.xsize - 1 do
               (* The index into the strip buffer *)
               let index = !x_offset + (inner_row * width) in
-
-              if samples_per_pixel = 1 || planar_configuration = Planar then
-                let value =
-                  read_value strip_buffer (index * bytes_per_pixel)
-                    tiff_endianness
-                in
-                Genarray.set arr
-                  [| y_offset - window.yoff; !x_offset - window.xoff |]
-                  value
-              else
-                for channel = 0 to samples_per_pixel - 1 do
-                  (*Calculate offset for each byte in the pixel*)
-                  let byte_off =
-                    bytes_per_pixel / List.length bits_per_sample * channel
-                  in
-                  let value =
-                    read_value strip_buffer
-                      ((index * bytes_per_pixel) + byte_off)
-                      tiff_endianness
-                  in
-                  Genarray.set arr
-                    [|
-                      y_offset - window.yoff; !x_offset - window.xoff; channel;
-                    |]
-                    value
-                done;
+              set_pixel arr strip_buffer (index * bytes_per_pixel)
+                (y_offset - window.yoff) (!x_offset - window.xoff);
               x_offset := !x_offset + 1
             done
         done;
@@ -254,6 +288,94 @@ module Data = struct
       raise
         (Invalid_argument
            "strip_offsets and strip_bytecounts are of different lengths")
+
+  let read_tiled_data t ro plane window arr_type read_value =
+    let ifd = t.ifd in
+    let samples_per_pixel = Ifd.samples_per_pixel ifd in
+    let img_width = Ifd.width ifd in
+    let img_height = Ifd.height ifd in
+    let bits_per_sample = Ifd.bits_per_sample ifd in
+    let planar_configuration = Ifd.planar_configuration ifd in
+    let bytes_per_pixel =
+      match planar_configuration with
+      | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
+      | Planar -> List.nth bits_per_sample plane / 8
+      | Unknown _ ->
+          failwith "Should not get this far if planar config isn't recognised."
+    in
+    let tile_w = Ifd.tile_width ifd in
+    let tile_h = Ifd.tile_height ifd in
+    let tiles_across = Ifd.tiles_across ifd in
+    let tiles_down = Ifd.tiles_down ifd in
+    let tile_offsets = Array.of_list (Ifd.data_offsets ifd) in
+    let tile_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
+    let tiff_endianness = t.header.byte_order in
+    let compression = Ifd.compression ifd in
+    let predictor = Ifd.predictor ifd in
+
+    (* For planar TIFFs, each plane has its own set of tiles *)
+    let tiles_per_plane = tiles_across * tiles_down in
+    let tile_base = plane * tiles_per_plane in
+
+    let arr =
+      if samples_per_pixel = 1 || planar_configuration = Planar then
+        Genarray.create arr_type c_layout [| window.ysize; window.xsize |]
+      else
+        Genarray.create arr_type c_layout
+          [| window.ysize; window.xsize; samples_per_pixel |]
+    in
+
+    let set_pixel =
+      make_set_pixel ~samples_per_pixel ~planar_configuration ~bytes_per_pixel
+        ~bits_per_sample ~tiff_endianness read_value
+    in
+
+    (* Which tiles overlap the window? *)
+    let first_tile_col = window.xoff / tile_w in
+    let last_tile_col = (window.xoff + window.xsize - 1) / tile_w in
+    let first_tile_row = window.yoff / tile_h in
+    let last_tile_row = (window.yoff + window.ysize - 1) / tile_h in
+
+    let expected_size = tile_h * tile_w * bytes_per_pixel in
+
+    let decode_tile tile_idx =
+      let raw_tile_length = tile_bytecounts.(tile_idx) in
+      let raw_tile_offset = tile_offsets.(tile_idx) in
+      let sparse = raw_tile_length = 0 && raw_tile_offset = 0 in
+      let tile_length = if sparse then expected_size else raw_tile_length in
+      let raw_buf = Cstruct.create tile_length in
+      if not sparse then
+        ro ~file_offset:(Optint.Int63.of_int raw_tile_offset) [ raw_buf ];
+      let buf = decompress ~sparse raw_buf expected_size compression in
+      maybe_apply_predictor buf ~predictor ~bits_per_sample
+        ~row_bytes:(tile_w * bytes_per_pixel) ~samples_per_pixel
+        ~num_rows:tile_h;
+      buf
+    in
+
+    for tile_row = first_tile_row to last_tile_row do
+      for tile_col = first_tile_col to last_tile_col do
+        let tile_idx = tile_base + (tile_row * tiles_across) + tile_col in
+        let buf = decode_tile tile_idx in
+        let tile_origin_x = tile_col * tile_w in
+        let tile_origin_y = tile_row * tile_h in
+        (* Clamp to actual image dimensions for edge tiles *)
+        let eff_h = min tile_h (img_height - tile_origin_y) in
+        let eff_w = min tile_w (img_width - tile_origin_x) in
+        for row = 0 to eff_h - 1 do
+          let y = tile_origin_y + row in
+          if y >= window.yoff && y < window.yoff + window.ysize then
+            for col = 0 to eff_w - 1 do
+              let x = tile_origin_x + col in
+              if x >= window.xoff && x < window.xoff + window.xsize then
+                set_pixel arr buf
+                  (((row * tile_w) + col) * bytes_per_pixel)
+                  (y - window.yoff) (x - window.xoff)
+            done
+        done
+      done
+    done;
+    arr
 
   let write_data plane window tiff data w write_value =
     let ifd = ifd tiff in
@@ -271,6 +393,7 @@ module Data = struct
       | Unknown _ ->
           failwith "Should not get this far if planar config isn't recognised."
     in
+    let bytes_per_channel = bytes_per_pixel / List.length bits_per_sample in
     let rows_per_strip = Ifd.rows_per_strip ifd in
     let endian = tiff.header.byte_order in
     let strips_per_plane =
@@ -329,10 +452,7 @@ module Data = struct
                     value endian
                 else
                   for channel = 0 to samples_per_pixel - 1 do
-                    (*Calculate offset for each byte in the pixel*)
-                    let byte_off =
-                      bytes_per_pixel / List.length bits_per_sample * channel
-                    in
+                    let byte_off = bytes_per_channel * channel in
                     let value =
                       Genarray.get data
                         [|
@@ -397,26 +517,26 @@ let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
   in
   let sample_format = Ifd.sample_format ifd
   and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
+  let read =
+    if Ifd.is_tiled ifd then Data.read_tiled_data else Data.read_stripped_data
+  in
   match (t.data_type, sample_format, bpp) with
   | Uint8, UnsignedInteger, 8 ->
-      Data.read_data t f plane window Bigarray.int8_unsigned
-        Data.read_uint8_value
+      read t f plane window Bigarray.int8_unsigned Data.read_uint8_value
   | Int8, SignedInteger, 8 ->
-      Data.read_data t f plane window Bigarray.int8_signed Data.read_int8_value
+      read t f plane window Bigarray.int8_signed Data.read_int8_value
   | Uint16, UnsignedInteger, 16 ->
-      Data.read_data t f plane window Bigarray.int16_unsigned
-        Data.read_uint16_value
+      read t f plane window Bigarray.int16_unsigned Data.read_uint16_value
   | Int16, SignedInteger, 16 ->
-      Data.read_data t f plane window Bigarray.int16_signed
-        Data.read_int16_value
+      read t f plane window Bigarray.int16_signed Data.read_int16_value
   | Uint32, UnsignedInteger, 32 ->
       Fmt.invalid_arg "Unsigned 32-bit coming soon..."
   | Int32, SignedInteger, 32 ->
-      Data.read_data t f plane window Bigarray.int32 Data.read_int32_value
+      read t f plane window Bigarray.int32 Data.read_int32_value
   | Float32, IEEEFloatingPoint, 32 ->
-      Data.read_data t f plane window Bigarray.float32 Data.read_float32_value
+      read t f plane window Bigarray.float32 Data.read_float32_value
   | Float64, IEEEFloatingPoint, 64 ->
-      Data.read_data t f plane window Bigarray.float64 Data.read_float64_value
+      read t f plane window Bigarray.float64 Data.read_float64_value
   | typ, fmt, bpp ->
       Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind
         typ Ifd.pp_sample_format fmt bpp
