@@ -49,9 +49,13 @@ val to_file :
     accruate with respect to [data]. *)
 
 val ifd : ('repr, 'kind) t -> Ifd.t
-(** Access the IFD of the TIFF file *)
+(** Access the first IFD of the TIFF file *)
+
+val ifds : ('repr, 'kind) t -> Ifd.t array
+(** Access the all IFDs of the TIFF file *)
 
 val data :
+  ?image_nb:int ->
   ?plane:int ->
   ?window:window ->
   ('repr, 'kind) t ->

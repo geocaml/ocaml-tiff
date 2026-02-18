@@ -136,6 +136,9 @@ val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 (** Reads the file offset, header, and reader. Computes the IFD of the tiff file
 *)
 
+val next_ifd : t -> t option
+(** Parses the next IFD in the tiff file if it exists *)
+
 val write_ifd : file_offset:Optint.Int63.t -> header -> File.wo -> t -> unit
 (** Writes the ifd entries to the TIFF file*)
 

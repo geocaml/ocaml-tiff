@@ -30,15 +30,25 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
 type ('repr, 'kind) t = {
   data_type : ('repr, 'kind) kind;
   header : header;
-  ifd : Ifd.t;
+  ifds : Ifd.t array;
 }
 
-let ifd t = t.ifd
+let ifd t = t.ifds.(0)
+let ifds t = t.ifds
+
+let all_ifds first_ifd =
+  let rec aux acc ifd =
+    match Ifd.next_ifd ifd with
+    | None -> acc
+    | Some ifd' -> aux (ifd' :: acc) ifd'
+  in
+  aux [ first_ifd ] first_ifd |> List.rev |> Array.of_list
 
 let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
   let header = Ifd.read_header f in
-  let ifd = Ifd.v ~file_offset:header.offset header f in
-  { data_type; header; ifd }
+  let first_ifd = Ifd.v ~file_offset:header.offset header f in
+  let ifds = all_ifds first_ifd in
+  { data_type; header; ifds }
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
@@ -114,8 +124,7 @@ module Data = struct
     | Chunky, Some _ -> invalid_arg "Can not select plane on single TIFFs"
     | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
 
-  let read_data t ro plane window arr_type read_value =
-    let ifd = t.ifd in
+  let read_data t ro ifd plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
@@ -364,9 +373,9 @@ let pp_window fmt window =
     window.xsize window.ysize
 
 (* have to specify all 4 or else it defaults to whole file*)
-let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
-    (repr, kind) Data.t =
-  let ifd = ifd t in
+let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
+    (f : File.ro) : (repr, kind) Data.t =
+  let ifd = t.ifds.(image_nb) in
   (* Check the window, if any, makes sense for the TIFF file *)
   let () =
     match window with
@@ -399,24 +408,27 @@ let data (type repr kind) ?plane ?window (t : (repr, kind) t) (f : File.ro) :
   and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
   match (t.data_type, sample_format, bpp) with
   | Uint8, UnsignedInteger, 8 ->
-      Data.read_data t f plane window Bigarray.int8_unsigned
+      Data.read_data t f ifd plane window Bigarray.int8_unsigned
         Data.read_uint8_value
   | Int8, SignedInteger, 8 ->
-      Data.read_data t f plane window Bigarray.int8_signed Data.read_int8_value
+      Data.read_data t f ifd plane window Bigarray.int8_signed
+        Data.read_int8_value
   | Uint16, UnsignedInteger, 16 ->
-      Data.read_data t f plane window Bigarray.int16_unsigned
+      Data.read_data t f ifd plane window Bigarray.int16_unsigned
         Data.read_uint16_value
   | Int16, SignedInteger, 16 ->
-      Data.read_data t f plane window Bigarray.int16_signed
+      Data.read_data t f ifd plane window Bigarray.int16_signed
         Data.read_int16_value
   | Uint32, UnsignedInteger, 32 ->
       Fmt.invalid_arg "Unsigned 32-bit coming soon..."
   | Int32, SignedInteger, 32 ->
-      Data.read_data t f plane window Bigarray.int32 Data.read_int32_value
+      Data.read_data t f ifd plane window Bigarray.int32 Data.read_int32_value
   | Float32, IEEEFloatingPoint, 32 ->
-      Data.read_data t f plane window Bigarray.float32 Data.read_float32_value
+      Data.read_data t f ifd plane window Bigarray.float32
+        Data.read_float32_value
   | Float64, IEEEFloatingPoint, 64 ->
-      Data.read_data t f plane window Bigarray.float64 Data.read_float64_value
+      Data.read_data t f ifd plane window Bigarray.float64
+        Data.read_float64_value
   | typ, fmt, bpp ->
       Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind
         typ Ifd.pp_sample_format fmt bpp
@@ -464,7 +476,7 @@ let add_data (type repr kind) ?(plane = None) ?(window = None)
 let to_file (type repr kind) ?(plane = None) ?(window = None)
     (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) =
   Ifd.write_header w tiff.header;
-  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifd;
+  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w (ifd tiff);
   add_data ~plane ~window tiff data w
 
 module Private = struct

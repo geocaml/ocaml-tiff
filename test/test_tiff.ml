@@ -563,6 +563,24 @@ let test_load_deflate_compressed_tiff backend _ =
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
+let test_load_multiple_uniform_ifds_tiff backend _ =
+  let data = "./data/multiple_uniform_ifds.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint16 ro in
+  let ifds = Tiff.ifds tiff in
+  assert_equal_int ~msg:"Number of IFDs" 13 (Array.length ifds);
+  (* stack all IFDs together, this would fail if their dimensions weren't
+     uniform *)
+  let data =
+    Array.mapi
+      (fun image_nb _ -> Tiff.data ~image_nb tiff ro |> Nx.of_bigarray)
+      ifds
+    |> Array.to_list |> Nx.stack
+  in
+  let shape = Nx.shape data in
+  assert_equal ~printer:Nx.shape_to_string ~msg:"Aggregated data shape"
+    [| 13; 314; 502 |] shape
+
 let suite fs =
   let tests backend =
     [
@@ -600,6 +618,8 @@ let suite fs =
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
+      "Test load tiff with multiple uniform IFDs"
+      >:: test_load_multiple_uniform_ifds_tiff backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

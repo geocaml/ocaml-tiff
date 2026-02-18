@@ -260,6 +260,7 @@ type t = {
   data_bytecounts : int list;
   header : header;
   ro : File.ro;
+  next_ifd : Optint.Int63.t;
 }
 
 and entry = {
@@ -832,7 +833,10 @@ let v ~file_offset header reader =
   in
   let entry_size = if header.kind = Tiff then 12 else 20 in
   let buf = Cstruct.create (entry_size * count) in
-  reader ~file_offset:(incr_offset read) [ buf ];
+  let next_ifd_buf =
+    Cstruct.create (match header.kind with Tiff -> 4 | Bigtiff -> 8)
+  in
+  reader ~file_offset:(incr_offset read) [ buf; next_ifd_buf ];
   let entries = ref [] in
   for i = 0 to count - 1 do
     match header.kind with
@@ -881,9 +885,22 @@ let v ~file_offset header reader =
         entries := { tag; field; count; offset; is_immediate } :: !entries
   done;
   let entries = List.rev !entries in
+  let next_ifd =
+    match header.kind with
+    | Tiff ->
+        Endian.uint32 ~offset:0 header.byte_order next_ifd_buf
+        |> Optint.Int63.of_int32
+    | Bigtiff ->
+        Endian.uint64 ~offset:0 header.byte_order next_ifd_buf
+        |> Optint.Int63.of_int64
+  in
   let data_offsets = get_dataset_offsets endian entries reader in
   let data_bytecounts = get_bytecounts endian entries reader in
-  { entries; data_offsets; data_bytecounts; ro = reader; header }
+  { entries; data_offsets; data_bytecounts; ro = reader; header; next_ifd }
+
+let next_ifd t =
+  if Optint.Int63.(equal zero t.next_ifd) then None
+  else Some (v ~file_offset:t.next_ifd t.header t.ro)
 
 let write_entry_raw entry endian values writer =
   let field_size = field_byte_size entry.field in
