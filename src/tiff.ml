@@ -107,7 +107,21 @@ module Data = struct
 
   let ceil a b = (a + b - 1) / b
 
+  let pp_window fmt window =
+    Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff
+      window.yoff window.xsize window.ysize
+
   let get_window ifd window =
+    let () =
+      match window with
+      | None -> ()
+      | Some window ->
+          let w = Ifd.width ifd and h = Ifd.height ifd in
+          let win_w = window.xoff + window.xsize in
+          let win_h = window.yoff + window.ysize in
+          if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
+            Fmt.invalid_arg "Window %a for data (%i %i)" pp_window window w h
+    in
     match window with
     | Some w -> w
     | None ->
@@ -121,7 +135,7 @@ module Data = struct
     | Planar, Some p -> p
     | Planar, None -> invalid_arg "Must specify plane for data read"
     | Chunky, None | Chunky, Some 0 -> 0
-    | Chunky, Some _ -> invalid_arg "Can not select plane on single TIFFs"
+    | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
     | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
 
   let read_data t ro ifd plane window arr_type read_value =
@@ -368,10 +382,6 @@ module Data = struct
            "strip_offsets and strip_bytecounts are of different lengths")
 end
 
-let pp_window fmt window =
-  Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff window.yoff
-    window.xsize window.ysize
-
 (* have to specify all 4 or else it defaults to whole file*)
 let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
     (f : File.ro) : (repr, kind) Data.t =
@@ -381,33 +391,8 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
       image_nb nb_images (nb_images - 1);
   let ifd = t.ifds.(image_nb) in
   (* Check the window, if any, makes sense for the TIFF file *)
-  let () =
-    match window with
-    | None -> ()
-    | Some window ->
-        let w = Ifd.width ifd and h = Ifd.height ifd in
-        let win_w = window.xoff + window.xsize in
-        let win_h = window.yoff + window.ysize in
-        if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
-          Fmt.invalid_arg "Window %a for data (%i, %i)" pp_window window w h
-  in
-  let planar_configuration = Ifd.planar_configuration ifd in
-  let plane =
-    match (planar_configuration, plane) with
-    | Planar, Some p -> p
-    | Planar, None -> invalid_arg "Must specify plane for data read"
-    | Chunky, None | Chunky, Some 0 -> 0
-    | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
-    | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
-  in
-  let window =
-    match window with
-    | Some w -> w
-    | None ->
-        let width = Ifd.width ifd in
-        let height = Ifd.height ifd in
-        { xoff = 0; yoff = 0; xsize = width; ysize = height }
-  in
+  let window = Data.get_window ifd window in
+  let plane = Data.get_plane ifd plane in
   let sample_format = Ifd.sample_format ifd
   and bpp = List.nth (Ifd.bits_per_sample ifd) plane in
   match (t.data_type, sample_format, bpp) with
@@ -440,17 +425,6 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
 let add_data (type repr kind) ?(plane = None) ?(window = None)
     (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) : _ =
   let ifd = ifd tiff in
-
-  let () =
-    match window with
-    | None -> ()
-    | Some window ->
-        let w = Ifd.width ifd and h = Ifd.height ifd in
-        let win_w = window.xoff + window.xsize in
-        let win_h = window.yoff + window.ysize in
-        if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
-          Fmt.invalid_arg "Window %a for data (%i %i)" pp_window window w h
-  in
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
   let sample_format = Ifd.sample_format ifd in
@@ -482,6 +456,19 @@ let to_file (type repr kind) ?(plane = None) ?(window = None)
   Ifd.write_header w tiff.header;
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w (ifd tiff);
   add_data ~plane ~window tiff data w
+
+let make ?(big_tiff = false) ?(big_endian = false)
+    (data : ('c, 'd, 'e) Bigarray.Genarray.t) (w : File.wo) =
+  let header = Ifd.create_header ~big_tiff ~big_endian w in
+  let height = Bigarray.Genarray.nth_dim data 0 in
+  let width = Bigarray.Genarray.nth_dim data 1 in
+
+  let entries = ref [] in
+  entries := Ifd.write_height height :: !entries;
+
+  entries := Ifd.write_width width :: !entries;
+
+  Ifd.write_raw_ifd ~file_offset:header.offset header w !entries
 
 module Private = struct
   module Lzw = Lzw
