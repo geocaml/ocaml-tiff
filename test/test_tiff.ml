@@ -20,6 +20,30 @@ let with_wo backend path fn =
       Tiff_eio.with_open_out path fn
   | Unix -> Tiff_unix.with_open_out path fn
 
+let test_write_header backend _ =
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_wo backend "./data/tmp2.tiff" @@ fun w2 ->
+  with_ro backend "./data/tmp2.tiff" @@ fun r2 ->
+  let header = Tiff.Ifd.create_header w in
+  Tiff.Ifd.write_header w2 header;
+  let header2 = Tiff.Ifd.read_header r2 in
+  assert_equal ~msg:"Equal headers" header header2
+
+let test_write_data backend _ =
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r ->
+  let data =
+    Nx.init UInt8 [| 2; 2; 3 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  Tiff.make data w;
+  let tiff = Tiff.from_file Tiff.Uint8 r in
+  let ifd = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width ifd in
+  let height = Tiff.Ifd.height ifd in
+  assert_equal ~msg:"Image width" width 2;
+  assert_equal ~msg:"Image Height" height 2
+
 let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
@@ -566,6 +590,8 @@ let test_load_deflate_compressed_tiff backend _ =
 let suite fs =
   let tests backend =
     [
+      "test_write_data" >:: test_write_data backend;
+      "test_write_header" >:: test_write_header backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;

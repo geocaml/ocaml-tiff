@@ -50,6 +50,21 @@ let write_header wo header =
 
   wo ~file_offset:Optint.Int63.zero [ buf ]
 
+let create_header ?(big_tiff = false) ?(big_endian = false) wo =
+  let kind, offset =
+    match big_tiff with
+    | true -> (Bigtiff, Optint.Int63.of_int 16)
+    | false -> (Tiff, Optint.Int63.of_int 8)
+  in
+
+  let byte_order =
+    match big_endian with true -> Endian.Big | false -> Endian.Little
+  in
+
+  let header = { byte_order; kind; offset } in
+  write_header wo header;
+  header
+
 type field =
   | Byte
   | Ascii
@@ -395,7 +410,27 @@ let read_entry e =
         (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e))
 
 let height e = lookup_exn e.entries ImageLength |> read_entry
+
+let write_height height =
+  {
+    tag = ImageLength;
+    field = Long;
+    count = 1L;
+    offset = Int64.of_int height;
+    is_immediate = false;
+  }
+
 let width e = lookup_exn e.entries ImageWidth |> read_entry
+
+let write_width width =
+  {
+    tag = ImageWidth;
+    field = Long;
+    count = 1L;
+    offset = Int64.of_int width;
+    is_immediate = false;
+  }
+
 let rows_per_strip e = lookup_exn e.entries RowsPerStrip |> read_entry
 
 let samples_per_pixel e =
@@ -979,4 +1014,68 @@ let write_ifd ~file_offset header writer (ifd : t) =
               Endian.set_uint64 ~offset:(base_offset + 12) endian buf
                 entry.offset))
     ifd.entries;
+  writer ~file_offset:(incr_offset write) [ buf ]
+
+let write_raw_ifd ~file_offset header writer (entries : entry list) =
+  let endian = header.byte_order in
+  let incr_offset = add_int file_offset in
+  let size_buf = Cstruct.create 8 in
+  let count = List.length entries in
+  let write, _ =
+    match header.kind with
+    | Tiff -> (2, Endian.set_uint16 endian size_buf count)
+    | Bigtiff -> (8, Endian.set_uint64 endian size_buf (count |> Int64.of_int))
+  in
+  writer ~file_offset [ size_buf ];
+
+  let entry_size = if header.kind = Tiff then 12 else 20 in
+  let buf = Cstruct.create (entry_size * count) in
+  List.iteri
+    (fun i entry ->
+      let base_offset = i * entry_size in
+      Endian.set_uint16 ~offset:base_offset endian buf (entry.tag |> tag_to_int);
+      Endian.set_uint16 ~offset:(base_offset + 2) endian buf
+        (entry.field |> field_to_int);
+
+      match header.kind with
+      | Tiff -> (
+          Endian.set_uint32 ~offset:(base_offset + 4) endian buf
+            (entry.count |> Int64.to_int32);
+          match (entry.is_immediate, entry.field) with
+          | true, Byte ->
+              Cstruct.set_uint8 buf (base_offset + 8)
+                (entry.offset |> Int64.to_int)
+          | true, Short ->
+              Endian.set_uint16 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int)
+          (* | false, _ ->
+              Endian.set_uint32 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int32);
+
+              let values = read_entry_raw entry ifd.ro in
+              write_entry_raw entry endian values writer *)
+          | _ ->
+              Endian.set_uint32 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int32))
+      | Bigtiff -> (
+          Endian.set_uint64 ~offset:(base_offset + 4) endian buf entry.count;
+          match (entry.is_immediate, entry.field) with
+          | true, Byte ->
+              Cstruct.set_uint8 buf (base_offset + 12)
+                (entry.offset |> Int64.to_int)
+          | true, Short ->
+              Endian.set_uint16 ~offset:(base_offset + 12) endian buf
+                (entry.offset |> Int64.to_int)
+          | true, Long ->
+              Endian.set_uint32 ~offset:(base_offset + 12) endian buf
+                (entry.offset |> Int64.to_int32)
+          (* | false, _ ->
+              Endian.set_uint64 ~offset:(base_offset + 12) endian buf
+                entry.offset;
+              let values = read_entry_raw entry ifd.ro in
+              write_entry_raw entry endian values writer *)
+          | _ ->
+              Endian.set_uint64 ~offset:(base_offset + 12) endian buf
+                entry.offset))
+    entries;
   writer ~file_offset:(incr_offset write) [ buf ]

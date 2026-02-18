@@ -9,6 +9,7 @@ and endianness = Endian.endianness
 
 val read_header : File.ro -> header
 val write_header : File.wo -> header -> unit
+val create_header : ?big_tiff:bool -> ?big_endian:bool -> File.wo -> header
 
 type t
 (** An image file directory *)
@@ -100,6 +101,9 @@ val width : t -> int
 val height : t -> int
 (** [height t] returns the height of the image. *)
 
+val write_height : int -> entry
+val write_width : int -> entry
+
 val rows_per_strip : t -> int
 (** [rows_per_strip t] returns the number of rows per strip. *)
 
@@ -138,6 +142,9 @@ val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 
 val write_ifd : file_offset:Optint.Int63.t -> header -> File.wo -> t -> unit
 (** Writes the ifd entries to the TIFF file*)
+
+val write_raw_ifd :
+  file_offset:Optint.Int63.t -> header -> File.wo -> entry list -> unit
 
 val predictor : t -> predictor
 (** The predictor is used in certain compression algorithms to improve

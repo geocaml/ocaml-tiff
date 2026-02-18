@@ -62,6 +62,13 @@ val data :
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
 
+val make :
+  ?big_tiff:bool ->
+  ?big_endian:bool ->
+  ('c, 'd, 'e) Bigarray.Genarray.t ->
+  File.wo ->
+  unit
+
 module Private : sig
   module Lzw = Lzw
   module Deflate = Deflate
