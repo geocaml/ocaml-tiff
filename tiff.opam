@@ -3,6 +3,8 @@ opam-version: "2.0"
 synopsis: "Pure OCaml TIFF reader and writer"
 description:
   "This library provides low-level access to TIFF files for reading and writing with a small dependency cone."
+homepage: "https://github.com/geocaml/ocaml-tiff"
+bug-reports: "https://github.com/geocaml/ocaml-tiff/issues"
 depends: [
   "dune" {>= "3.9"}
   "fmt"
@@ -33,3 +35,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
+dev-repo: "git+https://github.com/geocaml/ocaml-tiff.git"
