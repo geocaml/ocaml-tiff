@@ -50,6 +50,15 @@ let write_header wo header =
 
   wo ~file_offset:Optint.Int63.zero [ buf ]
 
+let create_header ?(big_tiff = false) endian =
+  let kind, offset =
+    if big_tiff then (Bigtiff, Optint.Int63.of_int 16)
+    else (Tiff, Optint.Int63.of_int 8)
+  in
+  let byte_order = endian in
+
+  { byte_order; kind; offset }
+
 type field =
   | Byte
   | Ascii
@@ -223,6 +232,20 @@ let tag_to_int = function
   | TileByteCounts -> 325
   | GdalMetadata -> 42112
   | Unknown i -> i
+
+let tag_to_fields = function
+  | ImageLength | ImageWidth | RowsPerStrip | StripOffsets | StripByteCounts
+  | TileWidth | TileByteCounts | TileHeight | Unknown _ ->
+      [ Short; Long ]
+  | BitsPerSample | Compression | PhotometricInterpretation | SamplesPerPixel
+  | ResolutionUnit | PlanarConfiguration | SampleFormat | Predictor
+  | GeoKeyDirectory ->
+      [ Short ]
+  | TileOffsets -> [ Long ]
+  | ModelPixelScale | ModelTiepoint | ModelTransformation | GeoDoubleParams ->
+      [ Double ]
+  | GeoAsciiParams | GdalMetadata -> [ Ascii ]
+  | XResolution | YResolution -> [ Rational ]
 
 let pp_tag ppf (x : tag) =
   match x with
@@ -980,3 +1003,96 @@ let write_ifd ~file_offset header writer (ifd : t) =
                 entry.offset))
     ifd.entries;
   writer ~file_offset:(incr_offset write) [ buf ]
+
+let write_raw_ifd ~file_offset header writer (entries : entry list) =
+  let endian = header.byte_order in
+  let incr_offset = add_int file_offset in
+  let size_buf = Cstruct.create 8 in
+  let count = List.length entries in
+  let write, _ =
+    match header.kind with
+    | Tiff -> (2, Endian.set_uint16 endian size_buf count)
+    | Bigtiff -> (8, Endian.set_uint64 endian size_buf (count |> Int64.of_int))
+  in
+  writer ~file_offset [ size_buf ];
+
+  let entry_size = if header.kind = Tiff then 12 else 20 in
+  let buf = Cstruct.create (entry_size * count) in
+  List.iteri
+    (fun i entry ->
+      let base_offset = i * entry_size in
+      Endian.set_uint16 ~offset:base_offset endian buf (entry.tag |> tag_to_int);
+      Endian.set_uint16 ~offset:(base_offset + 2) endian buf
+        (entry.field |> field_to_int);
+
+      match header.kind with
+      | Tiff -> (
+          Endian.set_uint32 ~offset:(base_offset + 4) endian buf
+            (entry.count |> Int64.to_int32);
+          match (entry.is_immediate, entry.field) with
+          | true, Byte ->
+              Cstruct.set_uint8 buf (base_offset + 8)
+                (entry.offset |> Int64.to_int)
+          | true, Short ->
+              Endian.set_uint16 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int)
+          (* | false, _ ->
+              Endian.set_uint32 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int32);
+
+              let values = read_entry_raw entry ifd.ro in
+              write_entry_raw entry endian values writer *)
+          | _ ->
+              Endian.set_uint32 ~offset:(base_offset + 8) endian buf
+                (entry.offset |> Int64.to_int32))
+      | Bigtiff -> (
+          Endian.set_uint64 ~offset:(base_offset + 4) endian buf entry.count;
+          match (entry.is_immediate, entry.field) with
+          | true, Byte ->
+              Cstruct.set_uint8 buf (base_offset + 12)
+                (entry.offset |> Int64.to_int)
+          | true, Short ->
+              Endian.set_uint16 ~offset:(base_offset + 12) endian buf
+                (entry.offset |> Int64.to_int)
+          | true, Long ->
+              Endian.set_uint32 ~offset:(base_offset + 12) endian buf
+                (entry.offset |> Int64.to_int32)
+          (* | false, _ ->
+              Endian.set_uint64 ~offset:(base_offset + 12) endian buf
+                entry.offset;
+              let values = read_entry_raw entry ifd.ro in
+              write_entry_raw entry endian values writer *)
+          | _ ->
+              Endian.set_uint64 ~offset:(base_offset + 12) endian buf
+                entry.offset))
+    entries;
+  writer ~file_offset:(incr_offset write) [ buf ]
+
+let smallest_int_field_for value allowed =
+  let fits = function
+    | Short -> value <= 0xFFFF
+    | Long -> value <= 0xFFFFFFFF
+    | Long8 -> true
+    | _ -> false
+  in
+  List.find fits allowed
+
+let make_entry tag values =
+  let count = List.length values |> Int64.of_int in
+  let allowed_fields = tag_to_fields tag in
+  let field =
+    match allowed_fields with
+    | [ field ] -> field
+    | [] -> failwith "Unknown field for tag"
+    | _ -> smallest_int_field_for (List.hd values) allowed_fields
+  in
+  let is_immediate = is_immediate_raw ~count field in
+  let offset =
+    if is_immediate && count = 1L then Int64.of_int (List.hd values)
+    else Int64.zero
+  in
+  { tag; field; count; offset; is_immediate }
+
+let make_height height = make_entry ImageLength [ height ]
+let make_width width = make_entry ImageWidth [ width ]
+let make_compression compression = make_entry Compression [ compression ]
