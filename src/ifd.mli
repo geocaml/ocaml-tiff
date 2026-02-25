@@ -9,7 +9,7 @@ and endianness = Endian.endianness
 
 val read_header : File.ro -> header
 val write_header : File.wo -> header -> unit
-val create_header : ?big_tiff:bool -> ?big_endian:bool -> File.wo -> header
+val create_header : ?big_tiff:bool -> endianness -> header
 
 type t
 (** An image file directory *)
@@ -100,9 +100,6 @@ val width : t -> int
 
 val height : t -> int
 (** [height t] returns the height of the image. *)
-
-val write_height : int -> entry
-val write_width : int -> entry
 
 val rows_per_strip : t -> int
 (** [rows_per_strip t] returns the number of rows per strip. *)
@@ -236,3 +233,7 @@ val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
 
 val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
 (** Write data of an entry to an offset location *)
+
+val make_height : int -> entry
+val make_width : int -> entry
+val make_compression : int -> entry

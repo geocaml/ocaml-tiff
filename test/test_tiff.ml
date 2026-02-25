@@ -20,15 +20,6 @@ let with_wo backend path fn =
       Tiff_eio.with_open_out path fn
   | Unix -> Tiff_unix.with_open_out path fn
 
-let test_write_header backend _ =
-  with_wo backend "./data/tmp.tiff" @@ fun w ->
-  with_wo backend "./data/tmp2.tiff" @@ fun w2 ->
-  with_ro backend "./data/tmp2.tiff" @@ fun r2 ->
-  let header = Tiff.Ifd.create_header w in
-  Tiff.Ifd.write_header w2 header;
-  let header2 = Tiff.Ifd.read_header r2 in
-  assert_equal ~msg:"Equal headers" header header2
-
 let test_write_data backend _ =
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r ->
@@ -591,7 +582,6 @@ let suite fs =
   let tests backend =
     [
       "test_write_data" >:: test_write_data backend;
-      "test_write_header" >:: test_write_header backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;

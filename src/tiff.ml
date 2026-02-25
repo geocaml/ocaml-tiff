@@ -336,18 +336,18 @@ let to_file (type repr kind) ?(plane = None) ?(window = None)
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifd;
   add_data ~plane ~window tiff data w
 
-let make ?(big_tiff = false) ?(big_endian = false)
+let make ?(big_tiff = false) ?(big_endian = false) ?(compression = 1)
     (data : ('c, 'd, 'e) Bigarray.Genarray.t) (w : File.wo) =
-  let header = Ifd.create_header ~big_tiff ~big_endian w in
-  let height = Bigarray.Genarray.nth_dim data 0 in
-  let width = Bigarray.Genarray.nth_dim data 1 in
+  let endian = if big_endian then Endian.Big else Endian.Little in
+  let header = Ifd.create_header ~big_tiff endian in
+  let height = Ifd.make_height (Bigarray.Genarray.nth_dim data 0) in
+  let width = Ifd.make_width (Bigarray.Genarray.nth_dim data 1) in
+  let compression = Ifd.make_compression compression in
 
-  let entries = ref [] in
-  entries := Ifd.write_height height :: !entries;
+  let entries = [ height; width; compression ] in
 
-  entries := Ifd.write_width width :: !entries;
-
-  Ifd.write_raw_ifd ~file_offset:header.offset header w !entries
+  Ifd.write_header w header;
+  Ifd.write_raw_ifd ~file_offset:header.offset header w entries
 
 module Private = struct
   module Lzw = Lzw

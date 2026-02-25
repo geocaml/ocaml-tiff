@@ -50,20 +50,14 @@ let write_header wo header =
 
   wo ~file_offset:Optint.Int63.zero [ buf ]
 
-let create_header ?(big_tiff = false) ?(big_endian = false) wo =
+let create_header ?(big_tiff = false) endian =
   let kind, offset =
-    match big_tiff with
-    | true -> (Bigtiff, Optint.Int63.of_int 16)
-    | false -> (Tiff, Optint.Int63.of_int 8)
+    if big_tiff then (Bigtiff, Optint.Int63.of_int 16)
+    else (Tiff, Optint.Int63.of_int 8)
   in
+  let byte_order = endian in
 
-  let byte_order =
-    match big_endian with true -> Endian.Big | false -> Endian.Little
-  in
-
-  let header = { byte_order; kind; offset } in
-  write_header wo header;
-  header
+  { byte_order; kind; offset }
 
 type field =
   | Byte
@@ -239,6 +233,20 @@ let tag_to_int = function
   | GdalMetadata -> 42112
   | Unknown i -> i
 
+let tag_to_fields = function
+  | ImageLength | ImageWidth | RowsPerStrip | StripOffsets | StripByteCounts
+  | TileWidth | TileByteCounts | TileHeight | Unknown _ ->
+      [ Short; Long ]
+  | BitsPerSample | Compression | PhotometricInterpretation | SamplesPerPixel
+  | ResolutionUnit | PlanarConfiguration | SampleFormat | Predictor
+  | GeoKeyDirectory ->
+      [ Short ]
+  | TileOffsets -> [ Long ]
+  | ModelPixelScale | ModelTiepoint | ModelTransformation | GeoDoubleParams ->
+      [ Double ]
+  | GeoAsciiParams | GdalMetadata -> [ Ascii ]
+  | XResolution | YResolution -> [ Rational ]
+
 let pp_tag ppf (x : tag) =
   match x with
   | ImageWidth -> Fmt.string ppf "image-width"
@@ -410,27 +418,7 @@ let read_entry e =
         (Invalid_argument (Fmt.str "Bad entry for short read: %a" pp_entry e))
 
 let height e = lookup_exn e.entries ImageLength |> read_entry
-
-let write_height height =
-  {
-    tag = ImageLength;
-    field = Long;
-    count = 1L;
-    offset = Int64.of_int height;
-    is_immediate = false;
-  }
-
 let width e = lookup_exn e.entries ImageWidth |> read_entry
-
-let write_width width =
-  {
-    tag = ImageWidth;
-    field = Long;
-    count = 1L;
-    offset = Int64.of_int width;
-    is_immediate = false;
-  }
-
 let rows_per_strip e = lookup_exn e.entries RowsPerStrip |> read_entry
 
 let samples_per_pixel e =
@@ -1079,3 +1067,32 @@ let write_raw_ifd ~file_offset header writer (entries : entry list) =
                 entry.offset))
     entries;
   writer ~file_offset:(incr_offset write) [ buf ]
+
+let smallest_int_field_for value allowed =
+  let fits = function
+    | Short -> value <= 0xFFFF
+    | Long -> value <= 0xFFFFFFFF
+    | Long8 -> true
+    | _ -> false
+  in
+  List.find fits allowed
+
+let make_entry tag values =
+  let count = List.length values |> Int64.of_int in
+  let allowed_fields = tag_to_fields tag in
+  let field =
+    match allowed_fields with
+    | [ field ] -> field
+    | [] -> failwith "Unknown field for tag"
+    | _ -> smallest_int_field_for (List.hd values) allowed_fields
+  in
+  let is_immediate = is_immediate_raw ~count field in
+  let offset =
+    if is_immediate && count = 1L then Int64.of_int (List.hd values)
+    else Int64.zero
+  in
+  { tag; field; count; offset; is_immediate }
+
+let make_height height = make_entry ImageLength [ height ]
+let make_width width = make_entry ImageWidth [ width ]
+let make_compression compression = make_entry Compression [ compression ]
