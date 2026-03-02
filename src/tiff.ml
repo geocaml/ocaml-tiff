@@ -1,5 +1,5 @@
 (* Core TIFF decoder module. Handles image data extraction, decompression and window-based access using metadata from the IFD *)
-
+open Bigarray
 module File = File
 module Endian = Endian
 module Ifd = Ifd
@@ -18,7 +18,7 @@ type ('repr, 'kind) kind =
 
 let pp_kind (type r k) : (r, k) kind Fmt.t =
  fun ppf -> function
-  | Uint8 -> Fmt.string ppf "unit8"
+  | Uint8 -> Fmt.string ppf "uint8"
   | Int8 -> Fmt.string ppf "int8"
   | Uint16 -> Fmt.string ppf "uint16"
   | Int16 -> Fmt.string ppf "int16"
@@ -43,7 +43,7 @@ let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
-  open Bigarray
+  (* open Bigarray *)
 
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
 
@@ -129,7 +129,7 @@ module Data = struct
     | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
     | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
 
-  let process_data t plane window ~on_strip ~on_value =
+  let process_data t plane window ~on_strip ~on_value ~after_strip =
     let ifd = t.ifd in
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
@@ -213,7 +213,7 @@ module Data = struct
             if samples_per_pixel = 1 || planar_configuration = Planar then
               on_value strip_buffer (index * bytes_per_pixel)
                 [| y_offset - window.yoff; !x_offset - window.xoff |]
-                tiff_endianness strip_offset
+                tiff_endianness
             else
               for channel = 0 to samples_per_pixel - 1 do
                 (*Calculate offset for each byte in the pixel*)
@@ -224,11 +224,12 @@ module Data = struct
                 on_value strip_buffer
                   ((index * bytes_per_pixel) + byte_off)
                   [| y_offset - window.yoff; !x_offset - window.xoff; channel |]
-                  tiff_endianness strip_offset
+                  tiff_endianness
               done;
             x_offset := !x_offset + 1
           done
       done;
+      after_strip strip_buffer strip_offset;
       row_index := !row_index + rows_in_strip
     done
 
@@ -262,9 +263,10 @@ module Data = struct
             Deflate.decode buf uncompressed_buffer;
             uncompressed_buffer
         | _ -> failwith "Unsupported compression")
-      ~on_value:(fun buf buf_offset dim endian _ ->
+      ~on_value:(fun buf buf_offset dim endian ->
         let value = read_value buf buf_offset endian in
-        Genarray.set arr dim value);
+        Genarray.set arr dim value)
+      ~after_strip:(fun _ _ -> ());
     arr
 
   let write_data plane window tiff data w write_value =
@@ -278,10 +280,21 @@ module Data = struct
               failwith "Strip is unexpectedly short";
             buf
         | _ -> failwith "compression coming soon")
-      ~on_value:(fun buf buf_offset dim tiff_endianness strip_offset ->
+      ~on_value:(fun buf buf_offset dim tiff_endianness ->
         let value = Genarray.get data dim in
-        write_value buf buf_offset value tiff_endianness;
-        w ~file_offset:strip_offset [ buf ])
+        write_value buf buf_offset value tiff_endianness)
+      ~after_strip:(fun buf strip_offset -> w ~file_offset:strip_offset [ buf ])
+
+  let bits_per_sample_of_kind (type a b) (kind : (a, b) Bigarray.kind) =
+    match kind with
+    | Bigarray.Int8_unsigned -> (8, 1)
+    | Bigarray.Int8_signed -> (8, 2)
+    | Bigarray.Int16_signed -> (16, 2)
+    | Bigarray.Int16_unsigned -> (16, 1)
+    | Bigarray.Int32 -> (32, 2)
+    | Bigarray.Float32 -> (32, 3)
+    | Bigarray.Float64 -> (64, 3)
+    | _ -> failwith "Unsupported element kind"
 end
 
 let get_repr (type repr kind) (t : (repr, kind) t) ifd plane :
@@ -336,18 +349,83 @@ let to_file (type repr kind) ?(plane = None) ?(window = None)
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifd;
   add_data ~plane ~window tiff data w
 
-let make ?(big_tiff = false) ?(big_endian = false) ?(compression = 1)
-    (data : ('c, 'd, 'e) Bigarray.Genarray.t) (w : File.wo) =
+(* 
+      [header] -> 8 bytes TIFF, 16 bytes BigTIFF
+      [IFD count] -> 2 bytes TIFF, 8 bytes BigTIFF
+      [IFD entries] -> number_of_entries x 12 (TIFF) or x 20 (BigTIFF)
+      [Next IFD ptr] -> 4 bytes TIFF, 8 bytes BigTIFF
+      [extra data] -> non-immediate values
+      [strip data] -> pixel data
+  *)
+let make (type c d) ?(big_tiff = false) ?(big_endian = false) ?(compression = 1)
+    ?(photometric_interpretation = 2) ?(planar_configuration = 1)
+    (data_type : (c, d) kind) (data : ('c, 'd, 'e) Bigarray.Genarray.t)
+    (w : File.wo) =
+  (*for a basic TIFF file*)
+  let number_of_entries = 11 in
   let endian = if big_endian then Endian.Big else Endian.Little in
   let header = Ifd.create_header ~big_tiff endian in
-  let height = Ifd.make_height (Bigarray.Genarray.nth_dim data 0) in
-  let width = Ifd.make_width (Bigarray.Genarray.nth_dim data 1) in
-  let compression = Ifd.make_compression compression in
+  let ifd_count, ifd_entries, next_ifd_ptr =
+    match header.kind with Tiff -> (2, 12, 4) | Bigtiff -> (8, 20, 8)
+  in
+  let ifd_size = ifd_count + (number_of_entries * ifd_entries) + next_ifd_ptr in
+  let extra_data_offset = (header.offset |> Optint.Int63.to_int) + ifd_size in
+  let file_offset = ref extra_data_offset in
 
-  let entries = [ height; width; compression ] in
+  let num_dims = Genarray.num_dims data in
+
+  let samples_per_pixel =
+    if num_dims > 2 then Genarray.nth_dim data (num_dims - 1) else 1
+  in
+
+  let width = Genarray.nth_dim data 1 in
+  let height = Genarray.nth_dim data 0 in
+
+  let bps, sample_format_int =
+    Data.bits_per_sample_of_kind (Genarray.kind data)
+  in
+  let bps_list = List.init samples_per_pixel (fun _ -> bps) in
+  let data_bytecounts = [ height * width * samples_per_pixel * (bps / 8) ] in
+  let data_offsets = [ !file_offset ] in
+  let make_entry = Ifd.make_entry file_offset endian in
+  let image_width = make_entry ImageWidth [ width ] in
+  let image_height = make_entry ImageLength [ height ] in
+  let bits_per_sample = make_entry BitsPerSample bps_list in
+  let compression = make_entry Compression [ compression ] in
+  let photometric_interpretation =
+    make_entry PhotometricInterpretation [ photometric_interpretation ]
+  in
+  let planar_config = make_entry PlanarConfiguration [ planar_configuration ] in
+  let rows_per_strip = make_entry RowsPerStrip [ height ] in
+  (*single strip*)
+  let strip_bytecounts = make_entry StripByteCounts data_bytecounts in
+  let strip_offset = make_entry StripOffsets data_offsets in
+  let samples_per_pixel = make_entry SamplesPerPixel [ samples_per_pixel ] in
+  let sample_format = make_entry SampleFormat [ sample_format_int ] in
+  let make_entries =
+    [
+      image_width;
+      image_height;
+      bits_per_sample;
+      compression;
+      photometric_interpretation;
+      strip_offset;
+      samples_per_pixel;
+      rows_per_strip;
+      strip_bytecounts;
+      planar_config;
+      sample_format;
+    ]
+  in
 
   Ifd.write_header w header;
-  Ifd.write_raw_ifd ~file_offset:header.offset header w entries
+  let entries =
+    Ifd.write_raw_ifd ~file_offset:header.offset header w make_entries
+  in
+  let ro = fun ~file_offset:_ _ -> () in
+  let ifd = Ifd.v_of_entries entries data_offsets data_bytecounts header ro in
+
+  { data_type; header; ifd }
 
 module Private = struct
   module Lzw = Lzw

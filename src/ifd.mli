@@ -140,9 +140,6 @@ val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 val write_ifd : file_offset:Optint.Int63.t -> header -> File.wo -> t -> unit
 (** Writes the ifd entries to the TIFF file*)
 
-val write_raw_ifd :
-  file_offset:Optint.Int63.t -> header -> File.wo -> entry list -> unit
-
 val predictor : t -> predictor
 (** The predictor is used in certain compression algorithms to improve
     performance. *)
@@ -234,6 +231,14 @@ val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
 val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
 (** Write data of an entry to an offset location *)
 
-val make_height : int -> entry
-val make_width : int -> entry
-val make_compression : int -> entry
+type make_entry
+
+val write_raw_ifd :
+  file_offset:Optint.Int63.t ->
+  header ->
+  File.wo ->
+  make_entry list ->
+  entry list
+
+val v_of_entries : entry list -> int list -> int list -> header -> File.ro -> t
+val make_entry : int ref -> endianness -> tag -> int list -> make_entry

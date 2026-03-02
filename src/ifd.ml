@@ -293,6 +293,8 @@ and entry = {
   is_immediate : bool;
 }
 
+type make_entry = { entry : entry; extra : Cstruct.t list option }
+
 type compression =
   | No_compression
   | CCITTRLE
@@ -1004,7 +1006,7 @@ let write_ifd ~file_offset header writer (ifd : t) =
     ifd.entries;
   writer ~file_offset:(incr_offset write) [ buf ]
 
-let write_raw_ifd ~file_offset header writer (entries : entry list) =
+let write_raw_ifd ~file_offset header writer (entries : make_entry list) =
   let endian = header.byte_order in
   let incr_offset = add_int file_offset in
   let size_buf = Cstruct.create 8 in
@@ -1019,7 +1021,8 @@ let write_raw_ifd ~file_offset header writer (entries : entry list) =
   let entry_size = if header.kind = Tiff then 12 else 20 in
   let buf = Cstruct.create (entry_size * count) in
   List.iteri
-    (fun i entry ->
+    (fun i make_entry ->
+      let entry = make_entry.entry in
       let base_offset = i * entry_size in
       Endian.set_uint16 ~offset:base_offset endian buf (entry.tag |> tag_to_int);
       Endian.set_uint16 ~offset:(base_offset + 2) endian buf
@@ -1036,12 +1039,13 @@ let write_raw_ifd ~file_offset header writer (entries : entry list) =
           | true, Short ->
               Endian.set_uint16 ~offset:(base_offset + 8) endian buf
                 (entry.offset |> Int64.to_int)
-          (* | false, _ ->
+          | false, _ -> (
               Endian.set_uint32 ~offset:(base_offset + 8) endian buf
                 (entry.offset |> Int64.to_int32);
 
-              let values = read_entry_raw entry ifd.ro in
-              write_entry_raw entry endian values writer *)
+              match make_entry.extra with
+              | Some values -> write_entry_raw entry endian values writer
+              | None -> ())
           | _ ->
               Endian.set_uint32 ~offset:(base_offset + 8) endian buf
                 (entry.offset |> Int64.to_int32))
@@ -1057,16 +1061,26 @@ let write_raw_ifd ~file_offset header writer (entries : entry list) =
           | true, Long ->
               Endian.set_uint32 ~offset:(base_offset + 12) endian buf
                 (entry.offset |> Int64.to_int32)
-          (* | false, _ ->
+          | false, _ -> (
               Endian.set_uint64 ~offset:(base_offset + 12) endian buf
                 entry.offset;
-              let values = read_entry_raw entry ifd.ro in
-              write_entry_raw entry endian values writer *)
+              match make_entry.extra with
+              | Some values -> write_entry_raw entry endian values writer
+              | None -> ())
           | _ ->
               Endian.set_uint64 ~offset:(base_offset + 12) endian buf
                 entry.offset))
     entries;
-  writer ~file_offset:(incr_offset write) [ buf ]
+  writer ~file_offset:(incr_offset write) [ buf ];
+  (* Write next-IFD offset = 0 to mark "no further IFDs" *)
+  let next_ifd_size = if header.kind = Tiff then 4 else 8 in
+  let next_ifd_buf = Cstruct.create next_ifd_size in
+  let next_ifd_offset = add_int (incr_offset write) (entry_size * count) in
+  writer ~file_offset:next_ifd_offset [ next_ifd_buf ];
+  List.map (fun me -> me.entry) entries
+
+let v_of_entries entries data_offsets data_bytecounts header ro =
+  { entries; data_offsets; data_bytecounts; header; ro }
 
 let smallest_int_field_for value allowed =
   let fits = function
@@ -1077,7 +1091,22 @@ let smallest_int_field_for value allowed =
   in
   List.find fits allowed
 
-let make_entry tag values =
+let make_entry_raw field endian values =
+  let byte_size = field_byte_size field in
+  List.map
+    (fun v ->
+      let buf = Cstruct.create byte_size in
+      (match field with
+      | Short -> Endian.set_uint16 ~offset:0 endian buf v
+      | Long -> Endian.set_uint32 ~offset:0 endian buf (Int32.of_int v)
+      | Long8 -> Endian.set_uint64 ~offset:0 endian buf (Int64.of_int v)
+      | Double -> Endian.set_double ~offset:0 endian buf (Float.of_int v)
+      | Byte -> Cstruct.set_uint8 buf 0 v
+      | _ -> failwith "Unsupported field type");
+      buf)
+    values
+
+let make_entry file_offset endian tag values =
   let count = List.length values |> Int64.of_int in
   let allowed_fields = tag_to_fields tag in
   let field =
@@ -1086,13 +1115,16 @@ let make_entry tag values =
     | [] -> failwith "Unknown field for tag"
     | _ -> smallest_int_field_for (List.hd values) allowed_fields
   in
-  let is_immediate = is_immediate_raw ~count field in
+  let is_immediate = is_immediate_raw ~count field && count = 1L in
   let offset =
-    if is_immediate && count = 1L then Int64.of_int (List.hd values)
-    else Int64.zero
+    if is_immediate then Int64.of_int (List.hd values)
+    else Int64.of_int !file_offset
   in
-  { tag; field; count; offset; is_immediate }
+  let extra = make_entry_raw field endian values in
+  let entry = { tag; field; count; offset; is_immediate } in
+  file_offset :=
+    if is_immediate then !file_offset
+    else !file_offset + (Int64.to_int count * field_byte_size field);
 
-let make_height height = make_entry ImageLength [ height ]
-let make_width width = make_entry ImageWidth [ width ]
-let make_compression compression = make_entry Compression [ compression ]
+  if is_immediate then { entry; extra = None }
+  else { entry; extra = Some extra }
