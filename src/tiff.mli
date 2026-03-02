@@ -70,9 +70,12 @@ val make :
   ?big_tiff:bool ->
   ?big_endian:bool ->
   ?compression:int ->
+  ?photometric_interpretation:int ->
+  ?planar_configuration:int ->
+  ('repr, 'kind) kind ->
   ('c, 'd, 'e) Bigarray.Genarray.t ->
   File.wo ->
-  unit
+  ('repr, 'kind) t
 
 module Private : sig
   module Lzw = Lzw
