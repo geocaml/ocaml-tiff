@@ -68,6 +68,17 @@ type sample_format =
   | Undefined
   | Unknown of int
 
+type photometric_interpretation =
+  | WhiteIsZero
+  | BlackIsZero
+  | RGB
+  | RGBPalette
+  | TransparencyMask
+  | CMYK
+  | YCbCr
+  | CIELab
+  | Unknown of int
+
 val pp_sample_format : sample_format Fmt.t
 
 type planar_configuration = Chunky | Planar | Unknown of int
@@ -80,6 +91,8 @@ val sample_format_of_int : int -> sample_format
 val sample_format_to_int : sample_format -> int
 val planar_configuration_of_int : int -> planar_configuration
 val planar_configuration_to_int : planar_configuration -> int
+val photometric_interpretation_of_int : int -> photometric_interpretation
+val photometric_interpretation_to_int : photometric_interpretation -> int
 
 val pp_entry : entry Fmt.t
 (** A pretty printer for IFD entries *)

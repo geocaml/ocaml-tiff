@@ -399,6 +399,39 @@ let planar_configuration_to_int = function
   | Planar -> 2
   | Unknown i -> i
 
+type photometric_interpretation =
+  | WhiteIsZero
+  | BlackIsZero
+  | RGB
+  | RGBPalette
+  | TransparencyMask
+  | CMYK
+  | YCbCr
+  | CIELab
+  | Unknown of int
+
+let photometric_interpretation_of_int = function
+  | 0 -> WhiteIsZero
+  | 1 -> BlackIsZero
+  | 2 -> RGB
+  | 3 -> RGBPalette
+  | 4 -> TransparencyMask
+  | 5 -> CMYK
+  | 6 -> YCbCr
+  | 7 -> CIELab
+  | i -> Unknown i
+
+let photometric_interpretation_to_int = function
+  | WhiteIsZero -> 0
+  | BlackIsZero -> 1
+  | RGB -> 2
+  | RGBPalette -> 3
+  | TransparencyMask -> 4
+  | CMYK -> 5
+  | YCbCr -> 6
+  | CIELab -> 7
+  | Unknown i -> i
+
 let entries t = t.entries
 let data_offsets t = t.data_offsets
 let data_bytecounts t = t.data_bytecounts

@@ -287,13 +287,13 @@ module Data = struct
 
   let bits_per_sample_of_kind (type a b) (kind : (a, b) Bigarray.kind) =
     match kind with
-    | Bigarray.Int8_unsigned -> (8, 1)
-    | Bigarray.Int8_signed -> (8, 2)
-    | Bigarray.Int16_signed -> (16, 2)
-    | Bigarray.Int16_unsigned -> (16, 1)
-    | Bigarray.Int32 -> (32, 2)
-    | Bigarray.Float32 -> (32, 3)
-    | Bigarray.Float64 -> (64, 3)
+    | Bigarray.Int8_unsigned -> (8, Ifd.UnsignedInteger)
+    | Bigarray.Int8_signed -> (8, Ifd.SignedInteger)
+    | Bigarray.Int16_signed -> (16, Ifd.SignedInteger)
+    | Bigarray.Int16_unsigned -> (16, Ifd.UnsignedInteger)
+    | Bigarray.Int32 -> (32, Ifd.UnsignedInteger)
+    | Bigarray.Float32 -> (32, Ifd.IEEEFloatingPoint)
+    | Bigarray.Float64 -> (64, Ifd.IEEEFloatingPoint)
     | _ -> failwith "Unsupported element kind"
 end
 
@@ -343,8 +343,8 @@ let add_data (type repr kind) ?(plane = None) ?(window = None)
   let _, _, write_value = get_repr tiff ifd plane in
   Data.write_data plane window tiff data w write_value
 
-let to_file (type repr kind) ?(plane = None) ?(window = None)
-    (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) =
+let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
+    (data : (repr, kind) Data.t) (w : File.wo) =
   Ifd.write_header w tiff.header;
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifd;
   add_data ~plane ~window tiff data w
@@ -357,11 +357,16 @@ let to_file (type repr kind) ?(plane = None) ?(window = None)
       [extra data] -> non-immediate values
       [strip data] -> pixel data
   *)
-let make (type c d) ?(big_tiff = false) ?(big_endian = false) ?(compression = 1)
-    ?(photometric_interpretation = 2) ?(planar_configuration = 1)
-    (data_type : (c, d) kind) (data : ('c, 'd, 'e) Bigarray.Genarray.t)
-    (w : File.wo) =
+let make (type c d) ?(big_tiff = false) ?(big_endian = false)
+    ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)
+    ?(planar_configuration = Ifd.Chunky) (data_type : (c, d) kind)
+    (data : ('c, 'd, 'e) Bigarray.Genarray.t) (w : File.wo) =
   (*for a basic TIFF file*)
+  let compression_int = Ifd.compression_to_int compression in
+  let planar_int = Ifd.planar_configuration_to_int planar_configuration in
+  let photometric_int =
+    Ifd.photometric_interpretation_to_int photometric_interpretation
+  in
   let number_of_entries = 11 in
   let endian = if big_endian then Endian.Big else Endian.Little in
   let header = Ifd.create_header ~big_tiff endian in
@@ -381,9 +386,8 @@ let make (type c d) ?(big_tiff = false) ?(big_endian = false) ?(compression = 1)
   let width = Genarray.nth_dim data 1 in
   let height = Genarray.nth_dim data 0 in
 
-  let bps, sample_format_int =
-    Data.bits_per_sample_of_kind (Genarray.kind data)
-  in
+  let bps, sample_format = Data.bits_per_sample_of_kind (Genarray.kind data) in
+  let sample_format_int = Ifd.sample_format_to_int sample_format in
   let bps_list = List.init samples_per_pixel (fun _ -> bps) in
   let data_bytecounts = [ height * width * samples_per_pixel * (bps / 8) ] in
   let data_offsets = [ !file_offset ] in
@@ -391,11 +395,11 @@ let make (type c d) ?(big_tiff = false) ?(big_endian = false) ?(compression = 1)
   let image_width = make_entry ImageWidth [ width ] in
   let image_height = make_entry ImageLength [ height ] in
   let bits_per_sample = make_entry BitsPerSample bps_list in
-  let compression = make_entry Compression [ compression ] in
+  let compression = make_entry Compression [ compression_int ] in
   let photometric_interpretation =
-    make_entry PhotometricInterpretation [ photometric_interpretation ]
+    make_entry PhotometricInterpretation [ photometric_int ]
   in
-  let planar_config = make_entry PlanarConfiguration [ planar_configuration ] in
+  let planar_config = make_entry PlanarConfiguration [ planar_int ] in
   let rows_per_strip = make_entry RowsPerStrip [ height ] in
   (*single strip*)
   let strip_bytecounts = make_entry StripByteCounts data_bytecounts in
