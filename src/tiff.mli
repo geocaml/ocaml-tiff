@@ -36,8 +36,8 @@ val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
 val to_file :
-  ?plane:int option ->
-  ?window:window option ->
+  ?plane:int ->
+  ?window:window ->
   ('repr, 'kind) t ->
   ('repr, 'kind) Data.t ->
   File.wo ->
@@ -69,9 +69,9 @@ val data :
 val make :
   ?big_tiff:bool ->
   ?big_endian:bool ->
-  ?compression:int ->
-  ?photometric_interpretation:int ->
-  ?planar_configuration:int ->
+  ?compression:Ifd.compression ->
+  ?photometric_interpretation:Ifd.photometric_interpretation ->
+  ?planar_configuration:Ifd.planar_configuration ->
   ('repr, 'kind) kind ->
   ('c, 'd, 'e) Bigarray.Genarray.t ->
   File.wo ->
