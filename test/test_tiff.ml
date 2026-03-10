@@ -28,15 +28,17 @@ let test_write_basic_tiff backend _ =
     |> Nx.to_bigarray
   in
   let tiff = Tiff.make Tiff.Uint8 data w in
-  Tiff.to_file tiff data w;
+  Tiff.add_data tiff data w;
   let tiff = Tiff.from_file Tiff.Uint8 r in
   let ifd = Tiff.ifd tiff in
+  let document_name = Tiff.Ifd.document_name ifd in
   let width = Tiff.Ifd.width ifd in
   let height = Tiff.Ifd.height ifd in
   assert_equal ~msg:"Image width" width 10;
   assert_equal ~msg:"Image Height" height 10;
   assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
-  assert_equal ~msg:"Data" data (Tiff.data tiff r)
+  assert_equal ~msg:"Data" data (Tiff.data tiff r);
+  assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
 let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->

@@ -23,6 +23,7 @@ type tag =
   | BitsPerSample
   | Compression
   | PhotometricInterpretation
+  | DocumentName
   | StripOffsets
   | RowsPerStrip
   | StripByteCounts
@@ -167,6 +168,9 @@ val planar_configuration : t -> planar_configuration
 val pixel_scale : t -> float array
 (** Pixel scales entry. *)
 
+val document_name : t -> string
+(**Document name entry*)
+
 val tiepoint : t -> float array
 (** Also known as GeoreferenceTag, this stores raster to model tiepoint pairs.
 *)
@@ -246,6 +250,12 @@ val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
 
 type make_entry
 
+type entry_values =
+  | Ints of int list
+  | String of string
+  | Doubles of float list
+  | Rationals of (int * int) list
+
 val write_raw_ifd :
   file_offset:Optint.Int63.t ->
   header ->
@@ -254,4 +264,4 @@ val write_raw_ifd :
   entry list
 
 val v_of_entries : entry list -> int list -> int list -> header -> File.ro -> t
-val make_entry : int ref -> endianness -> tag -> int list -> make_entry
+val make_entry : endianness -> int -> tag -> entry_values -> make_entry * int
