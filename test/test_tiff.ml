@@ -20,6 +20,26 @@ let with_wo backend path fn =
       Tiff_eio.with_open_out path fn
   | Unix -> Tiff_unix.with_open_out path fn
 
+let test_write_basic_tiff backend _ =
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r ->
+  let data =
+    Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make Tiff.Uint8 data w in
+  Tiff.add_data tiff data w;
+  let tiff = Tiff.from_file Tiff.Uint8 r in
+  let ifd = Tiff.ifd tiff in
+  let document_name = Tiff.Ifd.document_name ifd in
+  let width = Tiff.Ifd.width ifd in
+  let height = Tiff.Ifd.height ifd in
+  assert_equal ~msg:"Image width" width 10;
+  assert_equal ~msg:"Image Height" height 10;
+  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
+  assert_equal ~msg:"Data" data (Tiff.data tiff r);
+  assert_equal ~msg:"Document Name" document_name "TIFF_File"
+
 let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
@@ -566,6 +586,7 @@ let test_load_deflate_compressed_tiff backend _ =
 let suite fs =
   let tests backend =
     [
+      "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;

@@ -36,8 +36,8 @@ val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
 val to_file :
-  ?plane:int option ->
-  ?window:window option ->
+  ?plane:int ->
+  ?window:window ->
   ('repr, 'kind) t ->
   ('repr, 'kind) Data.t ->
   File.wo ->
@@ -47,6 +47,14 @@ val to_file :
 
     Note that it is up to the user to ensure the metadata in [t] is related and
     accruate with respect to [data]. *)
+
+val add_data :
+  ?plane:int option ->
+  ?window:window option ->
+  ('repr, 'kind) t ->
+  ('repr, 'kind) Data.t ->
+  File.wo ->
+  unit
 
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the IFD of the TIFF file *)
@@ -61,6 +69,18 @@ val data :
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
+
+val make :
+  ?big_tiff:bool ->
+  ?big_endian:bool ->
+  ?compression:Ifd.compression ->
+  ?photometric_interpretation:Ifd.photometric_interpretation ->
+  ?planar_configuration:Ifd.planar_configuration ->
+  ?file_name:string ->
+  ('repr, 'kind) kind ->
+  ('c, 'd, 'e) Bigarray.Genarray.t ->
+  File.wo ->
+  ('repr, 'kind) t
 
 module Private : sig
   module Lzw = Lzw

@@ -9,6 +9,7 @@ and endianness = Endian.endianness
 
 val read_header : File.ro -> header
 val write_header : File.wo -> header -> unit
+val create_header : ?big_tiff:bool -> endianness -> header
 
 type t
 (** An image file directory *)
@@ -22,6 +23,7 @@ type tag =
   | BitsPerSample
   | Compression
   | PhotometricInterpretation
+  | DocumentName
   | StripOffsets
   | RowsPerStrip
   | StripByteCounts
@@ -67,6 +69,17 @@ type sample_format =
   | Undefined
   | Unknown of int
 
+type photometric_interpretation =
+  | WhiteIsZero
+  | BlackIsZero
+  | RGB
+  | RGBPalette
+  | TransparencyMask
+  | CMYK
+  | YCbCr
+  | CIELab
+  | Unknown of int
+
 val pp_sample_format : sample_format Fmt.t
 
 type planar_configuration = Chunky | Planar | Unknown of int
@@ -79,6 +92,8 @@ val sample_format_of_int : int -> sample_format
 val sample_format_to_int : sample_format -> int
 val planar_configuration_of_int : int -> planar_configuration
 val planar_configuration_to_int : planar_configuration -> int
+val photometric_interpretation_of_int : int -> photometric_interpretation
+val photometric_interpretation_to_int : photometric_interpretation -> int
 
 val pp_entry : entry Fmt.t
 (** A pretty printer for IFD entries *)
@@ -152,6 +167,9 @@ val planar_configuration : t -> planar_configuration
 
 val pixel_scale : t -> float array
 (** Pixel scales entry. *)
+
+val document_name : t -> string
+(**Document name entry*)
 
 val tiepoint : t -> float array
 (** Also known as GeoreferenceTag, this stores raster to model tiepoint pairs.
@@ -229,3 +247,21 @@ val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
 
 val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
 (** Write data of an entry to an offset location *)
+
+type make_entry
+
+type entry_values =
+  | Ints of int list
+  | String of string
+  | Doubles of float list
+  | Rationals of (int * int) list
+
+val write_raw_ifd :
+  file_offset:Optint.Int63.t ->
+  header ->
+  File.wo ->
+  make_entry list ->
+  entry list
+
+val v_of_entries : entry list -> int list -> int list -> header -> File.ro -> t
+val make_entry : endianness -> int -> tag -> entry_values -> make_entry * int
