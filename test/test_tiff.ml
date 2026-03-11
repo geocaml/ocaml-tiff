@@ -579,7 +579,10 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
   in
   let shape = Nx.shape data in
   assert_equal ~printer:Nx.shape_to_string ~msg:"Aggregated data shape"
-    [| 13; 314; 502 |] shape
+    [| 13; 314; 502 |] shape;
+  OUnit2.assert_raises ~msg:"Request invalid image number"
+    (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
+    (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
 let suite fs =
   let tests backend =

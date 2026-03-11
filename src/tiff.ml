@@ -375,6 +375,10 @@ let pp_window fmt window =
 (* have to specify all 4 or else it defaults to whole file*)
 let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
     (f : File.ro) : (repr, kind) Data.t =
+  let nb_images = Array.length t.ifds in
+  if image_nb < 0 || image_nb >= nb_images then
+    Fmt.invalid_arg "Image n°%d requested but TIFF file only has %d ([0-%d])"
+      image_nb nb_images (nb_images - 1);
   let ifd = t.ifds.(image_nb) in
   (* Check the window, if any, makes sense for the TIFF file *)
   let () =
