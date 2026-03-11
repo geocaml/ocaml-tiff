@@ -17,7 +17,6 @@
    bigstringaf
    (ocamlformat (and (= "0.28.1") :with-dev-setup))
    (bechamel :with-test)
-   (bechamel-notty :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
    (eio_main :with-test)
