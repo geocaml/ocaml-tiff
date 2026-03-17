@@ -4,6 +4,7 @@
 (name tiff)
 
 (generate_opam_files true)
+(source (github geocaml/ocaml-tiff))
 
 (package
  (name tiff)
