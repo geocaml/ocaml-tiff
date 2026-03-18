@@ -265,3 +265,19 @@ val write_raw_ifd :
 
 val v_of_entries : entry list -> int list -> int list -> header -> File.ro -> t
 val make_entry : endianness -> int -> tag -> entry_values -> make_entry * int
+
+val w_ifd :
+  int ->
+  int ->
+  compression ->
+  planar_configuration ->
+  photometric_interpretation ->
+  sample_format ->
+  int list ->
+  int list ->
+  int ->
+  string ->
+  header ->
+  int ->
+  File.wo ->
+  t

@@ -357,27 +357,13 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
       [extra data] -> non-immediate values
       [strip data] -> pixel data
   *)
-let make (type c d) ?(big_tiff = false) ?(big_endian = false)
+let make (type c d) ?(big_tiff = false) ?(endianness = Endian.Little)
     ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)
     ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File")
     (data_type : (c, d) kind) (data : ('c, 'd, 'e) Bigarray.Genarray.t)
     (w : File.wo) =
   (*for a basic TIFF file*)
-  let endian = if big_endian then Endian.Big else Endian.Little in
-
-  let header = Ifd.create_header ~big_tiff endian in
-  let ifd_count, ifd_entries, next_ifd_ptr =
-    match header.kind with Tiff -> (2, 12, 4) | Bigtiff -> (8, 20, 8)
-  in
-  let compression_int = Ifd.compression_to_int compression in
-  let planar_int = Ifd.planar_configuration_to_int planar_configuration in
-  let photometric_int =
-    Ifd.photometric_interpretation_to_int photometric_interpretation
-  in
-  let number_of_entries = 12 in
-  let ifd_size = ifd_count + (number_of_entries * ifd_entries) + next_ifd_ptr in
-  let extra_data_offset = (header.offset |> Optint.Int63.to_int) + ifd_size in
-  let file_offset = extra_data_offset in
+  let header = Ifd.create_header ~big_tiff endianness in
   let num_dims = Genarray.num_dims data in
 
   let samples_per_pixel =
@@ -386,80 +372,18 @@ let make (type c d) ?(big_tiff = false) ?(big_endian = false)
 
   let width = Genarray.nth_dim data 1 in
   let height = Genarray.nth_dim data 0 in
+  let rows_per_strip = height in
 
   let bps, sample_format = Data.bits_per_sample_of_kind (Genarray.kind data) in
-  let sample_format_int = Ifd.sample_format_to_int sample_format in
+
   let bps_list = List.init samples_per_pixel (fun _ -> bps) in
   let data_bytecounts = [ height * width * samples_per_pixel * (bps / 8) ] in
 
-  let rows_per_strip = height in
-  let make_entry = Ifd.make_entry endian in
-  let image_width, file_offset =
-    make_entry file_offset ImageWidth (Ifd.Ints [ width ])
+  let ifd =
+    Ifd.w_ifd width height compression planar_configuration
+      photometric_interpretation sample_format bps_list data_bytecounts
+      rows_per_strip file_name header samples_per_pixel w
   in
-  let image_height, file_offset =
-    make_entry file_offset ImageLength (Ifd.Ints [ height ])
-  in
-  let bits_per_sample, file_offset =
-    make_entry file_offset BitsPerSample (Ifd.Ints bps_list)
-  in
-  let compression, file_offset =
-    make_entry file_offset Compression (Ifd.Ints [ compression_int ])
-  in
-  let photometric_interpretation, file_offset =
-    make_entry file_offset PhotometricInterpretation
-      (Ifd.Ints [ photometric_int ])
-  in
-  let planar_config, file_offset =
-    make_entry file_offset PlanarConfiguration (Ifd.Ints [ planar_int ])
-  in
-  let rows_per_strip, file_offset =
-    make_entry file_offset RowsPerStrip (Ifd.Ints [ rows_per_strip ])
-  in
-  (*single strip*)
-  let strip_bytecounts, file_offset =
-    make_entry file_offset StripByteCounts (Ifd.Ints data_bytecounts)
-  in
-  let samples_per_pixel, file_offset =
-    make_entry file_offset SamplesPerPixel (Ifd.Ints [ samples_per_pixel ])
-  in
-  let sample_format, file_offset =
-    make_entry file_offset SampleFormat (Ifd.Ints [ sample_format_int ])
-  in
-
-  let document_name, file_offset =
-    make_entry file_offset DocumentName (Ifd.String file_name)
-  in
-
-  let data_offsets = [ file_offset ] in
-
-  let strip_offset, _ =
-    make_entry file_offset StripOffsets (Ifd.Ints data_offsets)
-  in
-
-  let make_entries =
-    [
-      image_width;
-      image_height;
-      bits_per_sample;
-      compression;
-      photometric_interpretation;
-      document_name;
-      strip_offset;
-      samples_per_pixel;
-      rows_per_strip;
-      strip_bytecounts;
-      planar_config;
-      sample_format;
-    ]
-  in
-
-  Ifd.write_header w header;
-  let entries =
-    Ifd.write_raw_ifd ~file_offset:header.offset header w make_entries
-  in
-  let ro = fun ~file_offset:_ _ -> () in
-  let ifd = Ifd.v_of_entries entries data_offsets data_bytecounts header ro in
 
   { data_type; header; ifd }
 
