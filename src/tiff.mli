@@ -46,15 +46,7 @@ val to_file :
     [w].
 
     Note that it is up to the user to ensure the metadata in [t] is related and
-    accruate with respect to [data]. *)
-
-val add_data :
-  ?plane:int option ->
-  ?window:window option ->
-  ('repr, 'kind) t ->
-  ('repr, 'kind) Data.t ->
-  File.wo ->
-  unit
+    accurate with respect to [data]. *)
 
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the first IFD of the TIFF file *)
@@ -75,16 +67,15 @@ val data :
     data. *)
 
 val make :
-  ?big_tiff:bool ->
-  ?big_endian:bool ->
+  ?bigtiff:bool ->
+  ?endian:Endian.endianness ->
   ?compression:Ifd.compression ->
   ?photometric_interpretation:Ifd.photometric_interpretation ->
   ?planar_configuration:Ifd.planar_configuration ->
   ?file_name:string ->
-  ('repr, 'kind) kind ->
-  ('c, 'd, 'e) Bigarray.Genarray.t ->
-  File.wo ->
+  ('repr, 'kind) Data.t ->
   ('repr, 'kind) t
+(** [make data] constructs a new TIFF file from some multidimensional data. *)
 
 module Private : sig
   module Lzw = Lzw

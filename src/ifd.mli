@@ -9,7 +9,7 @@ and endianness = Endian.endianness
 
 val read_header : File.ro -> header
 val write_header : File.wo -> header -> unit
-val create_header : ?big_tiff:bool -> endianness -> header
+val create_header : ?bigtiff:bool -> endianness -> header
 
 type t
 (** An image file directory *)
@@ -232,7 +232,7 @@ val data_offsets : t -> int list
 val data_bytecounts : t -> int list
 (** The number of bytes of each chunk of data. *)
 
-(** {2 Reading entries} *)
+(** {2 Entries} *)
 
 (* val read_entry_short : entry -> int
     (** Reads the value of the entry as a short if the entry field matches
@@ -248,10 +248,12 @@ val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
     [Double] then you will gexwt back a list of [10] buffers each of length [2].
 *)
 
-val write_entry_raw : entry -> endianness -> Cstruct.t list -> File.wo -> unit
-(** Write data of an entry to an offset location *)
+val cache_all_entries : t -> t
+(** Caching all entries will ensure that none of the entries in the IFD are just
+    offsets. *)
 
-type make_entry
+val write_entry : entry -> File.wo -> unit
+(** Write data of an entry to an offset location. *)
 
 type entry_values =
   | Ints of int list
@@ -260,11 +262,7 @@ type entry_values =
   | Rationals of (int * int) list
 
 val write_raw_ifd :
-  file_offset:Optint.Int63.t ->
-  header ->
-  File.wo ->
-  make_entry list ->
-  entry list
+  file_offset:Optint.Int63.t -> header -> File.wo -> entry list -> unit
 
 val v_of_entries : entry list -> int list -> int list -> header -> File.ro -> t
-val make_entry : endianness -> int -> tag -> entry_values -> make_entry * int
+val make_entry : endianness -> int -> tag -> entry_values -> entry * int

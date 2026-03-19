@@ -345,8 +345,8 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
   let kind, read_value, _ = get_repr t ifd plane in
   Data.read_data ifd t.header f plane window kind read_value
 
-let add_data (type repr kind) ?(plane = None) ?(window = None)
-    (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) =
+let write_data (type repr kind) ?(plane = None) ?(window = None)
+    (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) : _ =
   let ifd = ifd tiff in
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
@@ -355,27 +355,15 @@ let add_data (type repr kind) ?(plane = None) ?(window = None)
 
 let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
     (data : (repr, kind) Data.t) (w : File.wo) =
+  let _ifd = Ifd.cache_all_entries tiff.ifds.(0) in
   Ifd.write_header w tiff.header;
-  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w (ifd tiff);
-  add_data ~plane ~window tiff data w
+  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifds.(0);
+  write_data ~plane ~window tiff data w
 
-(* 
-      [header] -> 8 bytes TIFF, 16 bytes BigTIFF
-      [IFD count] -> 2 bytes TIFF, 8 bytes BigTIFF
-      [IFD entries] -> number_of_entries x 12 (TIFF) or x 20 (BigTIFF)
-      [Next IFD ptr] -> 4 bytes TIFF, 8 bytes BigTIFF
-      [extra data] -> non-immediate values
-      [strip data] -> pixel data
-  *)
-let make (type c d) ?(big_tiff = false) ?(big_endian = false)
+let make ?(bigtiff = false) ?(endian = Endian.Big)
     ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)
-    ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File")
-    (data_type : (c, d) kind) (data : ('c, 'd, 'e) Bigarray.Genarray.t)
-    (w : File.wo) =
-  (*for a basic TIFF file*)
-  let endian = if big_endian then Endian.Big else Endian.Little in
-
-  let header = Ifd.create_header ~big_tiff endian in
+    ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File") data =
+  let header = Ifd.create_header ~bigtiff endian in
   let ifd_count, ifd_entries, next_ifd_ptr =
     match header.kind with Tiff -> (2, 12, 4) | Bigtiff -> (8, 20, 8)
   in
@@ -447,7 +435,19 @@ let make (type c d) ?(big_tiff = false) ?(big_endian = false)
     make_entry file_offset StripOffsets (Ifd.Ints data_offsets)
   in
 
-  let make_entries =
+  let of_ba_kind (type r k) : (r, k) Bigarray.kind -> (r, k) kind = function
+    | Int8_signed -> Int8
+    | Int8_unsigned -> Uint8
+    | Int16_signed -> Int16
+    | Int16_unsigned -> Uint16
+    | Int32 -> Int32
+    | Float32 -> Float32
+    | Float64 -> Float64
+    | k ->
+        Fmt.invalid_arg "Converting failed for kind %i"
+          (Bigarray.kind_size_in_bytes k)
+  in
+  let entries =
     [
       image_width;
       image_height;
@@ -463,14 +463,12 @@ let make (type c d) ?(big_tiff = false) ?(big_endian = false)
       sample_format;
     ]
   in
-
-  Ifd.write_header w header;
-  let entries =
-    Ifd.write_raw_ifd ~file_offset:header.offset header w make_entries
-  in
+  (* let entries = *)
+  (*   Ifd.write_raw_ifd ~file_offset:header.offset header w make_entries *)
+  (* in *)
   let ro = fun ~file_offset:_ _ -> () in
+  let data_type = of_ba_kind (Bigarray.Genarray.kind data) in
   let ifd = Ifd.v_of_entries entries data_offsets data_bytecounts header ro in
-
   { data_type; header; ifds = Array.make 1 ifd }
 
 module Private = struct

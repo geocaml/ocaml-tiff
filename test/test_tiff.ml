@@ -27,8 +27,8 @@ let test_write_basic_tiff backend _ =
     Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
     |> Nx.to_bigarray
   in
-  let tiff = Tiff.make Tiff.Uint8 data w in
-  Tiff.add_data tiff data w;
+  let tiff = Tiff.make data in
+  Tiff.to_file tiff data w;
   let tiff = Tiff.from_file Tiff.Uint8 r in
   let ifd = Tiff.ifd tiff in
   let document_name = Tiff.Ifd.document_name ifd in
