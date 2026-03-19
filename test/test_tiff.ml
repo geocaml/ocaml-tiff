@@ -28,7 +28,7 @@ let test_write_basic_tiff backend _ =
     |> Nx.to_bigarray
   in
   let tiff = Tiff.make data in
-  Tiff.to_file tiff data w;
+  Tiff.to_file tiff w;
   let tiff = Tiff.from_file Tiff.Uint8 r in
   let ifd = Tiff.ifd tiff in
   let document_name = Tiff.Ifd.document_name ifd in
@@ -69,7 +69,7 @@ let test_write_entries_roundtrip backend _ =
   let predictor = Tiff.Ifd.predictor ifd in
 
   let data = Tiff.data tiff r in
-  Tiff.to_file tiff data w;
+  Tiff.to_file tiff w;
 
   let tiff = Tiff.from_file Tiff.Uint16 r2 in
   let ifd = Tiff.ifd tiff in
@@ -91,7 +91,7 @@ let test_bigtiff_write_entries_roundtrip backend _ =
   let predictor = Tiff.Ifd.predictor ifd in
   let data = Tiff.data tiff r in
 
-  Tiff.to_file tiff data w;
+  Tiff.to_file tiff w;
   let tiff = Tiff.from_file Tiff.Uint8 r2 in
   let ifd = Tiff.ifd tiff in
   let data2 = Tiff.data tiff r2 in

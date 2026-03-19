@@ -27,29 +27,6 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
   | Float32 -> Fmt.string ppf "float32"
   | Float64 -> Fmt.string ppf "float64"
 
-type ('repr, 'kind) t = {
-  data_type : ('repr, 'kind) kind;
-  header : header;
-  ifds : Ifd.t array;
-}
-
-let ifd t = t.ifds.(0)
-let ifds t = t.ifds
-
-let all_ifds first_ifd =
-  let rec aux acc ifd =
-    match Ifd.next_ifd ifd with
-    | None -> acc
-    | Some ifd' -> aux (ifd' :: acc) ifd'
-  in
-  aux [ first_ifd ] first_ifd |> List.rev |> Array.of_list
-
-let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
-  let header = Ifd.read_header f in
-  let first_ifd = Ifd.v ~file_offset:header.offset header f in
-  let ifds = all_ifds first_ifd in
-  { data_type; header; ifds }
-
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
@@ -304,6 +281,32 @@ module Data = struct
     | _ -> failwith "Unsupported element kind"
 end
 
+type ('repr, 'kind) t = {
+  data_type : ('repr, 'kind) kind;
+  mutable window : window option;
+  mutable plane : int option;
+  mutable data : ('repr, 'kind) Data.t option;
+  header : header;
+  ifds : Ifd.t array;
+}
+
+let ifd t = t.ifds.(0)
+let ifds t = t.ifds
+
+let all_ifds first_ifd =
+  let rec aux acc ifd =
+    match Ifd.next_ifd ifd with
+    | None -> acc
+    | Some ifd' -> aux (ifd' :: acc) ifd'
+  in
+  aux [ first_ifd ] first_ifd |> List.rev |> Array.of_list
+
+let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
+  let header = Ifd.read_header f in
+  let first_ifd = Ifd.v ~file_offset:header.offset header f in
+  let ifds = all_ifds first_ifd in
+  { data_type; header; window = None; plane = None; data = None; ifds }
+
 let get_repr (type repr kind) (t : (repr, kind) t) ifd plane :
     (repr, kind) Bigarray.kind
     * (Cstruct.t -> int -> Endian.endianness -> repr)
@@ -341,9 +344,15 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
   let ifd = t.ifds.(image_nb) in
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
-
-  let kind, read_value, _ = get_repr t ifd plane in
-  Data.read_data ifd t.header f plane window kind read_value
+  match t.data with
+  | Some data when t.window = Some window && t.plane = Some plane -> data
+  | Some _ | None ->
+      let kind, read_value, _ = get_repr t ifd plane in
+      let data = Data.read_data ifd t.header f plane window kind read_value in
+      t.window <- Some window;
+      t.plane <- Some plane;
+      t.data <- Some data;
+      data
 
 let write_data (type repr kind) ?(plane = None) ?(window = None)
     (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) : _ =
@@ -354,11 +363,13 @@ let write_data (type repr kind) ?(plane = None) ?(window = None)
   Data.write_data ifd tiff.header plane window data w write_value
 
 let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
-    (data : (repr, kind) Data.t) (w : File.wo) =
-  let _ifd = Ifd.cache_all_entries tiff.ifds.(0) in
+    (w : File.wo) =
+  let _ifd = Ifd.cache_all_entries (ifd tiff) in
   Ifd.write_header w tiff.header;
-  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w tiff.ifds.(0);
-  write_data ~plane ~window tiff data w
+  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w (ifd tiff);
+  match tiff.data with
+  | None -> Fmt.invalid_arg "Tiff file has no data associated with it."
+  | Some data -> write_data ~plane ~window tiff data w
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
     ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)
@@ -463,13 +474,17 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
       sample_format;
     ]
   in
-  (* let entries = *)
-  (*   Ifd.write_raw_ifd ~file_offset:header.offset header w make_entries *)
-  (* in *)
-  let ro = fun ~file_offset:_ _ -> () in
+  let ro = fun ~file_offset:_ _ -> Fmt.failwith "No file" in
   let data_type = of_ba_kind (Bigarray.Genarray.kind data) in
   let ifd = Ifd.v_of_entries entries data_offsets data_bytecounts header ro in
-  { data_type; header; ifds = Array.make 1 ifd }
+  {
+    data_type;
+    data = Some data;
+    window = None;
+    plane = None;
+    header;
+    ifds = Array.make 1 ifd;
+  }
 
 module Private = struct
   module Lzw = Lzw

@@ -36,17 +36,9 @@ val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
 val to_file :
-  ?plane:int ->
-  ?window:window ->
-  ('repr, 'kind) t ->
-  ('repr, 'kind) Data.t ->
-  File.wo ->
-  unit
-(** [to_file t data w] writes the tiff [t] along with the [data] to a file using
-    [w].
-
-    Note that it is up to the user to ensure the metadata in [t] is related and
-    accurate with respect to [data]. *)
+  ?plane:int -> ?window:window -> ('repr, 'kind) t -> File.wo -> unit
+(** [to_file t w] writes the tiff [t] along with its data to a file using [w].
+*)
 
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the first IFD of the TIFF file *)
