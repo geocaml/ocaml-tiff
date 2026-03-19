@@ -72,7 +72,7 @@ val data :
 
 val make :
   ?big_tiff:bool ->
-  ?endianness:Endian.endianness ->
+  ?big_endian:bool ->
   ?compression:Ifd.compression ->
   ?photometric_interpretation:Ifd.photometric_interpretation ->
   ?planar_configuration:Ifd.planar_configuration ->
