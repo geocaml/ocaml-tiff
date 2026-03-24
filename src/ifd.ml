@@ -1079,6 +1079,10 @@ let write_entry entry writer =
   | Read (file_offset, data) -> writer ~file_offset data
 
 let write_ifd ~file_offset header writer (ifd : t) =
+  let next_ifd_buf =
+    Cstruct.create (match header.kind with Tiff -> 4 | Bigtiff -> 8)
+  in
+  (* Endian.set_uint64 Endian.Big next_ifd_buf 0L;  *)
   let endian = header.byte_order in
   let incr_offset = add_int file_offset in
   let size_buf = Cstruct.create 8 in
@@ -1088,7 +1092,7 @@ let write_ifd ~file_offset header writer (ifd : t) =
     | Tiff -> (2, Endian.set_uint16 endian size_buf count)
     | Bigtiff -> (8, Endian.set_uint64 endian size_buf (count |> Int64.of_int))
   in
-  writer ~file_offset [ size_buf ];
+  writer ~file_offset [ size_buf; next_ifd_buf ];
 
   let entry_size = if header.kind = Tiff then 12 else 20 in
   let buf = Cstruct.create (entry_size * count) in

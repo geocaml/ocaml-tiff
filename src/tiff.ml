@@ -354,9 +354,8 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
       t.data <- Some data;
       data
 
-let write_data (type repr kind) ?(plane = None) ?(window = None)
-    (tiff : (repr, kind) t) (data : (repr, kind) Data.t) (w : File.wo) : _ =
-  let ifd = ifd tiff in
+let write_data (type repr kind) ?(plane = None) ?(window = None) tiff ifd
+    (data : (repr, kind) Data.t) (w : File.wo) : _ =
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
   let _, _, write_value = get_repr tiff ifd plane in
@@ -364,12 +363,12 @@ let write_data (type repr kind) ?(plane = None) ?(window = None)
 
 let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
     (w : File.wo) =
-  let _ifd = Ifd.cache_all_entries (ifd tiff) in
+  let ifd = Ifd.cache_all_entries (ifd tiff) in
   Ifd.write_header w tiff.header;
-  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w (ifd tiff);
+  Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w ifd;
   match tiff.data with
   | None -> Fmt.invalid_arg "Tiff file has no data associated with it."
-  | Some data -> write_data ~plane ~window tiff data w
+  | Some data -> write_data ~plane ~window tiff ifd data w
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
     ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)

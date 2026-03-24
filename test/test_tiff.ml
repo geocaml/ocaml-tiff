@@ -17,8 +17,13 @@ let with_wo backend path fn =
   match backend with
   | Eio fs ->
       let path = Eio.Path.(fs / path) in
-      Tiff_eio.with_open_out path fn
-  | Unix -> Tiff_unix.with_open_out path fn
+      let a = Tiff_eio.with_open_out path fn in
+      Eio.Path.unlink path;
+      a
+  | Unix ->
+      let a = Tiff_unix.with_open_out path fn in
+      Unix.unlink path;
+      a
 
 let test_write_basic_tiff backend _ =
   with_wo backend "./data/tmp.tiff" @@ fun w ->
