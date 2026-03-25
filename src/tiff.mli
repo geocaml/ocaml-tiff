@@ -40,6 +40,14 @@ val to_file :
 (** [to_file t w] writes the tiff [t] along with its data to a file using [w].
 *)
 
+val add_data :
+  ?plane:int option ->
+  ?window:window option ->
+  ('repr, 'kind) t ->
+  ('repr, 'kind) Data.t ->
+  File.wo ->
+  unit
+
 val ifd : ('repr, 'kind) t -> Ifd.t
 (** Access the first IFD of the TIFF file *)
 

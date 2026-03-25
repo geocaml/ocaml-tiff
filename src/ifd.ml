@@ -311,6 +311,14 @@ type entry_values =
   | Doubles of float list
   | Rationals of (int * int) list
 
+type make_entry = { entry : entry; extra : Cstruct.t list }
+
+type entry_values =
+  | Ints of int list
+  | String of string
+  | Doubles of float list
+  | Rationals of (int * int) list
+
 type compression =
   | No_compression
   | CCITTRLE
