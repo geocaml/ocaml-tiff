@@ -17,8 +17,33 @@ let with_wo backend path fn =
   match backend with
   | Eio fs ->
       let path = Eio.Path.(fs / path) in
-      Tiff_eio.with_open_out path fn
-  | Unix -> Tiff_unix.with_open_out path fn
+      let a = Tiff_eio.with_open_out path fn in
+      Eio.Path.unlink path;
+      a
+  | Unix ->
+      let a = Tiff_unix.with_open_out path fn in
+      Unix.unlink path;
+      a
+
+let test_write_basic_tiff backend _ =
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r ->
+  let data =
+    Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make data in
+  Tiff.to_file tiff w;
+  let tiff = Tiff.from_file Tiff.Uint8 r in
+  let ifd = Tiff.ifd tiff in
+  let document_name = Tiff.Ifd.document_name ifd in
+  let width = Tiff.Ifd.width ifd in
+  let height = Tiff.Ifd.height ifd in
+  assert_equal ~msg:"Image width" width 10;
+  assert_equal ~msg:"Image Height" height 10;
+  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
+  assert_equal ~msg:"Data" data (Tiff.data tiff r);
+  assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
 let test_write_basic_tiff backend _ =
   with_wo backend "./data/tmp.tiff" @@ fun w ->
@@ -69,7 +94,7 @@ let test_write_entries_roundtrip backend _ =
   let predictor = Tiff.Ifd.predictor ifd in
 
   let data = Tiff.data tiff r in
-  Tiff.to_file tiff data w;
+  Tiff.to_file tiff w;
 
   let tiff = Tiff.from_file Tiff.Uint16 r2 in
   let ifd = Tiff.ifd tiff in
@@ -91,7 +116,7 @@ let test_bigtiff_write_entries_roundtrip backend _ =
   let predictor = Tiff.Ifd.predictor ifd in
   let data = Tiff.data tiff r in
 
-  Tiff.to_file tiff data w;
+  Tiff.to_file tiff w;
   let tiff = Tiff.from_file Tiff.Uint8 r2 in
   let ifd = Tiff.ifd tiff in
   let data2 = Tiff.data tiff r2 in
@@ -583,6 +608,27 @@ let test_load_deflate_compressed_tiff backend _ =
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
+let test_load_multiple_uniform_ifds_tiff backend _ =
+  let data = "./data/multiple_uniform_ifds.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint16 ro in
+  let ifds = Tiff.ifds tiff in
+  assert_equal_int ~msg:"Number of IFDs" 13 (Array.length ifds);
+  (* stack all IFDs together, this would fail if their dimensions weren't
+     uniform *)
+  let data =
+    Array.mapi
+      (fun image_nb _ -> Tiff.data ~image_nb tiff ro |> Nx.of_bigarray)
+      ifds
+    |> Array.to_list |> Nx.stack
+  in
+  let shape = Nx.shape data in
+  assert_equal ~printer:Nx.shape_to_string ~msg:"Aggregated data shape"
+    [| 13; 314; 502 |] shape;
+  OUnit2.assert_raises ~msg:"Request invalid image number"
+    (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
+    (fun () -> Tiff.data ~image_nb:13 tiff ro)
+
 let suite fs =
   let tests backend =
     [
@@ -621,6 +667,8 @@ let suite fs =
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
+      "Test load tiff with multiple uniform IFDs"
+      >:: test_load_multiple_uniform_ifds_tiff backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

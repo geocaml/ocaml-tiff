@@ -4,6 +4,7 @@
 (name tiff)
 
 (generate_opam_files true)
+(source (github geocaml/ocaml-tiff))
 
 (package
  (name tiff)
@@ -15,9 +16,8 @@
    optint
    decompress
    bigstringaf
-   (ocamlformat (and (= "0.27.0") :with-dev-setup)) 
+   (ocamlformat (and (= "0.28.1") :with-dev-setup))
    (bechamel :with-test)
-   (bechamel-notty :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
    (eio_main :with-test)

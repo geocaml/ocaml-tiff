@@ -36,17 +36,9 @@ val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
 val to_file :
-  ?plane:int ->
-  ?window:window ->
-  ('repr, 'kind) t ->
-  ('repr, 'kind) Data.t ->
-  File.wo ->
-  unit
-(** [to_file t data w] writes the tiff [t] along with the [data] to a file using
-    [w].
-
-    Note that it is up to the user to ensure the metadata in [t] is related and
-    accruate with respect to [data]. *)
+  ?plane:int -> ?window:window -> ('repr, 'kind) t -> File.wo -> unit
+(** [to_file t w] writes the tiff [t] along with its data to a file using [w].
+*)
 
 val add_data :
   ?plane:int option ->
@@ -57,9 +49,13 @@ val add_data :
   unit
 
 val ifd : ('repr, 'kind) t -> Ifd.t
-(** Access the IFD of the TIFF file *)
+(** Access the first IFD of the TIFF file *)
+
+val ifds : ('repr, 'kind) t -> Ifd.t array
+(** Access the all IFDs of the TIFF file *)
 
 val data :
+  ?image_nb:int ->
   ?plane:int ->
   ?window:window ->
   ('repr, 'kind) t ->
@@ -71,16 +67,15 @@ val data :
     data. *)
 
 val make :
-  ?big_tiff:bool ->
-  ?big_endian:bool ->
+  ?bigtiff:bool ->
+  ?endian:Endian.endianness ->
   ?compression:Ifd.compression ->
   ?photometric_interpretation:Ifd.photometric_interpretation ->
   ?planar_configuration:Ifd.planar_configuration ->
   ?file_name:string ->
-  ('repr, 'kind) kind ->
-  ('c, 'd, 'e) Bigarray.Genarray.t ->
-  File.wo ->
+  ('repr, 'kind) Data.t ->
   ('repr, 'kind) t
+(** [make data] constructs a new TIFF file from some multidimensional data. *)
 
 module Private : sig
   module Lzw = Lzw
