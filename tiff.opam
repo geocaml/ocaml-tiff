@@ -17,7 +17,7 @@ depends: [
   "mdx" {with-test}
   "ounit2" {with-test}
   "eio_main" {with-test}
-  "nx" {>= "1.0.0~alpha2" & with-test}
+  "nx" {= "1.0.0~alpha3" & with-test}
   "odoc" {with-doc}
 ]
 build: [
@@ -35,3 +35,4 @@ build: [
   ]
 ]
 dev-repo: "git+https://github.com/geocaml/ocaml-tiff.git"
+available: arch != "x86_32" & arch != "arm32"
