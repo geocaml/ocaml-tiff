@@ -128,7 +128,7 @@ let test_load_uniform_tiff backend _ =
     (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
 let test_load_data_as_wrong_type_fails backend _ =
@@ -179,7 +179,7 @@ let test_load_simple_int8_tiff _ =
     (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 8; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   (* uses alternating +ve and -ve values, so sum should be zero *)
   assert_equal_int ~msg:"Value sum" 0 res
 
@@ -206,7 +206,7 @@ let test_load_simple_uint8_tiff backend _ =
     (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 234) res
 
 let test_load_simple_int16_tiff backend _ =
@@ -229,7 +229,7 @@ let test_load_simple_int16_tiff backend _ =
     (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 1234) res
 
 let test_load_simple_uint16_tiff backend _ =
@@ -252,7 +252,7 @@ let test_load_simple_uint16_tiff backend _ =
     (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 61234) res
 
 let test_load_simple_int32_tiff backend _ =
@@ -380,7 +380,7 @@ let uniform_rgb_uint8_lzw backend _ =
   for plane = 0 to 2 do
     let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
     let data = Tiff.data ~plane ~window tiff ro |> Nx.of_bigarray in
-    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
     assert_equal_int
       ~msg:(Printf.sprintf "Check plane %d" plane)
       ((plane + 1) * 10 * 10)
@@ -419,7 +419,7 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
     assert_equal_int ~msg:"data width" 10 (Bigarray.Array2.dim2 data2d);
     let data = Nx.of_bigarray data in
-    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
@@ -454,7 +454,7 @@ let test_load_striped_uint8_lzw_tiff backend _ =
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
     assert_equal_int ~msg:"data width" 10 (Bigarray.Array2.dim2 data2d);
     let data = Nx.of_bigarray data in
-    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
@@ -489,7 +489,7 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
     assert_equal_int ~msg:"data width" 10 (Bigarray.Array2.dim2 data2d);
     let data = Nx.of_bigarray data in
-    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
@@ -498,7 +498,7 @@ let test_uneven_rows_per_strip backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file Tiff.Uint8 ro in
   let d = Tiff.data tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int d) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 d) |> Nx.item [] in
   ignore res
 
 let test_lzw_cea backend _ =
@@ -542,7 +542,7 @@ let test_gdal_sparse_tiff backend _ =
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
     assert_equal_int ~msg:"data width" 10 (Bigarray.Array2.dim2 data2d);
     let data = Nx.of_bigarray data in
-    let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+    let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
     assert_equal_int ~msg:"Value sum" ((y + 1) mod 2 * width) res
   done
 
@@ -584,7 +584,7 @@ let test_load_deflate_compressed_tiff backend _ =
     (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
-  let res = Nx.sum (Nx.cast Int data) |> Nx.item [] in
+  let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
