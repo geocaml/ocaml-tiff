@@ -285,6 +285,7 @@ type ('repr, 'kind) t = {
   data_type : ('repr, 'kind) kind;
   mutable window : window option;
   mutable plane : int option;
+  mutable image_nb : int option;
   mutable data : ('repr, 'kind) Data.t option;
   header : header;
   ifds : Ifd.t array;
@@ -305,7 +306,15 @@ let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
   let header = Ifd.read_header f in
   let first_ifd = Ifd.v ~file_offset:header.offset header f in
   let ifds = all_ifds first_ifd in
-  { data_type; header; window = None; plane = None; data = None; ifds }
+  {
+    data_type;
+    header;
+    window = None;
+    plane = None;
+    image_nb = None;
+    data = None;
+    ifds;
+  }
 
 let get_repr (type repr kind) (t : (repr, kind) t) ifd plane :
     (repr, kind) Bigarray.kind
@@ -345,12 +354,16 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
   match t.data with
-  | Some data when t.window = Some window && t.plane = Some plane -> data
+  | Some data
+    when t.window = Some window && t.plane = Some plane
+         && t.image_nb = Some image_nb ->
+      data
   | Some _ | None ->
       let kind, read_value, _ = get_repr t ifd plane in
       let data = Data.read_data ifd t.header f plane window kind read_value in
       t.window <- Some window;
       t.plane <- Some plane;
+      t.image_nb <- Some image_nb;
       t.data <- Some data;
       data
 
@@ -481,6 +494,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     data = Some data;
     window = None;
     plane = None;
+    image_nb = None;
     header;
     ifds = Array.make 1 ifd;
   }
