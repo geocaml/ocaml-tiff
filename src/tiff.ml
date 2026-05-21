@@ -34,6 +34,8 @@ module Data = struct
 
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
 
+  (* TIFF spec specifies max 8K bytes per strip *)
+  let max_bytes_per_strip = 8192
   let read_uint8_value buf buf_index _ = Cstruct.get_uint8 buf buf_index
 
   let read_int8_value buf buf_index _ =
@@ -279,6 +281,36 @@ module Data = struct
     | Bigarray.Float32 -> (32, Ifd.IEEEFloatingPoint)
     | Bigarray.Float64 -> (64, Ifd.IEEEFloatingPoint)
     | _ -> failwith "Unsupported element kind"
+
+  let compute_rows_per_strip bits_per_sample image_width image_height =
+    let bytes_per_row = image_width * bits_per_sample / 8 in
+    let rows_per_strip = ceil max_bytes_per_strip bytes_per_row in
+    if rows_per_strip > image_height then (image_height, bytes_per_row)
+    else (rows_per_strip, bytes_per_row)
+
+  let compute_data_bytecounts rows_per_strip image_height bytes_per_row =
+    let num_strips = ceil image_height rows_per_strip in
+    let rem_rows = image_height mod rows_per_strip in
+    let data_bytecounts =
+      if rem_rows = 0 then
+        List.init num_strips (fun _ -> rows_per_strip * bytes_per_row)
+      else
+        let base =
+          List.init (num_strips - 1) (fun _ -> rows_per_strip * bytes_per_row)
+        in
+        base @ [ rem_rows * bytes_per_row ]
+    in
+    data_bytecounts
+
+  let compute_data_offsets strip_bytecounts start_offset =
+    let _, data_offsets =
+      List.fold_left
+        (fun (current_offset, acc) count ->
+          (current_offset + count, current_offset :: acc))
+        (start_offset, []) strip_bytecounts
+    in
+    let data_offsets = List.rev data_offsets in
+    data_offsets
 end
 
 type ('repr, 'kind) t = {
@@ -411,9 +443,14 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let bps, sample_format = Data.bits_per_sample_of_kind (Genarray.kind data) in
   let sample_format_int = Ifd.sample_format_to_int sample_format in
   let bps_list = List.init samples_per_pixel (fun _ -> bps) in
-  let data_bytecounts = [ height * width * samples_per_pixel * (bps / 8) ] in
 
-  let rows_per_strip = height in
+  let rows_per_strip, bytes_per_row =
+    Data.compute_rows_per_strip bps width height
+  in
+  let data_bytecounts =
+    Data.compute_data_bytecounts rows_per_strip height bytes_per_row
+  in
+
   let make_entry = Ifd.make_entry endian in
   let image_width, file_offset =
     make_entry file_offset ImageWidth (Ifd.Ints [ width ])
@@ -451,11 +488,31 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let document_name, file_offset =
     make_entry file_offset DocumentName (Ifd.String file_name)
   in
-
-  let data_offsets = [ file_offset ] in
+  let num_strips = List.length data_bytecounts in
+  let data_offsets, start_image_data_offset, array_element_size =
+    if num_strips = 1 then ([ file_offset ], file_offset, 0)
+    else
+      let total_image_bytes = bytes_per_row * height in
+      let short_array_size = num_strips * 2 in
+      let last_offset_if_short =
+        file_offset + short_array_size + total_image_bytes
+        - List.hd (List.rev data_bytecounts)
+      in
+      if last_offset_if_short <= 65535 then
+        let start_offset = file_offset + short_array_size in
+        let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+        (offsets, start_offset, 2)
+      else
+        let long_array_size = num_strips * 4 in
+        let start_offset = file_offset + long_array_size in
+        let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+        (offsets, start_offset, 4)
+  in
 
   let strip_offset, _ =
-    make_entry file_offset StripOffsets (Ifd.Ints data_offsets)
+    make_entry
+      (start_image_data_offset - (num_strips * array_element_size))
+      StripOffsets (Ifd.Ints data_offsets)
   in
 
   let of_ba_kind (type r k) : (r, k) Bigarray.kind -> (r, k) kind = function
