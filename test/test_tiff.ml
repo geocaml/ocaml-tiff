@@ -25,6 +25,22 @@ let with_wo backend path fn =
       Unix.unlink path;
       a
 
+let test_write_simple_striped_tiff backend _ =
+  with_wo backend "./data/tmp.tiff" @@ fun w ->
+  with_ro backend "./data/tmp.tiff" @@ fun r ->
+  let data =
+    Nx.init UInt16 [| 800; 20 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make data in
+  Tiff.to_file tiff w;
+  let tiff = Tiff.from_file Tiff.Uint16 r in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Number of strips" 4
+    (List.length (Tiff.Ifd.data_offsets ifd));
+  assert_equal_int ~msg:"Number of rows" 205 (Tiff.Ifd.rows_per_strip ifd);
+  assert_equal ~msg:"Data" data (Tiff.data tiff r)
+
 let test_write_basic_tiff backend _ =
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r ->
@@ -39,8 +55,10 @@ let test_write_basic_tiff backend _ =
   let document_name = Tiff.Ifd.document_name ifd in
   let width = Tiff.Ifd.width ifd in
   let height = Tiff.Ifd.height ifd in
-  assert_equal ~msg:"Image width" width 10;
-  assert_equal ~msg:"Image Height" height 10;
+  assert_equal_int ~msg:"Image width" width 10;
+  assert_equal_int ~msg:"Image Height" height 10;
+  assert_equal_int ~msg:"Number of strips" 1
+    (List.length (Tiff.Ifd.data_offsets ifd));
   assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
   assert_equal ~msg:"Data" data (Tiff.data tiff r);
   assert_equal ~msg:"Document Name" document_name "TIFF_File"
@@ -468,6 +486,10 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
   assert_equal_int ~msg:"Image width" 10 width;
   assert_equal_int ~msg:"Image height" 10 height;
   assert_equal_int ~msg:"Rows per strip" 3 (Tiff.Ifd.rows_per_strip header);
+  assert_equal_int ~msg:"Number of strips" 4
+    (List.length (Tiff.Ifd.data_offsets header));
+  assert_equal ~msg:"Strip byte counts" [ 16; 16; 16; 7 ]
+    (Tiff.Ifd.data_bytecounts header);
   assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
   assert_equal_int ~msg:"Samples per pixel" 1
     (Tiff.Ifd.samples_per_pixel header);
@@ -612,6 +634,8 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
 let suite fs =
   let tests backend =
     [
+      "Test write simple striped TIFF"
+      >:: test_write_simple_striped_tiff backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test write bigtiff ifd roundtrip"

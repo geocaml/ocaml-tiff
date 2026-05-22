@@ -492,7 +492,7 @@ let add_int optint i = Optint.Int63.(add optint (of_int i))
 
 let is_immediate_raw ~count field =
   let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
-  Int64.compare total_size 4L <= 0
+  Int64.compare total_size 4L <= 0 && count = 1L
 
 let is_immediate_raw_big ~count field =
   let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
@@ -1281,7 +1281,7 @@ let make_entry endian file_offset tag values =
         | Ints (v :: _) -> smallest_int_field_for v allowed_fields
         | _ -> failwith "Cannot determine field for non-int multi-field tag")
   in
-  let is_immediate = is_immediate_raw ~count field && count = 1L in
+  let is_immediate = is_immediate_raw ~count field in
   let offset =
     if is_immediate then
       match values with
