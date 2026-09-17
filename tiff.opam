@@ -7,11 +7,11 @@ homepage: "https://github.com/geocaml/ocaml-tiff"
 bug-reports: "https://github.com/geocaml/ocaml-tiff/issues"
 depends: [
   "dune" {>= "3.9"}
+  "bstr"
   "fmt"
   "cstruct"
   "optint"
   "decompress"
-  "bigstringaf"
   "ocamlformat" {= "0.28.1" & with-dev-setup}
   "bechamel" {with-test}
   "mdx" {with-test}
