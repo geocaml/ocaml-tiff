@@ -27,6 +27,10 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
   | Float32 -> Fmt.string ppf "float32"
   | Float64 -> Fmt.string ppf "float64"
 
+(* LibTIFF defines this to be 8KB (see https://libtiff.gitlab.io/libtiff/functions/TIFFstrip.html)
+   but modern libraries override this and default to  64KB or higher for modern hardware. *)
+let default_strip_size = 65_536
+
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
@@ -39,7 +43,6 @@ module Data = struct
   let read_int8_value buf buf_index _ =
     (Cstruct.get_uint8 buf buf_index lsl (Sys.int_size - 8))
     asr (Sys.int_size - 8)
-  (* as per Bytes.get_int8 *)
 
   let read_uint16_value buf buf_index tiff_endianness =
     Endian.uint16 ~offset:buf_index tiff_endianness buf
@@ -279,6 +282,37 @@ module Data = struct
     | Bigarray.Float32 -> (32, Ifd.IEEEFloatingPoint)
     | Bigarray.Float64 -> (64, Ifd.IEEEFloatingPoint)
     | _ -> failwith "Unsupported element kind"
+
+  (* The rows_per_strip is calculated based on trying to cram as many rows into
+     a 64KB strip, we may wish to allow a user to override this in the future.
+
+     Note this independent of image height. *)
+  let compute_rows_per_strip ~bits_per_sample ~samples_per_pixel ~width =
+    let bytes_per_row = width * bits_per_sample * samples_per_pixel / 8 in
+    let rows_per_strip = max 1 (default_strip_size / bytes_per_row) in
+    (rows_per_strip, bytes_per_row)
+
+  (* Total byte counts per strip, must strips will be full (i.e. have [rows_per_strip] rows
+     in them). Only the last might be short. *)
+  let compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row =
+    let num_strips = height / rows_per_strip in
+    let rem_strips = height mod rows_per_strip in
+    let full_strips =
+      List.init num_strips (fun _ -> rows_per_strip * bytes_per_row)
+    in
+    if rem_strips = 0 then full_strips
+    else full_strips @ [ rem_strips * bytes_per_row ]
+
+  (* We just do the naive thing for now and dump all of the data together. *)
+  let compute_data_offsets strip_bytecounts start_offset =
+    let _, data_offsets =
+      List.fold_left
+        (fun (current_offset, acc) count ->
+          (current_offset + count, current_offset :: acc))
+        (start_offset, []) strip_bytecounts
+    in
+    let data_offsets = List.rev data_offsets in
+    data_offsets
 end
 
 type ('repr, 'kind) t = {
@@ -408,12 +442,20 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let width = Genarray.nth_dim data 1 in
   let height = Genarray.nth_dim data 0 in
 
-  let bps, sample_format = Data.bits_per_sample_of_kind (Genarray.kind data) in
+  let bits_per_sample, sample_format =
+    Data.bits_per_sample_of_kind (Genarray.kind data)
+  in
   let sample_format_int = Ifd.sample_format_to_int sample_format in
-  let bps_list = List.init samples_per_pixel (fun _ -> bps) in
-  let data_bytecounts = [ height * width * samples_per_pixel * (bps / 8) ] in
+  let bps_list = List.init samples_per_pixel (fun _ -> bits_per_sample) in
 
-  let rows_per_strip = height in
+  let rows_per_strip, bytes_per_row =
+    Data.compute_rows_per_strip ~bits_per_sample ~samples_per_pixel ~width
+  in
+
+  let data_bytecounts =
+    Data.compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row
+  in
+
   let make_entry = Ifd.make_entry endian in
   let image_width, file_offset =
     make_entry file_offset ImageWidth (Ifd.Ints [ width ])
@@ -437,7 +479,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let rows_per_strip, file_offset =
     make_entry file_offset RowsPerStrip (Ifd.Ints [ rows_per_strip ])
   in
-  (*single strip*)
+
   let strip_bytecounts, file_offset =
     make_entry file_offset StripByteCounts (Ifd.Ints data_bytecounts)
   in
@@ -451,11 +493,31 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let document_name, file_offset =
     make_entry file_offset DocumentName (Ifd.String file_name)
   in
-
-  let data_offsets = [ file_offset ] in
+  let num_strips = List.length data_bytecounts in
+  let data_offsets, start_image_data_offset, array_element_size =
+    if num_strips = 1 then ([ file_offset ], file_offset, 0)
+    else
+      let total_image_bytes = bytes_per_row * height in
+      let short_array_size = num_strips * 2 in
+      let last_offset_if_short =
+        file_offset + short_array_size + total_image_bytes
+        - List.hd (List.rev data_bytecounts)
+      in
+      if last_offset_if_short <= 65535 then
+        let start_offset = file_offset + short_array_size in
+        let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+        (offsets, start_offset, 2)
+      else
+        let long_array_size = num_strips * 4 in
+        let start_offset = file_offset + long_array_size in
+        let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+        (offsets, start_offset, 4)
+  in
 
   let strip_offset, _ =
-    make_entry file_offset StripOffsets (Ifd.Ints data_offsets)
+    make_entry
+      (start_image_data_offset - (num_strips * array_element_size))
+      StripOffsets (Ifd.Ints data_offsets)
   in
 
   let of_ba_kind (type r k) : (r, k) Bigarray.kind -> (r, k) kind = function
