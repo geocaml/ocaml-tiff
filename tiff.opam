@@ -11,8 +11,8 @@ depends: [
   "fmt"
   "cstruct"
   "optint"
-  "decompress"
-  "ocamlformat" {= "0.28.1" & with-dev-setup}
+  "decompress" {>= "1.6.0"}
+  "ocamlformat" {= "0.29.0" & with-dev-setup}
   "bechamel" {with-test}
   "mdx" {with-test}
   "ounit2" {with-test}
