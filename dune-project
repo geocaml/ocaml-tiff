@@ -11,12 +11,12 @@
  (synopsis "Pure OCaml TIFF reader and writer")
  (description "This library provides low-level access to TIFF files for reading and writing with a small dependency cone.")
  (depends
+   bstr
    fmt
    cstruct
    optint
-   decompress
-   bigstringaf
-   (ocamlformat (and (= "0.28.1") :with-dev-setup))
+   (decompress (>= "1.6.0")) 
+   (ocamlformat (and (= "0.29.0") :with-dev-setup))
    (bechamel :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
