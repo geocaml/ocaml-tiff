@@ -21,8 +21,7 @@ let decode input output_buffer =
     else
       let to_read = min remaining (Bstr.length buf) in
       (* Blit directly from input_bigstring to buf using offsets - no sub needed *)
-      Bstr.blit input_bigarray ~src_off:!input_pos buf ~dst_off:0
-        ~len:to_read;
+      Bstr.blit input_bigarray ~src_off:!input_pos buf ~dst_off:0 ~len:to_read;
       input_pos := !input_pos + to_read;
       to_read
   in

@@ -16,7 +16,7 @@
    cstruct
    optint
    decompress
-   (ocamlformat (and (= "0.28.1") :with-dev-setup))
+   (ocamlformat (and (= "0.29.0") :with-dev-setup))
    (bechamel :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
