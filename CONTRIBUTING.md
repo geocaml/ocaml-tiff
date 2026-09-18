@@ -34,3 +34,20 @@ To test the codebase run `dune test`.
 
 The codebase uses `ocamlformat` to format the code. Before committing please
 run `dune build @fmt --auto` to reformat your code into a consistent style.
+
+## AI and LLMs
+
+All uses of AI/LLMs for composing or processing prose must be declared either
+at the start or the end of the prose. Ideally, if the contributor feels they
+can, they should not use these tools at all for generating prose.
+
+AI-generated code will not be used in production, to quote [Jon
+Sterling](https://www.jonmsterling.com/0LWG/):
+
+> Use your best judgement and do not try to be a lawyer about this: there’s a
+> qualitative difference between autoformalisation and getting an LLM to figure
+> out how to phrase a complicated `match...as...in...return...with...end`
+> expression.
+
+Using these tools to help you think or debug a problem is okay provided you
+come to a full understanding of the code and the problem yourself.

@@ -4,6 +4,9 @@ A pure OCaml library for reading TIFF files. The underlying IO mechanisms are
 expected to be provided by the user using a library of their choice. For
 example, you could use [Eio](https://github.com/ocaml-multicore/eio).
 
+Please familiarise yourself with the [CONTRIBUTING.md](./CONTRIBUTING.md)
+document before opening an issue or suggesting changes to this library.
+
 ## Installing
 
 `ocaml-tiff` is not yet released, until it has been you will need to pin it to use it.
