@@ -85,8 +85,6 @@ module Data = struct
   let write_float64_value buf buf_index value tiff_endianness =
     Endian.set_double ~offset:buf_index tiff_endianness buf value
 
-  let ceil a b = (a + b - 1) / b
-
   let pp_window fmt window =
     Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff
       window.yoff window.xsize window.ysize
@@ -153,7 +151,10 @@ module Data = struct
     let first_strip =
       (window.yoff / rows_per_strip) + (strips_per_plane * plane)
     in
-    let last_strip = first_strip + ceil window.ysize rows_per_strip in
+    let last_strip =
+      ((window.yoff + window.ysize - 1) / rows_per_strip)
+      + 1 + (strips_per_plane * plane)
+    in
 
     let row_index =
       ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
