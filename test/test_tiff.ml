@@ -568,6 +568,26 @@ let test_lzw_predictor_u16_be backend _ =
   in
   assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
 
+let test_deflate_predictor_cea backend _ =
+  let data = "./data/cea.tiff" in
+  let data_compressed = "./data/cea_deflate_predictor.tiff" in
+  let read_data d =
+    with_ro backend d @@ fun ro ->
+    let tiff = Tiff.from_file Tiff.Uint8 ro in
+    Tiff.data tiff ro
+  in
+  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+
+let test_deflate_predictor_u16 backend _ =
+  let data = "./data/u16bit.tiff" in
+  let data_compressed = "./data/u16bit_rgb_deflate_predictor.tiff" in
+  let read_data d =
+    with_ro backend d @@ fun ro ->
+    let tiff = Tiff.from_file Tiff.Uint16 ro in
+    Tiff.data tiff ro
+  in
+  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+
 let test_gdal_sparse_tiff backend _ =
   let data = "./data/sparse_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -713,6 +733,10 @@ let suite fs =
       >:: test_lzw_predictor_u16 backend;
       "Test LZW predictor uint16 RGB big-endian and NoCompress agree"
       >:: test_lzw_predictor_u16_be backend;
+      "Test Deflate predictor and NoCompress agree"
+      >:: test_deflate_predictor_cea backend;
+      "Test Deflate predictor uint16 RGB and NoCompress agree"
+      >:: test_deflate_predictor_u16 backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;

@@ -248,6 +248,27 @@ module Data = struct
       done
     done
 
+  let apply_predictor ifd (header : Ifd.header) planar_configuration
+      samples_per_pixel buf =
+    match Ifd.predictor ifd with
+    | Ifd.No_predictor -> ()
+    | Ifd.HorizontalDifferencing ->
+        let samples =
+          match planar_configuration with
+          | Ifd.Chunky -> samples_per_pixel
+          | Ifd.Planar -> 1
+          | Ifd.Unknown _ ->
+              failwith
+                "Should not get this far if planar config isn't recognised."
+        in
+        let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
+        if bits_per_sample <> 8 && bits_per_sample <> 16 then
+          failwith "Horizontal differencing only supports 8- and 16-bit samples";
+        let bytes_per_sample = bits_per_sample / 8 in
+        undo_horizontal_differencing buf (Ifd.width ifd) samples
+          bytes_per_sample header.byte_order
+    | Ifd.Unknown n -> failwith (Printf.sprintf "Unsupported predictor %d" n)
+
   let read_data ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
@@ -271,27 +292,14 @@ module Data = struct
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Lzw.decode buf uncompressed_buffer;
-            let samples =
-              match planar_configuration with
-              | Chunky -> samples_per_pixel
-              | Planar -> 1
-              | Unknown _ ->
-                  failwith
-                    "Should not get this far if planar config isn't recognised."
-            in
-            if Ifd.predictor ifd = Ifd.HorizontalDifferencing then begin
-              let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
-              if bits_per_sample <> 8 && bits_per_sample <> 16 then
-                failwith
-                  "Horizontal differencing only supports 8- and 16-bit samples";
-              let bytes_per_sample = bits_per_sample / 8 in
-              undo_horizontal_differencing uncompressed_buffer (Ifd.width ifd)
-                samples bytes_per_sample header.byte_order
-            end;
+            apply_predictor ifd header planar_configuration samples_per_pixel
+              uncompressed_buffer;
             uncompressed_buffer
         | false, DEFLATE | false, ADOBE_DEFLATE ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Deflate.decode buf uncompressed_buffer;
+            apply_predictor ifd header planar_configuration samples_per_pixel
+              uncompressed_buffer;
             uncompressed_buffer
         | _ -> failwith "Unsupported compression")
       ~on_value:(fun buf buf_offset dim endian ->
