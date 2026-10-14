@@ -244,17 +244,28 @@ module Data = struct
       row_index := !row_index + rows_in_strip
     done
 
-  (* Turn horizontal differences back into pixels. Any number of 8-bit samples. *)
-  let undo_horizontal_differencing buf width samples =
+  (* Turn horizontal differences back into pixels. 8- or 16-bit samples. *)
+  let undo_horizontal_differencing buf width samples bytes_per_sample endian =
     let row_size = width * samples in
-    let rows = Cstruct.length buf / row_size in
+    let rows = Cstruct.length buf / (row_size * bytes_per_sample) in
+    let mask = (1 lsl (8 * bytes_per_sample)) - 1 in
+    let get position =
+      let offset = position * bytes_per_sample in
+      if bytes_per_sample = 1 then Cstruct.get_uint8 buf offset
+      else Endian.uint16 ~offset endian buf
+    in
+    let set position value =
+      let offset = position * bytes_per_sample in
+      if bytes_per_sample = 1 then Cstruct.set_uint8 buf offset value
+      else Endian.set_uint16 ~offset endian buf value
+    in
     for r = 0 to rows - 1 do
       let row_start = r * row_size in
       for i = samples to row_size - 1 do
         let position = row_start + i in
-        let left = Cstruct.get_uint8 buf (position - samples) in
-        let value = (Cstruct.get_uint8 buf position + left) land 0xFF in
-        Cstruct.set_uint8 buf position value
+        let left = get (position - samples) in
+        let value = (get position + left) land mask in
+        set position value
       done
     done
 
@@ -289,9 +300,15 @@ module Data = struct
                   failwith
                     "Should not get this far if planar config isn't recognised."
             in
-            if Ifd.predictor ifd = Ifd.HorizontalDifferencing then
+            if Ifd.predictor ifd = Ifd.HorizontalDifferencing then begin
+              let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
+              if bits_per_sample <> 8 && bits_per_sample <> 16 then
+                failwith
+                  "Horizontal differencing only supports 8- and 16-bit samples";
+              let bytes_per_sample = bits_per_sample / 8 in
               undo_horizontal_differencing uncompressed_buffer (Ifd.width ifd)
-                samples;
+                samples bytes_per_sample header.byte_order
+            end;
             uncompressed_buffer
         | false, DEFLATE | false, ADOBE_DEFLATE ->
             let uncompressed_buffer = Cstruct.create expected_size in
