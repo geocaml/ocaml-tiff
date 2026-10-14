@@ -244,6 +244,18 @@ module Data = struct
       row_index := !row_index + rows_in_strip
     done
 
+  (* Turn horizontal differences back into pixels. 8-bit, 1 sample per pixel. *)
+  let undo_horizontal_differencing buf width =
+    let rows = Cstruct.length buf / width in
+    for r = 0 to rows - 1 do
+      for c = 1 to width - 1 do
+        let position = (r * width) + c in
+        let left = Cstruct.get_uint8 buf (position - 1) in
+        let value = (Cstruct.get_uint8 buf position + left) land 0xFF in
+        Cstruct.set_uint8 buf position value
+      done
+    done
+
   let read_data ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
@@ -267,6 +279,8 @@ module Data = struct
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Lzw.decode buf uncompressed_buffer;
+            if Ifd.predictor ifd = Ifd.HorizontalDifferencing then
+              undo_horizontal_differencing uncompressed_buffer (Ifd.width ifd);
             uncompressed_buffer
         | false, DEFLATE | false, ADOBE_DEFLATE ->
             let uncompressed_buffer = Cstruct.create expected_size in
