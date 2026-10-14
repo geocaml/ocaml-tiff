@@ -403,6 +403,17 @@ let uniform_rgb_uint8_lzw backend _ =
       res
   done
 
+let test_gdal_rgb_sample_format backend _ =
+  let data = "./data/rgb_gdal.tif" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let header = Tiff.ifd tiff in
+  assert_equal ~msg:"Sample format" Tiff.Ifd.UnsignedInteger
+    (Tiff.Ifd.sample_format header);
+  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let _data = Tiff.data ~plane:0 ~window tiff ro in
+  ()
+
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "./data/striped_uint8_uncompressed.tiff" in
   with_ro backend data @@ fun ro ->
@@ -688,6 +699,7 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
+      "Test GDAL RGB sample format" >:: test_gdal_rgb_sample_format backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
