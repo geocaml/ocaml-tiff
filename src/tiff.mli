@@ -20,9 +20,15 @@ type ('repr, 'kind) kind =
   | Int16 : (int, int16_signed_elt) kind
   | Uint32 : (int32, int32_elt) kind
   | Int32 : (int32, int32_elt) kind
+  | Int64 : (int64, int64_elt) kind
   | Float32 : (float, float32_elt) kind
   | Float64 : (float, float64_elt) kind
       (** Type of data held within the TIFF *)
+
+type ('repr, 'kind) intent =
+  | As of ('repr, 'kind) kind
+  | Safe_cast of ('repr, 'kind) kind
+  | Unsafe_cast of ('repr, 'kind) kind
 
 module Data : sig
   type ('repr, 'kind) t = ('repr, 'kind, c_layout) Genarray.t
@@ -34,6 +40,8 @@ type ('repr, 'kind) t
 
 val from_file : ('repr, 'kind) kind -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
+
+val from_intent : ('repr, 'kind) intent -> File.ro -> ('repr, 'kind) t
 
 val to_file :
   ?plane:int -> ?window:window -> ('repr, 'kind) t -> File.wo -> unit

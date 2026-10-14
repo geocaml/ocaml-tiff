@@ -13,8 +13,17 @@ type ('repr, 'kind) kind =
   | Int16 : (int, Bigarray.int16_signed_elt) kind
   | Uint32 : (int32, Bigarray.int32_elt) kind
   | Int32 : (int32, Bigarray.int32_elt) kind
+  | Int64 : (int64, Bigarray.int64_elt) kind
   | Float32 : (float, Bigarray.float32_elt) kind
   | Float64 : (float, Bigarray.float64_elt) kind
+
+type ('repr, 'kind) intent =
+  | As of ('repr, 'kind) kind
+  | Safe_cast of ('repr, 'kind) kind
+  | Unsafe_cast of ('repr, 'kind) kind
+
+let kind_of_intent (type r k) : (r, k) intent -> (r, k) kind = function
+  | As k | Safe_cast k | Unsafe_cast k -> k
 
 let pp_kind (type r k) : (r, k) kind Fmt.t =
  fun ppf -> function
@@ -24,6 +33,7 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
   | Int16 -> Fmt.string ppf "int16"
   | Int32 -> Fmt.string ppf "int32"
   | Uint32 -> Fmt.string ppf "uint32"
+  | Int64 -> Fmt.string ppf "int64"
   | Float32 -> Fmt.string ppf "float32"
   | Float64 -> Fmt.string ppf "float64"
 
@@ -56,6 +66,9 @@ module Data = struct
   let read_int32_value buf buf_index tiff_endianness =
     Endian.uint32 ~offset:buf_index tiff_endianness buf
 
+  let read_int64_value buf buf_index tiff_endianness =
+    Endian.uint64 ~offset:buf_index tiff_endianness buf
+
   let read_float32_value buf buf_index tiff_endianness =
     let int_value = Endian.uint32 ~offset:buf_index tiff_endianness buf in
     Int32.float_of_bits int_value
@@ -78,6 +91,9 @@ module Data = struct
 
   let write_uint32_value buf buf_index value tiff_endianness =
     Endian.set_uint32 ~offset:buf_index tiff_endianness buf value
+
+  let write_int64_value buf buf_index value tiff_endianness =
+    Endian.set_uint64 ~offset:buf_index tiff_endianness buf value
 
   let write_float32_value buf buf_index value tiff_endianness =
     Endian.set_float32 ~offset:buf_index tiff_endianness buf value
@@ -279,6 +295,7 @@ module Data = struct
     | Bigarray.Int16_signed -> (16, Ifd.SignedInteger)
     | Bigarray.Int16_unsigned -> (16, Ifd.UnsignedInteger)
     | Bigarray.Int32 -> (32, Ifd.UnsignedInteger)
+    | Bigarray.Int64 -> (64, Ifd.SignedInteger)
     | Bigarray.Float32 -> (32, Ifd.IEEEFloatingPoint)
     | Bigarray.Float64 -> (64, Ifd.IEEEFloatingPoint)
     | _ -> failwith "Unsupported element kind"
@@ -316,7 +333,7 @@ module Data = struct
 end
 
 type ('repr, 'kind) t = {
-  data_type : ('repr, 'kind) kind;
+  intent : ('repr, 'kind) intent;
   mutable window : window option;
   mutable plane : int option;
   mutable image_nb : int option;
@@ -336,12 +353,12 @@ let all_ifds first_ifd =
   in
   aux [ first_ifd ] first_ifd |> List.rev |> Array.of_list
 
-let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
+let from_intent (type a b) (intent : (a, b) intent) (f : File.ro) : (a, b) t =
   let header = Ifd.read_header f in
   let first_ifd = Ifd.v ~file_offset:header.offset header f in
   let ifds = all_ifds first_ifd in
   {
-    data_type;
+    intent;
     header;
     window = None;
     plane = None;
@@ -350,33 +367,155 @@ let from_file (type a b) (data_type : (a, b) kind) (f : File.ro) : (a, b) t =
     ifds;
   }
 
-let get_repr (type repr kind) (t : (repr, kind) t) ifd plane :
-    (repr, kind) Bigarray.kind
-    * (Cstruct.t -> int -> Endian.endianness -> repr)
-    * (Cstruct.t -> int -> repr -> Endian.endianness -> unit) =
-  let sample_format = Ifd.sample_format ifd in
-  let bpp = List.nth (Ifd.bits_per_sample ifd) plane in
+let from_file kind file = from_intent (As kind) file
 
-  match (t.data_type, sample_format, bpp) with
+let bigarray_kind (type r k) : (r, k) kind -> (r, k) Bigarray.kind = function
+  | Uint8 -> Bigarray.int8_unsigned
+  | Int8 -> Bigarray.int8_signed
+  | Uint16 -> Bigarray.int16_unsigned
+  | Int16 -> Bigarray.int16_signed
+  | Uint32 -> Bigarray.int32
+  | Int32 -> Bigarray.int32
+  | Int64 -> Bigarray.int64
+  | Float32 -> Bigarray.float32
+  | Float64 -> Bigarray.float64
+
+let integer_bounds (fmt : Ifd.sample_format) bpp =
+  match (fmt, bpp) with
+  | UnsignedInteger, 8 -> Some (0L, 255L)
+  | SignedInteger, 8 -> Some (-128L, 127L)
+  | UnsignedInteger, 16 -> Some (0L, 65535L)
+  | SignedInteger, 16 -> Some (-32768L, 32767L)
+  | UnsignedInteger, 32 -> Some (0L, 0xffffffffL)
+  | SignedInteger, 32 ->
+      Some (Int64.of_int32 Int32.min_int, Int64.of_int32 Int32.max_int)
+  | SignedInteger, 64 -> Some (Int64.min_int, Int64.max_int)
+  | _ -> None
+
+let holds (type r k) (kind : (r, k) kind) lo hi =
+  let ok a b = Int64.compare lo a >= 0 && Int64.compare hi b <= 0 in
+  match kind with
+  | Uint8 -> ok 0L 255L
+  | Int8 -> ok (-128L) 127L
+  | Uint16 -> ok 0L 65535L
+  | Int16 -> ok (-32768L) 32767L
+  | Uint32 -> ok 0L (Int64.of_int32 Int32.max_int)
+  | Int32 -> ok (Int64.of_int32 Int32.min_int) (Int64.of_int32 Int32.max_int)
+  | Int64 -> ok Int64.min_int Int64.max_int
+  | Float32 -> ok (Int64.neg (Int64.shift_left 1L 24)) (Int64.shift_left 1L 24)
+  | Float64 -> ok (Int64.neg (Int64.shift_left 1L 53)) (Int64.shift_left 1L 53)
+
+let narrow (type r k) (kind : (r, k) kind) n : r =
+  match kind with
+  | Uint8 -> Int64.to_int n
+  | Int8 -> Int64.to_int n
+  | Uint16 -> Int64.to_int n
+  | Int16 -> Int64.to_int n
+  | Uint32 -> Int64.to_int32 n
+  | Int32 -> Int64.to_int32 n
+  | Int64 -> n
+  | Float32 -> Int64.to_float n
+  | Float64 -> Int64.to_float n
+
+let read_int64 (fmt : Ifd.sample_format) bpp buf off endian =
+  match (fmt, bpp) with
+  | UnsignedInteger, 8 -> Int64.of_int (Data.read_uint8_value buf off endian)
+  | SignedInteger, 8 -> Int64.of_int (Data.read_int8_value buf off endian)
+  | UnsignedInteger, 16 -> Int64.of_int (Data.read_uint16_value buf off endian)
+  | SignedInteger, 16 -> Int64.of_int (Data.read_int16_value buf off endian)
+  | UnsignedInteger, 32 ->
+      Int64.logand
+        (Int64.of_int32 (Endian.uint32 ~offset:off endian buf))
+        0xffffffffL
+  | SignedInteger, 32 -> Int64.of_int32 (Data.read_int32_value buf off endian)
+  | SignedInteger, 64 -> Data.read_int64_value buf off endian
+  | _ -> assert false
+
+let exact_io (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp :
+    ((Cstruct.t -> int -> Endian.endianness -> r)
+    * (Cstruct.t -> int -> r -> Endian.endianness -> unit))
+    option =
+  match (kind, fmt, bpp) with
   | Uint8, UnsignedInteger, 8 ->
-      (Bigarray.int8_unsigned, Data.read_uint8_value, Data.write_uint8_value)
-  | Int8, SignedInteger, 8 ->
-      (Bigarray.int8_signed, Data.read_int8_value, Data.write_int8_value)
+      Some (Data.read_uint8_value, Data.write_uint8_value)
+  | Int8, SignedInteger, 8 -> Some (Data.read_int8_value, Data.write_int8_value)
   | Uint16, UnsignedInteger, 16 ->
-      (Bigarray.int16_unsigned, Data.read_uint16_value, Data.write_uint16_value)
+      Some (Data.read_uint16_value, Data.write_uint16_value)
   | Int16, SignedInteger, 16 ->
-      (Bigarray.int16_signed, Data.read_int16_value, Data.write_int16_value)
-  | Uint32, UnsignedInteger, 32 ->
-      Fmt.invalid_arg "Unsigned 32-bit coming soon..."
+      Some (Data.read_int16_value, Data.write_int16_value)
   | Int32, SignedInteger, 32 ->
-      (Bigarray.int32, Data.read_int32_value, Data.write_uint32_value)
+      Some (Data.read_int32_value, Data.write_uint32_value)
+  | Int64, SignedInteger, 64 ->
+      Some (Data.read_int64_value, Data.write_int64_value)
   | Float32, IEEEFloatingPoint, 32 ->
-      (Bigarray.float32, Data.read_float32_value, Data.write_float32_value)
+      Some (Data.read_float32_value, Data.write_float32_value)
   | Float64, IEEEFloatingPoint, 64 ->
-      (Bigarray.float64, Data.read_float64_value, Data.write_float64_value)
-  | typ, fmt, bpp ->
-      Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind
-        typ Ifd.pp_sample_format fmt bpp
+      Some (Data.read_float64_value, Data.write_float64_value)
+  | _ -> None
+
+let datatype_mismatch kind (fmt : Ifd.sample_format) bpp =
+  Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind kind
+    Ifd.pp_sample_format fmt bpp
+
+let would_lose kind (fmt : Ifd.sample_format) bpp =
+  Fmt.invalid_arg "safe cast to %a would lose data: %a, %i bpp" pp_kind kind
+    Ifd.pp_sample_format fmt bpp
+
+let exact_repr (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp =
+  match kind with
+  | Uint32 when fmt = UnsignedInteger && bpp = 32 ->
+      Fmt.invalid_arg "Unsigned 32-bit coming soon..."
+  | _ -> (
+      match exact_io kind fmt bpp with
+      | Some (read, write) -> (bigarray_kind kind, read, write)
+      | None -> datatype_mismatch kind fmt bpp)
+
+let converted_reader (type r k) ~unsafe (kind : (r, k) kind)
+    (fmt : Ifd.sample_format) bpp =
+  let src =
+    match integer_bounds fmt bpp with
+    | Some (lo, hi) ->
+        if (not unsafe) && not (holds kind lo hi) then would_lose kind fmt bpp;
+        `Int
+    | None when fmt = IEEEFloatingPoint && (bpp = 32 || bpp = 64) ->
+        let safe =
+          match kind with Float64 -> true | Float32 -> bpp = 32 | _ -> false
+        in
+        if (not unsafe) && not safe then would_lose kind fmt bpp;
+        `Float
+    | None -> datatype_mismatch kind fmt bpp
+  in
+  let read buf off endian =
+    match src with
+    | `Int -> narrow kind (read_int64 fmt bpp buf off endian)
+    | `Float -> (
+        let f =
+          if bpp = 32 then Data.read_float32_value buf off endian
+          else Data.read_float64_value buf off endian
+        in
+        match kind with
+        | Float32 -> f
+        | Float64 -> f
+        | _ -> narrow kind (Int64.of_float f))
+  in
+  (bigarray_kind kind, read)
+
+let read_repr (type r k) (t : (r, k) t) ifd plane =
+  let fmt = Ifd.sample_format ifd in
+  let bpp = List.nth (Ifd.bits_per_sample ifd) plane in
+  let kind = kind_of_intent t.intent in
+  match t.intent with
+  | As _ ->
+      let ba, read, _ = exact_repr kind fmt bpp in
+      (ba, read)
+  | Safe_cast _ -> (
+      match exact_io kind fmt bpp with
+      | Some (read, _) -> (bigarray_kind kind, read)
+      | None -> converted_reader ~unsafe:false kind fmt bpp)
+  | Unsafe_cast _ -> (
+      match exact_io kind fmt bpp with
+      | Some (read, _) -> (bigarray_kind kind, read)
+      | None -> converted_reader ~unsafe:true kind fmt bpp)
 
 let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
     (f : File.ro) : (repr, kind) Data.t =
@@ -393,7 +532,7 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
          && t.image_nb = Some image_nb ->
       data
   | Some _ | None ->
-      let kind, read_value, _ = get_repr t ifd plane in
+      let kind, read_value = read_repr t ifd plane in
       let data = Data.read_data ifd t.header f plane window kind read_value in
       t.window <- Some window;
       t.plane <- Some plane;
@@ -405,7 +544,12 @@ let write_data (type repr kind) ?(plane = None) ?(window = None) tiff ifd
     (data : (repr, kind) Data.t) (w : File.wo) : _ =
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
-  let _, _, write_value = get_repr tiff ifd plane in
+  let _, _, write_value =
+    exact_repr
+      (kind_of_intent tiff.intent)
+      (Ifd.sample_format ifd)
+      (List.nth (Ifd.bits_per_sample ifd) plane)
+  in
   Data.write_data ifd tiff.header plane window data w write_value
 
 let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
@@ -526,6 +670,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     | Int16_signed -> Int16
     | Int16_unsigned -> Uint16
     | Int32 -> Int32
+    | Int64 -> Int64
     | Float32 -> Float32
     | Float64 -> Float64
     | k ->
@@ -552,7 +697,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let data_type = of_ba_kind (Bigarray.Genarray.kind data) in
   let ifd = Ifd.v_of_entries entries data_offsets data_bytecounts header ro in
   {
-    data_type;
+    intent = As data_type;
     data = Some data;
     window = None;
     plane = None;
