@@ -908,7 +908,20 @@ let predictor t =
 let sample_format t =
   try
     let entry = lookup_exn t.entries SampleFormat in
-    Int64.to_int (get_immediate entry) |> sample_format_of_int
+    if entry.field <> Short then
+      Fmt.invalid_arg "SampleFormat entry must use SHORT values";
+    let values =
+      match entry.offset with
+      | Immediate value -> [ Int64.to_int value ]
+      | _ ->
+          read_entry_raw entry t.ro
+          |> List.map (Endian.uint16 t.header.byte_order)
+    in
+    match values with
+    | [] -> UnsignedInteger
+    | value :: rest ->
+        if List.for_all (( = ) value) rest then sample_format_of_int value
+        else Fmt.invalid_arg "SampleFormat values differ between samples"
   with Not_found -> UnsignedInteger
 
 let tile_width t =
