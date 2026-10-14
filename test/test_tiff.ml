@@ -626,6 +626,17 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
     (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
     (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
+let test_load_file_example backend _ =
+  let data = "./data/file_example.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 650 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 434 (Tiff.Ifd.height header);
+  assert_equal_int ~msg:"Samples per pixel" 4
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8; 8; 8; 8 ] (Tiff.Ifd.bits_per_sample header)
+
 let suite fs =
   let tests backend =
     [
@@ -666,6 +677,7 @@ let suite fs =
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
+      "Test load file_example.tiff" >:: test_load_file_example backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
     ]
