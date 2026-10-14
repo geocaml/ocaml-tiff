@@ -528,6 +528,16 @@ let test_lzw_cea backend _ =
   in
   assert_equal_int ~msg:"sum" (sum_data data) (sum_data data_compressed)
 
+let test_lzw_predictor_cea backend _ =
+  let data = "./data/cea.tiff" in
+  let data_compressed = "./data/cea_lzw_predictor.tiff" in
+  let read_data d =
+    with_ro backend d @@ fun ro ->
+    let tiff = Tiff.from_file Tiff.Uint8 ro in
+    Tiff.data tiff ro
+  in
+  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+
 let test_gdal_sparse_tiff backend _ =
   let data = "./data/sparse_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -665,6 +675,8 @@ let suite fs =
       >:: test_load_odd_striped_uint8_lzw_tiff backend;
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
+      "Test LZW predictor and NoCompress agree"
+      >:: test_lzw_predictor_cea backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
