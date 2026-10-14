@@ -223,13 +223,15 @@ module Data = struct
       row_index := !row_index + rows_in_strip
     done
 
-  (* Turn horizontal differences back into pixels. 8-bit, 1 sample per pixel. *)
-  let undo_horizontal_differencing buf width =
-    let rows = Cstruct.length buf / width in
+  (* Turn horizontal differences back into pixels. Any number of 8-bit samples. *)
+  let undo_horizontal_differencing buf width samples =
+    let row_size = width * samples in
+    let rows = Cstruct.length buf / row_size in
     for r = 0 to rows - 1 do
-      for c = 1 to width - 1 do
-        let position = (r * width) + c in
-        let left = Cstruct.get_uint8 buf (position - 1) in
+      let row_start = r * row_size in
+      for i = samples to row_size - 1 do
+        let position = row_start + i in
+        let left = Cstruct.get_uint8 buf (position - samples) in
         let value = (Cstruct.get_uint8 buf position + left) land 0xFF in
         Cstruct.set_uint8 buf position value
       done
@@ -258,8 +260,17 @@ module Data = struct
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Lzw.decode buf uncompressed_buffer;
+            let samples =
+              match planar_configuration with
+              | Chunky -> samples_per_pixel
+              | Planar -> 1
+              | Unknown _ ->
+                  failwith
+                    "Should not get this far if planar config isn't recognised."
+            in
             if Ifd.predictor ifd = Ifd.HorizontalDifferencing then
-              undo_horizontal_differencing uncompressed_buffer (Ifd.width ifd);
+              undo_horizontal_differencing uncompressed_buffer (Ifd.width ifd)
+                samples;
             uncompressed_buffer
         | false, DEFLATE | false, ADOBE_DEFLATE ->
             let uncompressed_buffer = Cstruct.create expected_size in

@@ -538,6 +538,16 @@ let test_lzw_predictor_cea backend _ =
   in
   assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
 
+let test_lzw_predictor_rgb backend _ =
+  let data = "./data/normal.tiff" in
+  let data_compressed = "./data/normal_rgb_lzw_predictor.tiff" in
+  let read_data d =
+    with_ro backend d @@ fun ro ->
+    let tiff = Tiff.from_file Tiff.Uint8 ro in
+    Tiff.data tiff ro
+  in
+  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+
 let test_gdal_sparse_tiff backend _ =
   let data = "./data/sparse_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -677,6 +687,8 @@ let suite fs =
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test LZW predictor and NoCompress agree"
       >:: test_lzw_predictor_cea backend;
+      "Test LZW predictor RGB and NoCompress agree"
+      >:: test_lzw_predictor_rgb backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
