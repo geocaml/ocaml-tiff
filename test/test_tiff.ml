@@ -540,15 +540,16 @@ let test_odd_striped_tiff_window_crosses_boundary backend _ =
   let data2d = Bigarray.array2_of_genarray data in
   assert_equal_int ~msg:"Window height" 3 (Bigarray.Array2.dim1 data2d);
   assert_equal_int ~msg:"Window width" 10 (Bigarray.Array2.dim2 data2d);
+
+  let arr = Nx.of_bigarray data in
+  let row_sums = Nx.(sum ~axes:[ 1 ] (cast Int64 arr)) in
+
   for row = 0 to 2 do
-    let row_sum = ref 0 in
-    for col = 0 to 9 do
-      row_sum := !row_sum + Bigarray.Array2.get data2d row col
-    done;
+    let row_sum = Nx.item [ row ] row_sums |> Int64.to_int in
     assert_equal_int
       ~msg:(Printf.sprintf "Row %d sum" row)
       ((row + 3) * 10)
-      !row_sum
+      row_sum
   done
 
 let test_uneven_rows_per_strip backend _ =
