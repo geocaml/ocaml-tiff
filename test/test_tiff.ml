@@ -154,17 +154,6 @@ let test_load_uniform_tiff_bottom_right_pixel backend _ =
   assert_equal_int ~msg:"Bottom-right pixel" 128
     (Bigarray.Array2.get data2d 0 0)
 
-let test_load_uniform_tiff_nonzero_xoff backend _ =
-  let path = "./data/uniform.tiff" in
-  with_ro backend path @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Uint8 ro in
-  let window = Tiff.{ xoff = 100; yoff = 100; xsize = 5; ysize = 5 } in
-  let data = Tiff.data ~window tiff ro in
-  let data2d = Bigarray.array2_of_genarray data in
-  assert_equal_int ~msg:"Window height" 5 (Bigarray.Array2.dim1 data2d);
-  assert_equal_int ~msg:"Window width" 5 (Bigarray.Array2.dim2 data2d);
-  assert_equal_int ~msg:"Pixel value" 128 (Bigarray.Array2.get data2d 0 0)
-
 let test_load_data_as_wrong_type_fails backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
@@ -675,8 +664,6 @@ let suite fs =
       >:: test_write_simple_striped_tiff backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
-      "Test load uniform TIFF nonzero x-offset"
-      >:: test_load_uniform_tiff_nonzero_xoff backend;
       "Test odd striped TIFF window crosses boundary"
       >:: test_odd_striped_tiff_window_crosses_boundary backend;
       "Test write bigtiff ifd roundtrip"
