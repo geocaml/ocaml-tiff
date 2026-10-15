@@ -25,6 +25,10 @@ type ('repr, 'kind) intent =
 let kind_of_intent (type r k) : (r, k) intent -> (r, k) kind = function
   | As k | Safe_cast k | Unsafe_cast k -> k
 
+let as_kind k = As k
+let safe_cast k = Safe_cast k
+let unsafe_cast k = Unsafe_cast k
+
 let pp_kind (type r k) : (r, k) kind Fmt.t =
  fun ppf -> function
   | Uint8 -> Fmt.string ppf "uint8"
@@ -353,7 +357,7 @@ let all_ifds first_ifd =
   in
   aux [ first_ifd ] first_ifd |> List.rev |> Array.of_list
 
-let from_intent (type a b) (intent : (a, b) intent) (f : File.ro) : (a, b) t =
+let from_file (type a b) (intent : (a, b) intent) (f : File.ro) : (a, b) t =
   let header = Ifd.read_header f in
   let first_ifd = Ifd.v ~file_offset:header.offset header f in
   let ifds = all_ifds first_ifd in
@@ -366,8 +370,6 @@ let from_intent (type a b) (intent : (a, b) intent) (f : File.ro) : (a, b) t =
     data = None;
     ifds;
   }
-
-let from_file kind file = from_intent (As kind) file
 
 let bigarray_kind (type r k) : (r, k) kind -> (r, k) Bigarray.kind = function
   | Uint8 -> Bigarray.int8_unsigned
@@ -457,36 +459,39 @@ let datatype_mismatch kind (fmt : Ifd.sample_format) bpp =
   Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind kind
     Ifd.pp_sample_format fmt bpp
 
-let would_lose kind (fmt : Ifd.sample_format) bpp =
+let would_lose_precision kind (fmt : Ifd.sample_format) bpp =
   Fmt.invalid_arg "safe cast to %a would lose data: %a, %i bpp" pp_kind kind
     Ifd.pp_sample_format fmt bpp
 
 let exact_repr (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp =
   match kind with
   | Uint32 when fmt = UnsignedInteger && bpp = 32 ->
-      Fmt.invalid_arg "Unsigned 32-bit coming soon..."
+      Fmt.invalid_arg "Unsupported"
   | _ -> (
       match exact_io kind fmt bpp with
       | Some (read, write) -> (bigarray_kind kind, read, write)
       | None -> datatype_mismatch kind fmt bpp)
 
-let converted_reader (type r k) ~unsafe (kind : (r, k) kind)
+let converted_reader (type r k) ~unsafe_ok (kind : (r, k) kind)
     (fmt : Ifd.sample_format) bpp =
   let src =
     match integer_bounds fmt bpp with
     | Some (lo, hi) ->
-        if (not unsafe) && not (holds kind lo hi) then would_lose kind fmt bpp;
+        if (not unsafe_ok) && not (holds kind lo hi) then
+          would_lose_precision kind fmt bpp;
         `Int
     | None when fmt = IEEEFloatingPoint && (bpp = 32 || bpp = 64) ->
         let safe =
           match kind with Float64 -> true | Float32 -> bpp = 32 | _ -> false
         in
-        if (not unsafe) && not safe then would_lose kind fmt bpp;
+        if (not unsafe_ok) && not safe then would_lose_precision kind fmt bpp;
         `Float
     | None -> datatype_mismatch kind fmt bpp
   in
   let read buf off endian =
     match src with
+    (* Int64 is a convenient intermediate. Direct conversions may be faster;
+       worth revisiting if casting shows up in profiles. *)
     | `Int -> narrow kind (read_int64 fmt bpp buf off endian)
     | `Float -> (
         let f =
@@ -511,11 +516,11 @@ let read_repr (type r k) (t : (r, k) t) ifd plane =
   | Safe_cast _ -> (
       match exact_io kind fmt bpp with
       | Some (read, _) -> (bigarray_kind kind, read)
-      | None -> converted_reader ~unsafe:false kind fmt bpp)
+      | None -> converted_reader ~unsafe_ok:false kind fmt bpp)
   | Unsafe_cast _ -> (
       match exact_io kind fmt bpp with
       | Some (read, _) -> (bigarray_kind kind, read)
-      | None -> converted_reader ~unsafe:true kind fmt bpp)
+      | None -> converted_reader ~unsafe_ok:true kind fmt bpp)
 
 let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
     (f : File.ro) : (repr, kind) Data.t =
