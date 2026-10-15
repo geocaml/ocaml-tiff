@@ -148,17 +148,14 @@ module Data = struct
           failwith "should not get this far if planar config isn't recognised"
     in
 
-    let first_strip =
-      (window.yoff / rows_per_strip) + (strips_per_plane * plane)
-    in
+    let plane_offset = strips_per_plane * plane in
+
+    let first_strip = (window.yoff / rows_per_strip) + plane_offset in
     let last_strip =
-      ((window.yoff + window.ysize - 1) / rows_per_strip)
-      + 1 + (strips_per_plane * plane)
+      ((window.yoff + window.ysize - 1) / rows_per_strip) + 1 + plane_offset
     in
 
-    let row_index =
-      ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
-    in
+    let row_index = ref ((first_strip - plane_offset) * rows_per_strip) in
 
     (* We iterate through every strip *)
     for strip = first_strip to last_strip - 1 do
