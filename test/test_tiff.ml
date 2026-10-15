@@ -310,7 +310,10 @@ let test_load_simple_uint32_tiff backend _ =
     ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
     ~msg:"Planar configuration" Tiff.Ifd.Chunky
     (Tiff.Ifd.planar_configuration header);
-  assert_raises (Invalid_argument "Unsupported") (fun () ->
+  assert_raises
+    (Invalid_argument
+       "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp")
+    (fun () ->
       let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
       let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
       let res = Nx.sum (Nx.cast Int32 data) |> Nx.item [] in
@@ -626,6 +629,21 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
     (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
     (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
+let test_safe_cast_rejects_lossy backend _ =
+  let rejects path intent msg =
+    with_ro backend path @@ fun ro ->
+    let tiff = Tiff.from_file intent ro in
+    assert_raises (Invalid_argument msg) (fun () -> ignore (Tiff.data tiff ro))
+  in
+  rejects "./data/uniform.tiff" (Tiff.safe_cast Tiff.Int8)
+    "safe cast to int8 would lose data: Unsigned Integer, 8 bpp";
+  rejects "./data/uniform_uint32_lzw.tiff"
+    (Tiff.safe_cast Tiff.Int32)
+    "safe cast to int32 would lose data: Unsigned Integer, 32 bpp";
+  rejects "./data/uniform_float64_lzw.tiff"
+    (Tiff.safe_cast Tiff.Float32)
+    "safe cast to float32 would lose data: IEEEFloatingPoint, 64 bpp"
+
 let suite fs =
   let tests backend =
     [
@@ -654,6 +672,8 @@ let suite fs =
       "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff backend;
       "Test load simple int32 tiff" >:: test_load_simple_int32_tiff backend;
       "Test load simple uint32 tiff" >:: test_load_simple_uint32_tiff backend;
+      "Test safe cast rejects lossy conversion"
+      >:: test_safe_cast_rejects_lossy backend;
       "Test load simple float32 tiff" >:: test_load_simple_float32_tiff backend;
       "Test load simple float64 tiff" >:: test_load_simple_float64_tiff backend;
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;

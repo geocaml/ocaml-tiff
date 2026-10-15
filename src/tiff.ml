@@ -466,7 +466,8 @@ let would_lose_precision kind (fmt : Ifd.sample_format) bpp =
 let exact_repr (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp =
   match kind with
   | Uint32 when fmt = UnsignedInteger && bpp = 32 ->
-      Fmt.invalid_arg "Unsupported"
+      Fmt.invalid_arg "Unsupported datatype for plane: %a, %a, %i bpp" pp_kind
+        kind Ifd.pp_sample_format fmt bpp
   | _ -> (
       match exact_io kind fmt bpp with
       | Some (read, write) -> (bigarray_kind kind, read, write)
