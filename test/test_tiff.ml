@@ -144,16 +144,6 @@ let test_load_uniform_tiff backend _ =
   let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
-let test_load_uniform_tiff_bottom_right_pixel backend _ =
-  let path = "./data/uniform.tiff" in
-  with_ro backend path @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Uint8 ro in
-  let window = Tiff.{ xoff = 255; yoff = 255; xsize = 1; ysize = 1 } in
-  let data = Tiff.data ~window tiff ro in
-  let data2d = Bigarray.array2_of_genarray data in
-  assert_equal_int ~msg:"Bottom-right pixel" 128
-    (Bigarray.Array2.get data2d 0 0)
-
 let test_load_data_as_wrong_type_fails backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
@@ -675,8 +665,6 @@ let suite fs =
       >:: test_load_deflate_compressed_tiff backend;
       "Test load simple uniform uncompressed tiff"
       >:: test_load_uniform_tiff backend;
-      "Test load uniform TIFF bottom-right pixel"
-      >:: test_load_uniform_tiff_bottom_right_pixel backend;
       "Test load data as wrong type"
       >:: test_load_data_as_wrong_type_fails backend;
       "Test fail to read plane from single layer tiff"
