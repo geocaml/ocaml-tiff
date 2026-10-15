@@ -150,15 +150,18 @@ module Data = struct
 
     let plane_offset = strips_per_plane * plane in
 
+    (* Find the first and last strips touched by the requested window.
+       Divide the first and last row indices by rows_per_strip to get
+       their strip indices, then add the plane offset. *)
     let first_strip = (window.yoff / rows_per_strip) + plane_offset in
     let last_strip =
-      ((window.yoff + window.ysize - 1) / rows_per_strip) + 1 + plane_offset
+      ((window.yoff + window.ysize - 1) / rows_per_strip) + plane_offset
     in
 
     let row_index = ref ((first_strip - plane_offset) * rows_per_strip) in
 
-    (* We iterate through every strip *)
-    for strip = first_strip to last_strip - 1 do
+    (* Iterate over every strip touched by the window, including both endpoints. *)
+    for strip = first_strip to last_strip do
       let raw_strip_length = strip_bytecounts.(strip)
       and raw_strip_offset = strip_offsets.(strip) in
       let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
