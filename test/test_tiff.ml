@@ -403,6 +403,37 @@ let uniform_rgb_uint8_lzw backend _ =
       res
   done
 
+let test_load_tiled_uint8_uncompressed_tiff backend _ =
+  let data = "./data/tiled_uint8.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let header = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width header in
+  let height = Tiff.Ifd.height header in
+  assert_equal_int ~msg:"Image width" 3 width;
+  assert_equal_int ~msg:"Image height" 3 height;
+  assert_equal_int ~msg:"Tile width" 2 (Tiff.Ifd.tile_width header);
+  assert_equal_int ~msg:"Tile height" 2 (Tiff.Ifd.tile_height header);
+  assert_equal ~msg:"Compression" Tiff.Ifd.No_compression
+    (Tiff.Ifd.compression header);
+  assert_equal_int ~msg:"Samples per pixel" 1
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
+  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
+    (Tiff.Ifd.sample_format header);
+  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
+    (Tiff.Ifd.predictor header);
+  assert_equal
+    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
+    ~msg:"Planar configuration" Tiff.Ifd.Chunky
+    (Tiff.Ifd.planar_configuration header);
+  for y = 0 to height - 1 do
+    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
+    let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
+    assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
+  done
+
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "./data/striped_uint8_uncompressed.tiff" in
   with_ro backend data @@ fun ro ->
@@ -677,6 +708,8 @@ let suite fs =
       "Test load simple float32 tiff" >:: test_load_simple_float32_tiff backend;
       "Test load simple float64 tiff" >:: test_load_simple_float64_tiff backend;
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
+      "Test load tiled uint8 uncompressed tiff"
+      >:: test_load_tiled_uint8_uncompressed_tiff backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
       "Test load striped uint8 lzw tiff"
