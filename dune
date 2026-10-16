@@ -1,0 +1,7 @@
+; Build everything with AFL instrumentation, but only in the fuzz profile
+; (see fuzz/dune). Normal builds and CI are unaffected.
+
+(env
+ (fuzz
+  (ocamlopt_flags
+   (:standard -afl-instrument))))
