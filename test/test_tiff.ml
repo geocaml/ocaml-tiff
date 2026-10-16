@@ -644,6 +644,28 @@ let test_safe_cast_rejects_lossy backend _ =
     (Tiff.safe_cast Tiff.Float32)
     "safe cast to float32 would lose data: IEEEFloatingPoint, 64 bpp"
 
+let test_truncated_file_raises backend _ =
+  let tmp = "./data/tmp_truncated.tiff" in
+  let full =
+    In_channel.with_open_bin "./data/uniform.tiff" In_channel.input_all
+  in
+  let truncate_to len =
+    Out_channel.with_open_bin tmp (fun oc ->
+        Out_channel.output_substring oc full 0 len)
+  in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove tmp)
+    (fun () ->
+      truncate_to 50;
+      assert_raises ~msg:"IFD cut short" End_of_file (fun () ->
+          with_ro backend tmp (fun ro ->
+              Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro));
+      truncate_to 30_000;
+      with_ro backend tmp @@ fun ro ->
+      let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+      assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
+          Tiff.data tiff ro))
+
 let suite fs =
   let tests backend =
     [
@@ -688,6 +710,8 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
+      "Test truncated file raises End_of_file"
+      >:: test_truncated_file_raises backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
