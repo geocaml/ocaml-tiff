@@ -406,13 +406,20 @@ let uniform_rgb_uint8_lzw backend _ =
 let test_gdal_rgb_sample_format backend _ =
   let data = "./data/rgb_gdal.tif" in
   with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
   let header = Tiff.ifd tiff in
   assert_equal ~msg:"Sample format" Tiff.Ifd.UnsignedInteger
     (Tiff.Ifd.sample_format header);
+  (* Each of the three planes is filled with its 1-based plane number. *)
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
-  let _data = Tiff.data ~plane:0 ~window tiff ro in
-  ()
+  for plane = 0 to 2 do
+    let data = Tiff.data ~plane ~window tiff ro |> Nx.of_bigarray in
+    let res = Nx.sum (Nx.cast Int64 data) |> Nx.item [] |> Int64.to_int in
+    assert_equal_int
+      ~msg:(Printf.sprintf "Plane %d sum" plane)
+      (10 * 10 * (plane + 1))
+      res
+  done
 
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "./data/striped_uint8_uncompressed.tiff" in
