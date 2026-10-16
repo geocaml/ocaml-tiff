@@ -15,5 +15,3 @@ let decode_never_crashes s =
 
 let suite =
   ("lzw", [ test_case "decode never crashes" [ bytes ] decode_never_crashes ])
-
-let () = run "tiff-fuzz" [ suite ]

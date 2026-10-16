@@ -1,6 +1,5 @@
-(executables
- (names fuzz_lzw fuzz_endian)
- (modules fuzz_lzw fuzz_endian)
+(executable
+ (name fuzz)
  (libraries alcobar tiff))
 
 ; Check each fuzz property against randomly generated inputs.
@@ -9,17 +8,9 @@
  (alias runtest)
  (enabled_if
   (<> %{profile} fuzz))
- (deps fuzz_lzw.exe)
+ (deps fuzz.exe)
  (action
-  (run %{exe:fuzz_lzw.exe})))
-
-(rule
- (alias runtest)
- (enabled_if
-  (<> %{profile} fuzz))
- (deps fuzz_endian.exe)
- (action
-  (run %{exe:fuzz_endian.exe})))
+  (run %{exe:fuzz.exe})))
 
 ; Real fuzzing with afl-fuzz: `dune build @fuzz --profile fuzz` (needs a
 ; compiler with AFL instrumentation and afl-fuzz on the PATH).
@@ -28,30 +19,8 @@
  (alias fuzz)
  (enabled_if
   (= %{profile} fuzz))
- (deps fuzz_lzw.exe)
+ (deps fuzz.exe)
  (action
   (progn
-   (run mkdir -p corpus _fuzz)
-   (run %{exe:fuzz_lzw.exe} --gen-corpus corpus/lzw)
-   (run afl-fuzz -V 60 -i corpus/lzw -o _fuzz/lzw -- %{exe:fuzz_lzw.exe} @@))))
-
-(rule
- (alias fuzz)
- (enabled_if
-  (= %{profile} fuzz))
- (deps fuzz_endian.exe)
- (action
-  (progn
-   (run mkdir -p corpus _fuzz)
-   (run %{exe:fuzz_endian.exe} --gen-corpus corpus/endian)
-   (run
-    afl-fuzz
-    -V
-    60
-    -i
-    corpus/endian
-    -o
-    _fuzz/endian
-    --
-    %{exe:fuzz_endian.exe}
-    @@))))
+   (run %{exe:fuzz.exe} --gen-corpus corpus)
+   (run afl-fuzz -V 60 -i corpus -o _fuzz -- %{exe:fuzz.exe} @@))))
