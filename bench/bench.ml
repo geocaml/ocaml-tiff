@@ -22,14 +22,14 @@ let tests =
 let get_dims backend (E (kind, file)) =
   Staged.stage @@ fun () ->
   with_ro backend file @@ fun ro ->
-  let tiff = Tiff.from_file kind ro in
+  let tiff = Tiff.from_file (Tiff.as_kind kind) ro in
   let data = Tiff.data tiff ro in
   Sys.opaque_identity (ignore data)
 
 let get_ifd backend (E (kind, file)) =
   Staged.stage @@ fun () ->
   with_ro backend file @@ fun ro ->
-  let tiff = Tiff.from_file kind ro in
+  let tiff = Tiff.from_file (Tiff.as_kind kind) ro in
   let ifd = Tiff.ifd tiff in
   let compression = Tiff.Ifd.compression ifd in
   assert (compression = LZW || compression = No_compression);
