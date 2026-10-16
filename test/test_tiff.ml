@@ -519,7 +519,6 @@ let test_odd_striped_tiff_window_crosses_boundary backend _ =
   let data2d = Bigarray.array2_of_genarray data in
   assert_equal_int ~msg:"Window height" 3 (Bigarray.Array2.dim1 data2d);
   assert_equal_int ~msg:"Window width" 10 (Bigarray.Array2.dim2 data2d);
-
   let arr = Nx.of_bigarray data in
   let row_sums = Nx.(sum ~axes:[ 1 ] (cast Int64 arr)) in
 
