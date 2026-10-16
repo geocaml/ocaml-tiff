@@ -644,6 +644,196 @@ let test_safe_cast_rejects_lossy backend _ =
     (Tiff.safe_cast Tiff.Float32)
     "safe cast to float32 would lose data: IEEEFloatingPoint, 64 bpp"
 
+(* Tiled TIFFs (issue #34): synthetic data where every pixel is a formula of
+   its coordinates, so tests recompute expected values. *)
+
+let assert_equal_int64 = assert_equal ~printer:Int64.to_string
+
+let assert_equal_int64s =
+  assert_equal ~printer:(fun l ->
+      String.concat ";" (List.map Int64.to_string l))
+
+let pixel2 data ~x ~y = Bigarray.Genarray.get data [| y; x |]
+let pixel3 data ~x ~y ~c = Bigarray.Genarray.get data [| y; x; c |]
+
+let check_pixels2 data ~width ~height value =
+  let d = Bigarray.array2_of_genarray data in
+  assert_equal_int ~msg:"Data height" height (Bigarray.Array2.dim1 d);
+  assert_equal_int ~msg:"Data width" width (Bigarray.Array2.dim2 d);
+  for y = 0 to height - 1 do
+    for x = 0 to width - 1 do
+      assert_equal_int64
+        ~msg:(Printf.sprintf "pixel (%d,%d)" x y)
+        (Int64.of_int (value x y))
+        (pixel2 data ~x ~y)
+    done
+  done
+
+let check_pixels3 data ~width ~height ~channels value =
+  let d = Bigarray.array3_of_genarray data in
+  assert_equal_int ~msg:"Data height" height (Bigarray.Array3.dim1 d);
+  assert_equal_int ~msg:"Data width" width (Bigarray.Array3.dim2 d);
+  assert_equal_int ~msg:"Data channels" channels (Bigarray.Array3.dim3 d);
+  for y = 0 to height - 1 do
+    for x = 0 to width - 1 do
+      for c = 0 to channels - 1 do
+        assert_equal_int64
+          ~msg:(Printf.sprintf "pixel (%d,%d) channel %d" x y c)
+          (Int64.of_int (value x y c))
+          (pixel3 data ~x ~y ~c)
+      done
+    done
+  done
+
+let test_load_tiled_uint16_pattern backend _ =
+  let data = "./data/tiled_uint16_pattern.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 45 (Tiff.Ifd.width ifd);
+  assert_equal_int ~msg:"Image height" 50 (Tiff.Ifd.height ifd);
+  assert_equal_int ~msg:"Tile width" 16 (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" 16 (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" 3 (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" 4 (Tiff.Ifd.tiles_down ifd);
+  assert_equal_int ~msg:"Number of tiles" 12
+    (List.length (Tiff.Ifd.tile_offsets ifd));
+  assert_equal_int64s ~msg:"Tile byte counts"
+    (List.init 12 (fun _ -> 512L))
+    (Tiff.Ifd.tile_byte_counts ifd);
+  assert_equal ~msg:"BPP" [ 16 ] (Tiff.Ifd.bits_per_sample ifd);
+  assert_equal ~printer:Tiff.Ifd.compression_to_string ~msg:"Compression"
+    Tiff.Ifd.No_compression (Tiff.Ifd.compression ifd);
+  let value x y = (y * 45) + x in
+  let arr = Tiff.data tiff ro in
+  check_pixels2 arr ~width:45 ~height:50 value;
+  (* window crossing a tile boundary *)
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win = Tiff.data ~window tiff ro in
+  check_pixels2 win ~width:6 ~height:6 (fun x y -> value (x + 14) (y + 14))
+
+let test_load_tiled_uint8_deflate backend _ =
+  let data = "./data/tiled_uint8_deflate.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 45 (Tiff.Ifd.width ifd);
+  assert_equal_int ~msg:"Image height" 50 (Tiff.Ifd.height ifd);
+  assert_equal_int ~msg:"Tile width" 16 (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" 16 (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" 3 (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" 4 (Tiff.Ifd.tiles_down ifd);
+  assert_equal_int ~msg:"Number of tiles" 12
+    (List.length (Tiff.Ifd.tile_offsets ifd));
+  assert_equal ~printer:Tiff.Ifd.compression_to_string ~msg:"Compression"
+    Tiff.Ifd.ADOBE_DEFLATE (Tiff.Ifd.compression ifd);
+  let value x y = ((y * 45) + x) mod 256 in
+  let arr = Tiff.data tiff ro in
+  check_pixels2 arr ~width:45 ~height:50 value;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win = Tiff.data ~window tiff ro in
+  check_pixels2 win ~width:6 ~height:6 (fun x y -> value (x + 14) (y + 14))
+
+let test_load_tiled_rgb backend _ =
+  let data = "./data/tiled_rgb_uint8.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 45 (Tiff.Ifd.width ifd);
+  assert_equal_int ~msg:"Image height" 50 (Tiff.Ifd.height ifd);
+  assert_equal_int ~msg:"Tile width" 16 (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" 16 (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" 3 (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" 4 (Tiff.Ifd.tiles_down ifd);
+  assert_equal_int ~msg:"Samples per pixel" 3 (Tiff.Ifd.samples_per_pixel ifd);
+  assert_equal ~msg:"BPP" [ 8; 8; 8 ] (Tiff.Ifd.bits_per_sample ifd);
+  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
+    (Tiff.Ifd.sample_format ifd);
+  let value x y c = match c with 0 -> x | 1 -> y | _ -> (x + y) mod 256 in
+  let arr = Tiff.data tiff ro in
+  check_pixels3 arr ~width:45 ~height:50 ~channels:3 value;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win = Tiff.data ~window tiff ro in
+  check_pixels3 win ~width:6 ~height:6 ~channels:3 (fun x y c ->
+      value (x + 14) (y + 14) c)
+
+let test_load_planar_tiled backend _ =
+  let data = "./data/tiled_planar_rgb.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 45 (Tiff.Ifd.width ifd);
+  assert_equal_int ~msg:"Image height" 50 (Tiff.Ifd.height ifd);
+  assert_equal_int ~msg:"Tile width" 16 (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" 16 (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" 3 (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" 4 (Tiff.Ifd.tiles_down ifd);
+  assert_equal
+    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
+    ~msg:"Planar configuration" Tiff.Ifd.Planar
+    (Tiff.Ifd.planar_configuration ifd);
+  assert_raises ~msg:"Plane must be specified for planar data"
+    (Invalid_argument "Must specify plane for data read") (fun () ->
+      ignore (Tiff.data tiff ro));
+  let value plane x y = (x + y + (10 * plane)) mod 256 in
+  for plane = 0 to 2 do
+    let arr = Tiff.data ~plane tiff ro in
+    check_pixels2 arr ~width:45 ~height:50 (value plane)
+  done;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win = Tiff.data ~plane:1 ~window tiff ro in
+  check_pixels2 win ~width:6 ~height:6 (fun x y -> value 1 (x + 14) (y + 14))
+
+let test_load_tiled_sparse backend _ =
+  let data = "./data/tiled_sparse.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 40 (Tiff.Ifd.width ifd);
+  assert_equal_int ~msg:"Image height" 40 (Tiff.Ifd.height ifd);
+  assert_equal_int ~msg:"Tile width" 16 (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" 16 (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" 3 (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" 3 (Tiff.Ifd.tiles_down ifd);
+  assert_equal_int64s ~msg:"Tile byte counts (tiles 1,2,3,5,6,7 are empty)"
+    [ 256L; 0L; 0L; 0L; 256L; 0L; 0L; 0L; 256L ]
+    (Tiff.Ifd.tile_byte_counts ifd);
+  let offsets = Tiff.Ifd.tile_offsets ifd in
+  assert_bool "empty tiles 2, 5, 6 carry non-zero offsets"
+    (List.for_all
+       (fun t -> not (Int64.equal (List.nth offsets t) 0L))
+       [ 2; 5; 6 ]);
+  assert_bool "empty tiles 1, 3, 7 carry zero offsets"
+    (List.for_all (fun t -> Int64.equal (List.nth offsets t) 0L) [ 1; 3; 7 ]);
+  let value x y =
+    let t = (y / 16 * 3) + (x / 16) in
+    if List.mem t [ 0; 4; 8 ] then ((y * 40) + x) mod 256 else 0
+  in
+  let arr = Tiff.data tiff ro in
+  check_pixels2 arr ~width:40 ~height:40 value;
+  let window = Tiff.{ xoff = 8; yoff = 8; xsize = 26; ysize = 26 } in
+  let win = Tiff.data ~window tiff ro in
+  check_pixels2 win ~width:26 ~height:26 (fun x y -> value (x + 8) (y + 8))
+
+let test_load_tiled_single_tile backend _ =
+  let data = "./data/tiled_single_tile.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width ifd);
+  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height ifd);
+  assert_equal_int ~msg:"Tile width" 16 (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" 16 (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" 1 (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" 1 (Tiff.Ifd.tiles_down ifd);
+  (* 256 = full 16x16 tile; offset and count fit inline *)
+  assert_equal_int64s ~msg:"Tile byte counts" [ 256L ]
+    (Tiff.Ifd.tile_byte_counts ifd);
+  assert_equal_int ~msg:"Number of tiles" 1
+    (List.length (Tiff.Ifd.tile_offsets ifd));
+  let arr = Tiff.data tiff ro in
+  check_pixels2 arr ~width:10 ~height:10 (fun x y -> (y * 10) + x)
+
 let suite fs =
   let tests backend =
     [
@@ -688,6 +878,13 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
+      "Test load tiled uint16 pattern"
+      >:: test_load_tiled_uint16_pattern backend;
+      "Test load tiled deflate tiff" >:: test_load_tiled_uint8_deflate backend;
+      "Test load tiled rgb tiff" >:: test_load_tiled_rgb backend;
+      "Test load planar tiled tiff" >:: test_load_planar_tiled backend;
+      "Test load tiled sparse tiff" >:: test_load_tiled_sparse backend;
+      "Test load tiled single tile tiff" >:: test_load_tiled_single_tile backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
