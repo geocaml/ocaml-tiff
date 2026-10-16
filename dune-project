@@ -17,6 +17,7 @@
    optint
    (decompress (>= "1.6.0")) 
    (ocamlformat (and (= "0.29.0") :with-dev-setup))
+   (alcobar :with-test)
    (bechamel :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
