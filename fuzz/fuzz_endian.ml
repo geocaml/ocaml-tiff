@@ -27,5 +27,3 @@ let suite =
       test_case "int16 roundtrip" [ endian; int16 ] int16_roundtrip;
       test_case "uint32 roundtrip" [ endian; int32 ] uint32_roundtrip;
     ] )
-
-let () = run "tiff-fuzz" [ suite ]
