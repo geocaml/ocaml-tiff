@@ -403,6 +403,53 @@ let uniform_rgb_uint8_lzw backend _ =
       res
   done
 
+(* rgb_planar_90_90.tiff is 90x90 with 30 rows of red, then blue, then green *)
+let rgb_planar_expected ~plane (window : Tiff.window) =
+  let red = 0 and green = 1 and blue = 2 in
+  let bands = [| red; blue; green |] in
+  Nx.init UInt8 [| window.ysize; window.xsize |] (fun idx ->
+      if bands.((window.yoff + idx.(0)) / 30) = plane then 255 else 0)
+  |> Nx.to_bigarray
+
+let check_rgb_planar_tiff backend path ~rows_per_strip ~strips =
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 90 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 90 (Tiff.Ifd.height header);
+  assert_equal_int ~msg:"Samples per pixel" 3
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8; 8; 8 ] (Tiff.Ifd.bits_per_sample header);
+  assert_equal_int ~msg:"Rows per strip" rows_per_strip
+    (Tiff.Ifd.rows_per_strip header);
+  assert_equal_int ~msg:"Number of strips" strips
+    (List.length (Tiff.Ifd.data_offsets header));
+  assert_equal
+    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
+    ~msg:"Planar configuration" Tiff.Ifd.Planar
+    (Tiff.Ifd.planar_configuration header);
+  let full = Tiff.{ xoff = 0; yoff = 0; xsize = 90; ysize = 90 } in
+  let window = Tiff.{ xoff = 10; yoff = 25; xsize = 50; ysize = 65 } in
+  for plane = 0 to 2 do
+    assert_equal
+      ~msg:(Printf.sprintf "Plane %d" plane)
+      (rgb_planar_expected ~plane full)
+      (Tiff.data ~plane tiff ro);
+    assert_equal
+      ~msg:(Printf.sprintf "Plane %d window" plane)
+      (rgb_planar_expected ~plane window)
+      (Tiff.data ~plane ~window tiff ro)
+  done
+
+let test_load_rgb_planar_tiff backend _ =
+  check_rgb_planar_tiff backend "./data/rgb_planar_90_90.tiff"
+    ~rows_per_strip:90 ~strips:3
+
+(* Same image with 16 rows per strip, so each plane ends with a short strip *)
+let test_load_striped_rgb_planar_tiff backend _ =
+  check_rgb_planar_tiff backend "./data/rgb_planar_90_90_striped.tiff"
+    ~rows_per_strip:16 ~strips:18
+
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "./data/striped_uint8_uncompressed.tiff" in
   with_ro backend data @@ fun ro ->
@@ -699,6 +746,9 @@ let suite fs =
       "Test load simple float32 tiff" >:: test_load_simple_float32_tiff backend;
       "Test load simple float64 tiff" >:: test_load_simple_float64_tiff backend;
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
+      "Test load RGB planar tiff" >:: test_load_rgb_planar_tiff backend;
+      "Test load striped RGB planar tiff"
+      >:: test_load_striped_rgb_planar_tiff backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
       "Test load striped uint8 lzw tiff"
