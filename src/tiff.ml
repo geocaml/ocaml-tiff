@@ -291,7 +291,11 @@ module Data = struct
         in
         let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
         if bits_per_sample <> 8 && bits_per_sample <> 16 then
-          failwith "Horizontal differencing only supports 8- and 16-bit samples";
+          failwith
+            (Printf.sprintf
+               "Unsupported bits per sample for horizontal differencing: %d \
+                (only 8 and 16 are supported)"
+               bits_per_sample);
         let bytes_per_sample = bits_per_sample / 8 in
         undo_horizontal_differencing buf ~width:(Ifd.width ifd)
           ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
