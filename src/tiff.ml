@@ -224,9 +224,11 @@ module Data = struct
     done
 
   (* Turn horizontal differences back into pixels. 8- or 16-bit samples. *)
-  let undo_horizontal_differencing buf width samples bytes_per_sample endian =
-    let row_size = width * samples in
-    let rows = Cstruct.length buf / (row_size * bytes_per_sample) in
+  let undo_horizontal_differencing buf ~width ~samples_per_pixel
+      ~bytes_per_sample ~endian =
+    let samples_per_row = width * samples_per_pixel in
+    let bytes_per_row = samples_per_row * bytes_per_sample in
+    let rows = Cstruct.length buf / bytes_per_row in
     let mask = (1 lsl (8 * bytes_per_sample)) - 1 in
     let get position =
       let offset = position * bytes_per_sample in
@@ -239,10 +241,10 @@ module Data = struct
       else Endian.set_uint16 ~offset endian buf value
     in
     for r = 0 to rows - 1 do
-      let row_start = r * row_size in
-      for i = samples to row_size - 1 do
+      let row_start = r * samples_per_row in
+      for i = samples_per_pixel to samples_per_row - 1 do
         let position = row_start + i in
-        let left = get (position - samples) in
+        let left = get (position - samples_per_pixel) in
         let value = (get position + left) land mask in
         set position value
       done
@@ -265,8 +267,8 @@ module Data = struct
         if bits_per_sample <> 8 && bits_per_sample <> 16 then
           failwith "Horizontal differencing only supports 8- and 16-bit samples";
         let bytes_per_sample = bits_per_sample / 8 in
-        undo_horizontal_differencing buf (Ifd.width ifd) samples
-          bytes_per_sample header.byte_order
+        undo_horizontal_differencing buf ~width:(Ifd.width ifd)
+          ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
     | Ifd.Unknown n -> failwith (Printf.sprintf "Unsupported predictor %d" n)
 
   let read_data ifd header ro plane window arr_type read_value =
