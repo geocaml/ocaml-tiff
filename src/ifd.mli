@@ -129,6 +129,10 @@ val bits_per_sample : t -> int list
 val compression : t -> compression
 (** Compression scheme used in the image data *)
 
+val is_tiled : t -> bool
+(** [is_tiled t] is [true] if the image data is stored in tiles rather than
+    strips. *)
+
 val tile_width : t -> int
 (** If the tiff is tiled, then the width of individual tiles. *)
 
@@ -142,10 +146,10 @@ val tile_height : t -> int
 (** If the tiff is tiled, then the height of individual tiles. *)
 
 val tile_offsets : t -> Int64.t list
-(** The offsets for each tile in the data. *)
+(** The offsets for each tile in the data. Empty for non-tiled images. *)
 
 val tile_byte_counts : t -> Int64.t list
-(** The number of bytes stored in each tile. *)
+(** The number of bytes stored in each tile. Empty for non-tiled images. *)
 
 val v : file_offset:Optint.Int63.t -> header -> File.ro -> t
 (** Reads the file offset, header, and reader. Computes the IFD of the tiff file
@@ -226,11 +230,13 @@ val geo_key_directory : t -> GeoKeys.t
 (** This tag may be used to store the GeoKey Directory, which defines and
     references the "GeoKeys" *)
 
-val data_offsets : t -> int list
-(** The offsets into the file for the chunks of the data. *)
+val strip_offsets : t -> int list
+(** The offsets into the file for the strips of the data. Empty for tiled
+    images, see {!tile_offsets}. *)
 
-val data_bytecounts : t -> int list
-(** The number of bytes of each chunk of data. *)
+val strip_byte_counts : t -> int list
+(** The number of bytes of each strip of the data. Empty for tiled images, see
+    {!tile_byte_counts}. *)
 
 (** {2 Entries} *)
 
@@ -245,7 +251,7 @@ val read_entry : entry -> int
 val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
 (** Read entries as raw bytes. This will return a buffer list based on the
     layout of the entry. For example, if the count is [10] and the tag is
-    [Double] then you will gexwt back a list of [10] buffers each of length [2].
+    [Double] then you will get back a list of [10] buffers each of length [8].
 *)
 
 val cache_all_entries : t -> t
