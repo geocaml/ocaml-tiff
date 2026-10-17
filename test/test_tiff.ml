@@ -546,69 +546,41 @@ let test_lzw_cea backend _ =
   in
   assert_equal_int ~msg:"sum" (sum_data data) (sum_data data_compressed)
 
-let test_lzw_predictor_cea backend _ =
-  let data = "./data/cea.tiff" in
-  let data_compressed = "./data/cea_lzw_predictor.tiff" in
+let check_predictor_matches backend kind plain_file predictor_file =
   let read_data ?(check_predictor = false) d =
     with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file Tiff.Uint8 ro in
+    let tiff = Tiff.from_file kind ro in
     if check_predictor then
       assert_equal ~msg:"Predictor" Tiff.Ifd.HorizontalDifferencing
         (Tiff.Ifd.predictor (Tiff.ifd tiff));
     Tiff.data tiff ro
   in
-  assert_equal_ba (read_data data)
-    (read_data ~check_predictor:true data_compressed)
+  assert_equal_ba (read_data plain_file)
+    (read_data ~check_predictor:true predictor_file)
+
+let test_lzw_predictor_cea backend _ =
+  check_predictor_matches backend Tiff.Uint8 "./data/cea.tiff"
+    "./data/cea_lzw_predictor.tiff"
 
 let test_lzw_predictor_rgb backend _ =
-  let data = "./data/normal.tiff" in
-  let data_compressed = "./data/normal_rgb_lzw_predictor.tiff" in
-  let read_data d =
-    with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file Tiff.Uint8 ro in
-    Tiff.data tiff ro
-  in
-  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+  check_predictor_matches backend Tiff.Uint8 "./data/normal.tiff"
+    "./data/normal_rgb_lzw_predictor.tiff"
 
 let test_lzw_predictor_u16 backend _ =
-  let data = "./data/u16bit.tiff" in
-  let data_compressed = "./data/u16bit_rgb_lzw_predictor.tiff" in
-  let read_data d =
-    with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file Tiff.Uint16 ro in
-    Tiff.data tiff ro
-  in
-  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+  check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
+    "./data/u16bit_rgb_lzw_predictor.tiff"
 
 let test_lzw_predictor_u16_be backend _ =
-  let data = "./data/u16bit.tiff" in
-  let data_compressed = "./data/u16bit_rgb_lzw_predictor_be.tiff" in
-  let read_data d =
-    with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file Tiff.Uint16 ro in
-    Tiff.data tiff ro
-  in
-  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+  check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
+    "./data/u16bit_rgb_lzw_predictor_be.tiff"
 
 let test_deflate_predictor_cea backend _ =
-  let data = "./data/cea.tiff" in
-  let data_compressed = "./data/cea_deflate_predictor.tiff" in
-  let read_data d =
-    with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file Tiff.Uint8 ro in
-    Tiff.data tiff ro
-  in
-  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+  check_predictor_matches backend Tiff.Uint8 "./data/cea.tiff"
+    "./data/cea_deflate_predictor.tiff"
 
 let test_deflate_predictor_u16 backend _ =
-  let data = "./data/u16bit.tiff" in
-  let data_compressed = "./data/u16bit_rgb_deflate_predictor.tiff" in
-  let read_data d =
-    with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file Tiff.Uint16 ro in
-    Tiff.data tiff ro
-  in
-  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+  check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
+    "./data/u16bit_rgb_deflate_predictor.tiff"
 
 let test_gdal_sparse_tiff backend _ =
   let data = "./data/sparse_uint8_lzw.tiff" in
