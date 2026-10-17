@@ -445,6 +445,11 @@ let test_load_rgb_planar_tiff backend _ =
   check_rgb_planar_tiff backend "./data/rgb_planar_90_90.tiff"
     ~rows_per_strip:90 ~strips:3
 
+(* Same image with 16 rows per strip, so each plane ends with a short strip *)
+let test_load_striped_rgb_planar_tiff backend _ =
+  check_rgb_planar_tiff backend "./data/rgb_planar_90_90_striped.tiff"
+    ~rows_per_strip:16 ~strips:18
+
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "./data/striped_uint8_uncompressed.tiff" in
   with_ro backend data @@ fun ro ->
@@ -742,6 +747,8 @@ let suite fs =
       "Test load simple float64 tiff" >:: test_load_simple_float64_tiff backend;
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
       "Test load RGB planar tiff" >:: test_load_rgb_planar_tiff backend;
+      "Test load striped RGB planar tiff"
+      >:: test_load_striped_rgb_planar_tiff backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
       "Test load striped uint8 lzw tiff"
