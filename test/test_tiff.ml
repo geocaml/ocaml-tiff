@@ -513,6 +513,26 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_odd_striped_tiff_window_crosses_boundary backend _ =
+  let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let window = Tiff.{ xoff = 0; yoff = 2; xsize = 10; ysize = 3 } in
+  let data = Tiff.data ~window tiff ro in
+  let data2d = Bigarray.array2_of_genarray data in
+  assert_equal_int ~msg:"Window height" 3 (Bigarray.Array2.dim1 data2d);
+  assert_equal_int ~msg:"Window width" 10 (Bigarray.Array2.dim2 data2d);
+  let arr = Nx.of_bigarray data in
+  let row_sums = Nx.(sum ~axes:[ 1 ] (cast Int64 arr)) in
+
+  for row = 0 to 2 do
+    let row_sum = Nx.item [ row ] row_sums |> Int64.to_int in
+    assert_equal_int
+      ~msg:(Printf.sprintf "Row %d sum" row)
+      ((row + 3) * 10)
+      row_sum
+  done
+
 let test_uneven_rows_per_strip backend _ =
   let data = "./data/uneven_rows_per_strip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -651,6 +671,8 @@ let suite fs =
       >:: test_write_simple_striped_tiff backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
+      "Test odd striped TIFF window crosses boundary"
+      >:: test_odd_striped_tiff_window_crosses_boundary backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
