@@ -575,7 +575,7 @@ let check_predictor_matches backend kind plain_file predictor_file =
     let tiff = Tiff.from_file kind ro in
     if check_predictor then
       assert_equal ~msg:"Predictor" Tiff.Ifd.HorizontalDifferencing
-        (Tiff.Ifd.predictor (Tiff.ifd tiff));
+        (Tiff.ifd tiff |> Tiff.Ifd.predictor);
     Tiff.data tiff ro
   in
   assert_equal_ba (read_data plain_file)
