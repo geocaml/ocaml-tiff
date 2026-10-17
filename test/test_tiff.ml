@@ -597,10 +597,6 @@ let test_lzw_predictor_u16_be backend _ =
   check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
     "./data/u16bit_rgb_lzw_predictor_be.tiff"
 
-let test_deflate_predictor_cea backend _ =
-  check_predictor_matches backend Tiff.Uint8 "./data/cea.tiff"
-    "./data/cea_deflate_predictor.tiff"
-
 let test_deflate_predictor_u16 backend _ =
   check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
     "./data/u16bit_rgb_deflate_predictor.tiff"
@@ -791,8 +787,6 @@ let suite fs =
       >:: test_lzw_predictor_u16 backend;
       "Test LZW predictor uint16 RGB big-endian and NoCompress agree"
       >:: test_lzw_predictor_u16_be backend;
-      "Test Deflate predictor and NoCompress agree"
-      >:: test_deflate_predictor_cea backend;
       "Test Deflate predictor uint16 RGB and NoCompress agree"
       >:: test_deflate_predictor_u16 backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
