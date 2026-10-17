@@ -6,6 +6,24 @@ type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
 
 let assert_equal_int = assert_equal ~printer:Int.to_string
 
+let assert_equal_ba a b =
+  let dims_a = Bigarray.Genarray.dims a in
+  let dims_b = Bigarray.Genarray.dims b in
+  assert_equal ~msg:"Dimensions"
+    ~printer:(fun dims ->
+      Array.to_list dims |> List.map string_of_int |> String.concat "x")
+    dims_a dims_b;
+  let size = Array.fold_left ( * ) 1 dims_a in
+  let a = Bigarray.reshape_1 a size in
+  let b = Bigarray.reshape_1 b size in
+  for i = 0 to size - 1 do
+    let va = Bigarray.Array1.get a i in
+    let vb = Bigarray.Array1.get b i in
+    if va <> vb then
+      assert_failure
+        (Printf.sprintf "Data mismatch at index %d: %d <> %d" i va vb)
+  done
+
 let with_ro backend path fn =
   match backend with
   | Eio fs ->
@@ -539,7 +557,7 @@ let test_lzw_predictor_cea backend _ =
         (Tiff.Ifd.predictor (Tiff.ifd tiff));
     Tiff.data tiff ro
   in
-  assert_equal ~msg:"Data" (read_data data)
+  assert_equal_ba (read_data data)
     (read_data ~check_predictor:true data_compressed)
 
 let test_lzw_predictor_rgb backend _ =
