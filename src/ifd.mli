@@ -230,11 +230,11 @@ val geo_key_directory : t -> GeoKeys.t
 (** This tag may be used to store the GeoKey Directory, which defines and
     references the "GeoKeys" *)
 
-val data_offsets : t -> int list
+val strip_offsets : t -> int list
 (** The offsets into the file for the strips of the data. Empty for tiled
     images, see {!tile_offsets}. *)
 
-val data_bytecounts : t -> int list
+val strip_byte_counts : t -> int list
 (** The number of bytes of each strip of the data. Empty for tiled images, see
     {!tile_byte_counts}. *)
 

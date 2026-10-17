@@ -298,8 +298,8 @@ type entry = {
 
 type t = {
   entries : entry list;
-  data_offsets : int list;
-  data_bytecounts : int list;
+  strip_offsets : int list;
+  strip_byte_counts : int list;
   header : header;
   ro : File.ro;
   next_ifd : Optint.Int63.t;
@@ -449,8 +449,8 @@ let photometric_interpretation_to_int = function
   | Unknown i -> i
 
 let entries t = t.entries
-let data_offsets t = t.data_offsets
-let data_bytecounts t = t.data_bytecounts
+let strip_offsets t = t.strip_offsets
+let strip_byte_counts t = t.strip_byte_counts
 
 let pp_offset ppf = function
   | Immediate i -> Fmt.pf ppf "imm(%Ld)" i
@@ -957,13 +957,13 @@ let v ~file_offset header reader =
         Endian.uint64 ~offset:0 header.byte_order next_ifd_buf
         |> Optint.Int63.of_int64
   in
-  let data_offsets =
+  let strip_offsets =
     read_int_list endian entries reader StripOffsets |> List.map Int64.to_int
   in
-  let data_bytecounts =
+  let strip_byte_counts =
     read_int_list endian entries reader StripByteCounts |> List.map Int64.to_int
   in
-  { entries; data_offsets; data_bytecounts; ro = reader; header; next_ifd }
+  { entries; strip_offsets; strip_byte_counts; ro = reader; header; next_ifd }
 
 let next_ifd t =
   if Optint.Int63.(equal zero t.next_ifd) then None
@@ -1151,11 +1151,11 @@ let write_raw_ifd ~file_offset header writer entries =
   let next_ifd_offset = add_int (incr_offset write) (entry_size * count) in
   writer ~file_offset:next_ifd_offset [ next_ifd_buf ]
 
-let v_of_entries entries data_offsets data_bytecounts header ro =
+let v_of_entries entries strip_offsets strip_byte_counts header ro =
   {
     entries;
-    data_offsets;
-    data_bytecounts;
+    strip_offsets;
+    strip_byte_counts;
     header;
     ro;
     next_ifd = Optint.Int63.zero;

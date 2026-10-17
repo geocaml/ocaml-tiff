@@ -485,9 +485,9 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
   assert_equal_int ~msg:"Image height" 10 height;
   assert_equal_int ~msg:"Rows per strip" 3 (Tiff.Ifd.rows_per_strip header);
   assert_equal_int ~msg:"Number of strips" 4
-    (List.length (Tiff.Ifd.data_offsets header));
+    (List.length (Tiff.Ifd.strip_offsets header));
   assert_equal ~msg:"Strip byte counts" [ 16; 16; 16; 7 ]
-    (Tiff.Ifd.data_bytecounts header);
+    (Tiff.Ifd.strip_byte_counts header);
   assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
   assert_equal_int ~msg:"Samples per pixel" 1
     (Tiff.Ifd.samples_per_pixel header);

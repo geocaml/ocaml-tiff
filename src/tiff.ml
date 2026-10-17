@@ -178,7 +178,7 @@ module Data = struct
           done
       done
 
-  let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
+  let process_strips ifd (header : Ifd.header) plane window ~on_strip ~on_value
       ~after_strip =
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
@@ -187,15 +187,15 @@ module Data = struct
     let bytes_per_pixel =
       bytes_per_pixel bits_per_sample planar_configuration plane
     in
-    let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
-    let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
+    let strip_offsets = Array.of_list (Ifd.strip_offsets ifd) in
+    let strip_bytecounts = Array.of_list (Ifd.strip_byte_counts ifd) in
     let rows_per_strip = Ifd.rows_per_strip ifd in
     let emit = make_emitter ifd header plane window ~on_value in
     let strip_offsets_length = Array.length strip_offsets in
     if strip_offsets_length <> Array.length strip_bytecounts then
       raise
         (Invalid_argument
-           "strip_offsets and strip_bytecounts are of different lengths");
+           "strip_offsets and strip_byte_counts are of different lengths");
     let strips_per_plane =
       match planar_configuration with
       | Planar -> Array.length strip_offsets / List.length bits_per_sample
@@ -267,7 +267,7 @@ module Data = struct
     if Array.length tile_offsets <> Array.length tile_bytecounts then
       raise
         (Invalid_argument
-           "tile_offsets and tile_bytecounts are of different lengths");
+           "tile_offsets and tile_byte_counts are of different lengths");
     let emit = make_emitter ifd header plane window ~on_value in
     (* Tiles are stored as full tile_width * tile_height blocks, even at the
        right and bottom edges of the image. *)
@@ -341,12 +341,12 @@ module Data = struct
     if Ifd.is_tiled ifd then
       process_tiles ifd header plane window ~on_tile:on_chunk ~on_value
     else
-      process_data ifd header plane window ~on_strip:on_chunk ~on_value
+      process_strips ifd header plane window ~on_strip:on_chunk ~on_value
         ~after_strip:(fun _ _ -> ());
     arr
 
   let write_data ifd header plane window data w write_value =
-    process_data ifd header plane window
+    process_strips ifd header plane window
       ~on_strip:(fun expected_size buf sparse _ ->
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
@@ -382,7 +382,7 @@ module Data = struct
 
   (* Total byte counts per strip, must strips will be full (i.e. have [rows_per_strip] rows
      in them). Only the last might be short. *)
-  let compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row =
+  let compute_strip_byte_counts ~rows_per_strip ~height ~bytes_per_row =
     let num_strips = height / rows_per_strip in
     let rem_strips = height mod rows_per_strip in
     let full_strips =
@@ -392,15 +392,15 @@ module Data = struct
     else full_strips @ [ rem_strips * bytes_per_row ]
 
   (* We just do the naive thing for now and dump all of the data together. *)
-  let compute_data_offsets strip_bytecounts start_offset =
-    let _, data_offsets =
+  let compute_strip_offsets strip_bytecounts start_offset =
+    let _, strip_offsets =
       List.fold_left
         (fun (current_offset, acc) count ->
           (current_offset + count, current_offset :: acc))
         (start_offset, []) strip_bytecounts
     in
-    let data_offsets = List.rev data_offsets in
-    data_offsets
+    let strip_offsets = List.rev strip_offsets in
+    strip_offsets
 end
 
 type ('repr, 'kind) t = {
@@ -669,8 +669,8 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     Data.compute_rows_per_strip ~bits_per_sample ~samples_per_pixel ~width
   in
 
-  let data_bytecounts =
-    Data.compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row
+  let strip_byte_counts =
+    Data.compute_strip_byte_counts ~rows_per_strip ~height ~bytes_per_row
   in
 
   let make_entry = Ifd.make_entry endian in
@@ -698,7 +698,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   in
 
   let strip_bytecounts, file_offset =
-    make_entry file_offset StripByteCounts (Ifd.Ints data_bytecounts)
+    make_entry file_offset StripByteCounts (Ifd.Ints strip_byte_counts)
   in
   let samples_per_pixel, file_offset =
     make_entry file_offset SamplesPerPixel (Ifd.Ints [ samples_per_pixel ])
@@ -710,31 +710,35 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let document_name, file_offset =
     make_entry file_offset DocumentName (Ifd.String file_name)
   in
-  let num_strips = List.length data_bytecounts in
-  let data_offsets, start_image_data_offset, array_element_size =
+  let num_strips = List.length strip_byte_counts in
+  let strip_offsets, start_image_data_offset, array_element_size =
     if num_strips = 1 then ([ file_offset ], file_offset, 0)
     else
       let total_image_bytes = bytes_per_row * height in
       let short_array_size = num_strips * 2 in
       let last_offset_if_short =
         file_offset + short_array_size + total_image_bytes
-        - List.hd (List.rev data_bytecounts)
+        - List.hd (List.rev strip_byte_counts)
       in
       if last_offset_if_short <= 65535 then
         let start_offset = file_offset + short_array_size in
-        let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+        let offsets =
+          Data.compute_strip_offsets strip_byte_counts start_offset
+        in
         (offsets, start_offset, 2)
       else
         let long_array_size = num_strips * 4 in
         let start_offset = file_offset + long_array_size in
-        let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+        let offsets =
+          Data.compute_strip_offsets strip_byte_counts start_offset
+        in
         (offsets, start_offset, 4)
   in
 
   let strip_offset, _ =
     make_entry
       (start_image_data_offset - (num_strips * array_element_size))
-      StripOffsets (Ifd.Ints data_offsets)
+      StripOffsets (Ifd.Ints strip_offsets)
   in
 
   let of_ba_kind (type r k) : (r, k) Bigarray.kind -> (r, k) kind = function
@@ -768,7 +772,9 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   in
   let ro = fun ~file_offset:_ _ -> Fmt.failwith "No file" in
   let data_type = of_ba_kind (Bigarray.Genarray.kind data) in
-  let ifd = Ifd.v_of_entries entries data_offsets data_bytecounts header ro in
+  let ifd =
+    Ifd.v_of_entries entries strip_offsets strip_byte_counts header ro
+  in
   {
     intent = As data_type;
     data = Some data;
