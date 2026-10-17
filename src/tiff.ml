@@ -229,6 +229,9 @@ module Data = struct
     let samples_per_row = width * samples_per_pixel in
     let bytes_per_row = samples_per_row * bytes_per_sample in
     let rows = Cstruct.length buf / bytes_per_row in
+    (* Differences are stored modulo 2^bits (TIFF 6, Section 14).
+       Masking wraps sums that exceed the maximum sample value,
+       e.g. (250 + 10) mod 256 = 4 for 8-bit samples. *)
     let mask = (1 lsl (8 * bytes_per_sample)) - 1 in
     let get position =
       let offset = position * bytes_per_sample in
@@ -242,6 +245,8 @@ module Data = struct
     in
     for r = 0 to rows - 1 do
       let row_start = r * samples_per_row in
+      (* The first pixel has no left neighbour and is stored as-is.
+         Differencing starts at the second pixel, at samples_per_pixel. *)
       for i = samples_per_pixel to samples_per_row - 1 do
         let position = row_start + i in
         let left = get (position - samples_per_pixel) in
