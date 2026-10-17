@@ -531,12 +531,16 @@ let test_lzw_cea backend _ =
 let test_lzw_predictor_cea backend _ =
   let data = "./data/cea.tiff" in
   let data_compressed = "./data/cea_lzw_predictor.tiff" in
-  let read_data d =
+  let read_data ?(check_predictor = false) d =
     with_ro backend d @@ fun ro ->
     let tiff = Tiff.from_file Tiff.Uint8 ro in
+    if check_predictor then
+      assert_equal ~msg:"Predictor" Tiff.Ifd.HorizontalDifferencing
+        (Tiff.Ifd.predictor (Tiff.ifd tiff));
     Tiff.data tiff ro
   in
-  assert_equal ~msg:"Data" (read_data data) (read_data data_compressed)
+  assert_equal ~msg:"Data" (read_data data)
+    (read_data ~check_predictor:true data_compressed)
 
 let test_lzw_predictor_rgb backend _ =
   let data = "./data/normal.tiff" in
