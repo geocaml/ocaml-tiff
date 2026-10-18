@@ -717,7 +717,8 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
-            "Test jello-gray bits per sample" >:: test_jello_gray_bits_per_sample backend;
+      "Test jello-gray bits per sample"
+      >:: test_jello_gray_bits_per_sample backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
