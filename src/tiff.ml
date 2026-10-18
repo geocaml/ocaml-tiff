@@ -105,8 +105,6 @@ module Data = struct
   let write_float64_value buf buf_index value tiff_endianness =
     Endian.set_double ~offset:buf_index tiff_endianness buf value
 
-  let ceil a b = (a + b - 1) / b
-
   let pp_window fmt window =
     Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff
       window.yoff window.xsize window.ysize
@@ -170,14 +168,15 @@ module Data = struct
           failwith "should not get this far if planar config isn't recognised"
     in
 
-    let first_strip =
-      (window.yoff / rows_per_strip) + (strips_per_plane * plane)
-    in
-    let last_strip = first_strip + ceil window.ysize rows_per_strip in
+    let plane_origin = strips_per_plane * plane in
+    let first_strip = (window.yoff / rows_per_strip) + plane_origin in
+    (* [yoff] can fall in the middle of a strip. Counting strips from [ysize]
+       alone then stops one strip early, so take the strip that holds the last
+       row of the window. *)
+    let last_row = window.yoff + window.ysize - 1 in
+    let last_strip = (last_row / rows_per_strip) + plane_origin + 1 in
 
-    let row_index =
-      ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
-    in
+    let row_index = ref ((first_strip - plane_origin) * rows_per_strip) in
 
     (* We iterate through every strip *)
     for strip = first_strip to last_strip - 1 do

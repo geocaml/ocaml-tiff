@@ -608,6 +608,35 @@ let test_load_deflate_compressed_tiff backend _ =
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
 
+let test_deflate_strips_match_uncompressed backend _ =
+  let plain_path = "./data/striped_uint8_uncompressed.tiff" in
+  let zip_path = "./data/striped_uint8_deflate.tiff" in
+  with_ro backend plain_path @@ fun plain_ro ->
+  with_ro backend zip_path @@ fun zip_ro ->
+  let plain = Tiff.from_file (Tiff.as_kind Tiff.Uint8) plain_ro in
+  let zip = Tiff.from_file (Tiff.as_kind Tiff.Uint8) zip_ro in
+  let header = Tiff.ifd zip in
+  assert_equal ~msg:"Compression" Tiff.Ifd.ADOBE_DEFLATE
+    (Tiff.Ifd.compression header);
+  assert_equal_int ~msg:"Rows per strip" 2 (Tiff.Ifd.rows_per_strip header);
+  assert_equal ~msg:"Pixels" (Tiff.data plain plain_ro) (Tiff.data zip zip_ro);
+  let window = Tiff.{ xoff = 0; yoff = 3; xsize = 10; ysize = 4 } in
+  assert_equal ~msg:"Window"
+    (Tiff.data ~window plain plain_ro)
+    (Tiff.data ~window zip zip_ro)
+
+let test_legacy_deflate_tag backend _ =
+  let lzw_path = "./data/uniform_uint8_lzw.tiff" in
+  let zip_path = "./data/uniform_uint8_deflate.tiff" in
+  with_ro backend lzw_path @@ fun lzw_ro ->
+  with_ro backend zip_path @@ fun zip_ro ->
+  let zip = Tiff.from_file (Tiff.as_kind Tiff.Uint8) zip_ro in
+  let header = Tiff.ifd zip in
+  assert_equal ~msg:"Compression" Tiff.Ifd.DEFLATE (Tiff.Ifd.compression header);
+  assert_equal_int ~msg:"Rows per strip" 1 (Tiff.Ifd.rows_per_strip header);
+  let lzw = Tiff.from_file (Tiff.as_kind Tiff.Uint8) lzw_ro in
+  assert_equal ~msg:"Pixels" (Tiff.data lzw lzw_ro) (Tiff.data zip zip_ro)
+
 let test_load_multiple_uniform_ifds_tiff backend _ =
   let data = "./data/multiple_uniform_ifds.tiff" in
   with_ro backend data @@ fun ro ->
@@ -658,6 +687,9 @@ let suite fs =
       "Test DEFLATE compression types" >:: test_deflate_compression_types;
       "Test load DEFLATE compressed TIFF"
       >:: test_load_deflate_compressed_tiff backend;
+      "Test multi-strip DEFLATE matches uncompressed"
+      >:: test_deflate_strips_match_uncompressed backend;
+      "Test legacy Deflate compression tag" >:: test_legacy_deflate_tag backend;
       "Test load simple uniform uncompressed tiff"
       >:: test_load_uniform_tiff backend;
       "Test load data as wrong type"

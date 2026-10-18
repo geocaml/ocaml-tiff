@@ -27,3 +27,10 @@
   (source_tree ../testdata))
  (modules test_lzw)
  (libraries ounit2 tiff))
+
+(tests
+ (names test_deflate)
+ (modules test_deflate)
+ (deps
+  (file data/deflate_multiflush.zlib))
+ (libraries ounit2 tiff decompress.zl))
