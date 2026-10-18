@@ -513,6 +513,26 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_odd_striped_tiff_window_crosses_boundary backend _ =
+  let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let window = Tiff.{ xoff = 0; yoff = 2; xsize = 10; ysize = 3 } in
+  let data = Tiff.data ~window tiff ro in
+  let data2d = Bigarray.array2_of_genarray data in
+  assert_equal_int ~msg:"Window height" 3 (Bigarray.Array2.dim1 data2d);
+  assert_equal_int ~msg:"Window width" 10 (Bigarray.Array2.dim2 data2d);
+  let arr = Nx.of_bigarray data in
+  let row_sums = Nx.(sum ~axes:[ 1 ] (cast Int64 arr)) in
+
+  for row = 0 to 2 do
+    let row_sum = Nx.item [ row ] row_sums |> Int64.to_int in
+    assert_equal_int
+      ~msg:(Printf.sprintf "Row %d sum" row)
+      ((row + 3) * 10)
+      row_sum
+  done
+
 let test_uneven_rows_per_strip backend _ =
   let data = "./data/uneven_rows_per_strip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -673,6 +693,28 @@ let test_safe_cast_rejects_lossy backend _ =
     (Tiff.safe_cast Tiff.Float32)
     "safe cast to float32 would lose data: IEEEFloatingPoint, 64 bpp"
 
+let test_truncated_file_raises backend _ =
+  let tmp = "./data/tmp_truncated.tiff" in
+  let full =
+    In_channel.with_open_bin "./data/uniform.tiff" In_channel.input_all
+  in
+  let truncate_to len =
+    Out_channel.with_open_bin tmp (fun oc ->
+        Out_channel.output_substring oc full 0 len)
+  in
+  Fun.protect
+    ~finally:(fun () -> Sys.remove tmp)
+    (fun () ->
+      truncate_to 50;
+      assert_raises ~msg:"IFD cut short" End_of_file (fun () ->
+          with_ro backend tmp (fun ro ->
+              Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro));
+      truncate_to 30_000;
+      with_ro backend tmp @@ fun ro ->
+      let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+      assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
+          Tiff.data tiff ro))
+
 let suite fs =
   let tests backend =
     [
@@ -680,6 +722,8 @@ let suite fs =
       >:: test_write_simple_striped_tiff backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
+      "Test odd striped TIFF window crosses boundary"
+      >:: test_odd_striped_tiff_window_crosses_boundary backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
@@ -720,6 +764,8 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
+      "Test truncated file raises End_of_file"
+      >:: test_truncated_file_raises backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

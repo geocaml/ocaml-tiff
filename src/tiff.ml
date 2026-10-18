@@ -1,3 +1,6 @@
+Replace the whole contents of `src/tiff.ml` in the GitHub editor with the file below. The conflict markers are gone. The window loop is upstream's version (`plane_offset`, last strip included), and your Deflate match is still there at the read path.
+
+```ocaml
 (* Core TIFF decoder module. Handles image data extraction, decompression and window-based access using metadata from the IFD *)
 open Bigarray
 module File = File
@@ -168,18 +171,20 @@ module Data = struct
           failwith "should not get this far if planar config isn't recognised"
     in
 
-    let plane_origin = strips_per_plane * plane in
-    let first_strip = (window.yoff / rows_per_strip) + plane_origin in
-    (* [yoff] can fall in the middle of a strip. Counting strips from [ysize]
-       alone then stops one strip early, so take the strip that holds the last
-       row of the window. *)
-    let last_row = window.yoff + window.ysize - 1 in
-    let last_strip = (last_row / rows_per_strip) + plane_origin + 1 in
+    let plane_offset = strips_per_plane * plane in
 
-    let row_index = ref ((first_strip - plane_origin) * rows_per_strip) in
+    (* Find the first and last strips touched by the requested window.
+       Divide the first and last row indices by rows_per_strip to get
+       their strip indices, then add the plane offset. *)
+    let first_strip = (window.yoff / rows_per_strip) + plane_offset in
+    let last_strip =
+      ((window.yoff + window.ysize - 1) / rows_per_strip) + plane_offset
+    in
 
-    (* We iterate through every strip *)
-    for strip = first_strip to last_strip - 1 do
+    let row_index = ref ((first_strip - plane_offset) * rows_per_strip) in
+
+    (* Iterate over every strip touched by the window, including both endpoints. *)
+    for strip = first_strip to last_strip do
       let raw_strip_length = strip_bytecounts.(strip)
       and raw_strip_offset = strip_offsets.(strip) in
       let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
@@ -635,6 +640,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let samples_per_pixel, file_offset =
     make_entry file_offset SamplesPerPixel (Ifd.Ints [ samples_per_pixel ])
   in
+
   let sample_format, file_offset =
     make_entry file_offset SampleFormat (Ifd.Ints [ sample_format_int ])
   in
@@ -715,3 +721,4 @@ module Private = struct
   module Lzw = Lzw
   module Deflate = Deflate
 end
+```
