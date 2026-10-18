@@ -516,7 +516,7 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
 let test_odd_striped_tiff_window_crosses_boundary backend _ =
   let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
   with_ro backend path @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
   let window = Tiff.{ xoff = 0; yoff = 2; xsize = 10; ysize = 3 } in
   let data = Tiff.data ~window tiff ro in
   let data2d = Bigarray.array2_of_genarray data in
@@ -649,6 +649,13 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
     (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
     (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
+let test_jello_gray_bits_per_sample backend _ =
+  let data = "./data/jello-gray.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Bits per sample" [ 8; 8 ] (Tiff.Ifd.bits_per_sample ifd)
+
 let test_safe_cast_rejects_lossy backend _ =
   let rejects path intent msg =
     with_ro backend path @@ fun ro ->
@@ -710,6 +717,8 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
+      "Test jello-gray bits per sample"
+      >:: test_jello_gray_bits_per_sample backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
