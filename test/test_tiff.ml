@@ -516,7 +516,7 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
 let test_odd_striped_tiff_window_crosses_boundary backend _ =
   let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
   with_ro backend path @@ fun ro ->
-  let tiff = Tiff.from_file Tiff.Uint8 ro in
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
   let window = Tiff.{ xoff = 0; yoff = 2; xsize = 10; ysize = 3 } in
   let data = Tiff.data ~window tiff ro in
   let data2d = Bigarray.array2_of_genarray data in
