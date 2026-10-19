@@ -119,6 +119,18 @@ let test_bigtiff_write_entries_roundtrip backend _ =
   assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd);
   assert_equal ~msg:"Data" data data2
 
+(* A BigTIFF packs several SHORT values into the single 8 byte value slot of
+   the entry, so BitsPerSample has to be unpacked rather than read as one
+   number. *)
+let test_load_bigtiff_rgb_bits_per_sample backend _ =
+  let data = "./data/uniform_rgb_uint8_bigtiff.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Samples per pixel" 3
+    (Tiff.Ifd.samples_per_pixel header);
+  assert_equal ~msg:"BPP" [ 8; 8; 8 ] (Tiff.Ifd.bits_per_sample header)
+
 let test_load_uniform_tiff backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
@@ -653,6 +665,8 @@ let suite fs =
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;
+      "Test load bigtiff rgb bits per sample"
+      >:: test_load_bigtiff_rgb_bits_per_sample backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
       "Test Bigtiff header roundtrip" >:: test_bigtiff_header_roundtrip backend;
       "Test DEFLATE compression types" >:: test_deflate_compression_types;
