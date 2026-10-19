@@ -1,6 +1,3 @@
-Replace the whole contents of `src/tiff.ml` in the GitHub editor with the file below. The conflict markers are gone. The window loop is upstream's version (`plane_offset`, last strip included), and your Deflate match is still there at the read path.
-
-```ocaml
 (* Core TIFF decoder module. Handles image data extraction, decompression and window-based access using metadata from the IFD *)
 open Bigarray
 module File = File
@@ -721,4 +718,3 @@ module Private = struct
   module Lzw = Lzw
   module Deflate = Deflate
 end
-```
