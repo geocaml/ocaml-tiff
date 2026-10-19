@@ -572,7 +572,7 @@ let test_lzw_cea backend _ =
 let check_predictor_matches backend kind plain_file predictor_file =
   let read_data ?(check_predictor = false) d =
     with_ro backend d @@ fun ro ->
-    let tiff = Tiff.from_file kind ro in
+    let tiff = Tiff.from_file (Tiff.as_kind kind) ro in
     if check_predictor then
       assert_equal ~msg:"Predictor" Tiff.Ifd.HorizontalDifferencing
         (Tiff.ifd tiff |> Tiff.Ifd.predictor);
