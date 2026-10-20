@@ -45,6 +45,9 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
    but modern libraries override this and default to  64KB or higher for modern hardware. *)
 let default_strip_size = 65_536
 
+(* One read takes contiguous strips up to this many bytes. *)
+let default_max_read = 1_048_576
+
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
@@ -355,7 +358,7 @@ module Data = struct
       done
     done
 
-  let read_data ifd header ro plane window arr_type read_value =
+  let read_data ~max_read ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
 
@@ -366,9 +369,7 @@ module Data = struct
         Genarray.create arr_type c_layout
           [| window.ysize; window.xsize; samples_per_pixel |]
     in
-    let on_strip expected_size buf sparse strip_offset =
-      if not sparse then ro ~file_offset:strip_offset [ buf ];
-
+    let decode expected_size buf sparse =
       match (sparse, Ifd.compression ifd) with
       | true, _ | false, No_compression ->
           if Cstruct.length buf < expected_size then
@@ -388,12 +389,52 @@ module Data = struct
       let value = read_value buf buf_offset endian in
       Genarray.set arr dim value
     in
+    let on_tile expected_size buf sparse tile_offset =
+      if not sparse then ro ~file_offset:tile_offset [ buf ];
+      decode expected_size buf sparse
+    in
     match Ifd.lookup (Ifd.entries ifd) Ifd.TileWidth with
     | Some _ ->
-        process_tiles ifd header plane window ~on_tile:on_strip ~on_value
+        process_tiles ifd header plane window ~on_tile ~on_value
           ~after_tile:(fun _ _ -> ());
         arr
     | None ->
+        let offsets = Array.of_list (Ifd.data_offsets ifd) in
+        let counts = Array.of_list (Ifd.data_bytecounts ifd) in
+        let cache = ref None in
+        let read_contiguous buf file_offset =
+          let len = Cstruct.length buf in
+          let start = Optint.Int63.to_int file_offset in
+          match !cache with
+          | Some (base, raw)
+            when start >= base && start + len <= base + Cstruct.length raw ->
+              Cstruct.blit raw (start - base) buf 0 len
+          | _ ->
+              let i = ref 0 in
+              while !i < Array.length offsets && offsets.(!i) <> start do
+                incr i
+              done;
+              (* Pull following strips into this read when they sit against this one. *)
+              let total = ref len in
+              (if !i < Array.length offsets then
+                 let j = ref (!i + 1) in
+                 while
+                   !j < Array.length offsets
+                   && offsets.(!j) = offsets.(!j - 1) + counts.(!j - 1)
+                   && !total + counts.(!j) <= max_read
+                 do
+                   total := !total + counts.(!j);
+                   incr j
+                 done);
+              let raw = Cstruct.create !total in
+              ro ~file_offset [ raw ];
+              cache := Some (start, raw);
+              Cstruct.blit raw 0 buf 0 len
+        in
+        let on_strip expected_size buf sparse strip_offset =
+          if not sparse then read_contiguous buf strip_offset;
+          decode expected_size buf sparse
+        in
         process_data ifd header plane window ~on_strip ~on_value
           ~after_strip:(fun _ _ -> ());
         arr
@@ -643,8 +684,9 @@ let read_repr (type r k) (t : (r, k) t) ifd plane =
       | Some (read, _) -> (bigarray_kind kind, read)
       | None -> converted_reader ~unsafe_ok:true kind fmt bpp)
 
-let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
-    (f : File.ro) : (repr, kind) Data.t =
+let data (type repr kind) ?(image_nb = 0) ?plane ?window
+    ?(max_read = default_max_read) (t : (repr, kind) t) (f : File.ro) :
+    (repr, kind) Data.t =
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
     Fmt.invalid_arg "Image n°%d requested but TIFF file only has %d ([0-%d])"
@@ -659,7 +701,9 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
       data
   | Some _ | None ->
       let kind, read_value = read_repr t ifd plane in
-      let data = Data.read_data ifd t.header f plane window kind read_value in
+      let data =
+        Data.read_data ~max_read ifd t.header f plane window kind read_value
+      in
       t.window <- Some window;
       t.plane <- Some plane;
       t.image_nb <- Some image_nb;

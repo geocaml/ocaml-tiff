@@ -434,6 +434,25 @@ let test_load_tiled_uint8_uncompressed_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_contiguous_strip_reads backend _ =
+  let data = "./data/striped_uint8_uncompressed.tiff" in
+  let reads_for max_read =
+    with_ro backend data @@ fun ro ->
+    let reads = ref 0 in
+    let counting_ro ~file_offset bufs =
+      incr reads;
+      ro ~file_offset bufs
+    in
+    let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+    reads := 0;
+    let pixels = Tiff.data ~max_read tiff counting_ro |> Nx.of_bigarray in
+    let sum = Nx.sum pixels |> Nx.item [] |> Int64.to_int in
+    assert_equal_int ~msg:"Value sum" 550 sum;
+    !reads
+  in
+  assert_equal_int ~msg:"contiguous read" 1 (reads_for 10_000);
+  assert_equal_int ~msg:"single strip read" 10 (reads_for 10)
+
 let test_load_striped_uint8_uncompressed_tiff backend _ =
   let data = "./data/striped_uint8_uncompressed.tiff" in
   with_ro backend data @@ fun ro ->
@@ -754,6 +773,7 @@ let suite fs =
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
       "Test load tiled uint8 uncompressed tiff"
       >:: test_load_tiled_uint8_uncompressed_tiff backend;
+      "Test contiguous strip reads" >:: test_contiguous_strip_reads backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
       "Test load striped uint8 lzw tiff"
