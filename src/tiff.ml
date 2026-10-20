@@ -299,7 +299,7 @@ module Data = struct
     | Bigarray.Int8_signed -> (8, Ifd.SignedInteger)
     | Bigarray.Int16_signed -> (16, Ifd.SignedInteger)
     | Bigarray.Int16_unsigned -> (16, Ifd.UnsignedInteger)
-    | Bigarray.Int32 -> (32, Ifd.UnsignedInteger)
+    | Bigarray.Int32 -> (32, Ifd.SignedInteger)
     | Bigarray.Int64 -> (64, Ifd.SignedInteger)
     | Bigarray.Float32 -> (32, Ifd.IEEEFloatingPoint)
     | Bigarray.Float64 -> (64, Ifd.IEEEFloatingPoint)
