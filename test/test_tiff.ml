@@ -6,6 +6,24 @@ type backend = Eio of Eio.Fs.dir_ty Eio.Path.t | Unix
 
 let assert_equal_int = assert_equal ~printer:Int.to_string
 
+let assert_equal_ba a b =
+  let dims_a = Bigarray.Genarray.dims a in
+  let dims_b = Bigarray.Genarray.dims b in
+  assert_equal ~msg:"Dimensions"
+    ~printer:(fun dims ->
+      Array.to_list dims |> List.map string_of_int |> String.concat "x")
+    dims_a dims_b;
+  let size = Array.fold_left ( * ) 1 dims_a in
+  let a = Bigarray.reshape_1 a size in
+  let b = Bigarray.reshape_1 b size in
+  for i = 0 to size - 1 do
+    let va = Bigarray.Array1.get a i in
+    let vb = Bigarray.Array1.get b i in
+    if va <> vb then
+      assert_failure
+        (Printf.sprintf "Data mismatch at index %d: %d <> %d" i va vb)
+  done
+
 let with_ro backend path fn =
   match backend with
   | Eio fs ->
@@ -551,6 +569,38 @@ let test_lzw_cea backend _ =
   in
   assert_equal_int ~msg:"sum" (sum_data data) (sum_data data_compressed)
 
+let check_predictor_matches backend kind plain_file predictor_file =
+  let read_data ?(check_predictor = false) d =
+    with_ro backend d @@ fun ro ->
+    let tiff = Tiff.from_file (Tiff.as_kind kind) ro in
+    if check_predictor then
+      assert_equal ~msg:"Predictor" Tiff.Ifd.HorizontalDifferencing
+        (Tiff.ifd tiff |> Tiff.Ifd.predictor);
+    Tiff.data tiff ro
+  in
+  assert_equal_ba (read_data plain_file)
+    (read_data ~check_predictor:true predictor_file)
+
+let test_lzw_predictor_cea backend _ =
+  check_predictor_matches backend Tiff.Uint8 "./data/cea.tiff"
+    "./data/cea_lzw_predictor.tiff"
+
+let test_lzw_predictor_rgb backend _ =
+  check_predictor_matches backend Tiff.Uint8 "./data/normal.tiff"
+    "./data/normal_rgb_lzw_predictor.tiff"
+
+let test_lzw_predictor_u16 backend _ =
+  check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
+    "./data/u16bit_rgb_lzw_predictor.tiff"
+
+let test_lzw_predictor_u16_be backend _ =
+  check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
+    "./data/u16bit_rgb_lzw_predictor_be.tiff"
+
+let test_deflate_predictor_u16 backend _ =
+  check_predictor_matches backend Tiff.Uint16 "./data/u16bit.tiff"
+    "./data/u16bit_rgb_deflate_predictor.tiff"
+
 let test_gdal_sparse_tiff backend _ =
   let data = "./data/sparse_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -729,6 +779,16 @@ let suite fs =
       >:: test_load_odd_striped_uint8_lzw_tiff backend;
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
+      "Test LZW predictor and NoCompress agree"
+      >:: test_lzw_predictor_cea backend;
+      "Test LZW predictor RGB and NoCompress agree"
+      >:: test_lzw_predictor_rgb backend;
+      "Test LZW predictor uint16 RGB and NoCompress agree"
+      >:: test_lzw_predictor_u16 backend;
+      "Test LZW predictor uint16 RGB big-endian and NoCompress agree"
+      >:: test_lzw_predictor_u16_be backend;
+      "Test Deflate predictor uint16 RGB and NoCompress agree"
+      >:: test_deflate_predictor_u16 backend;
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
