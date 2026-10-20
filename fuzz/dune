@@ -1,0 +1,26 @@
+(executable
+ (name fuzz)
+ (libraries alcobar tiff))
+
+; Check each fuzz property against randomly generated inputs.
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (<> %{profile} fuzz))
+ (deps fuzz.exe)
+ (action
+  (run %{exe:fuzz.exe})))
+
+; Real fuzzing with afl-fuzz: `dune build @fuzz --profile fuzz` (needs a
+; compiler with AFL instrumentation and afl-fuzz on the PATH).
+
+(rule
+ (alias fuzz)
+ (enabled_if
+  (= %{profile} fuzz))
+ (deps fuzz.exe)
+ (action
+  (progn
+   (run %{exe:fuzz.exe} --gen-corpus corpus)
+   (run afl-fuzz -V 60 -i corpus -o _fuzz -- %{exe:fuzz.exe} @@))))

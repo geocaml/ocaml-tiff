@@ -105,8 +105,6 @@ module Data = struct
   let write_float64_value buf buf_index value tiff_endianness =
     Endian.set_double ~offset:buf_index tiff_endianness buf value
 
-  let ceil a b = (a + b - 1) / b
-
   let pp_window fmt window =
     Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff
       window.yoff window.xsize window.ysize
@@ -170,17 +168,20 @@ module Data = struct
           failwith "should not get this far if planar config isn't recognised"
     in
 
-    let first_strip =
-      (window.yoff / rows_per_strip) + (strips_per_plane * plane)
-    in
-    let last_strip = first_strip + ceil window.ysize rows_per_strip in
+    let plane_offset = strips_per_plane * plane in
 
-    let row_index =
-      ref ((first_strip - (strips_per_plane * plane)) * rows_per_strip)
+    (* Find the first and last strips touched by the requested window.
+       Divide the first and last row indices by rows_per_strip to get
+       their strip indices, then add the plane offset. *)
+    let first_strip = (window.yoff / rows_per_strip) + plane_offset in
+    let last_strip =
+      ((window.yoff + window.ysize - 1) / rows_per_strip) + plane_offset
     in
 
-    (* We iterate through every strip *)
-    for strip = first_strip to last_strip - 1 do
+    let row_index = ref ((first_strip - plane_offset) * rows_per_strip) in
+
+    (* Iterate over every strip touched by the window, including both endpoints. *)
+    for strip = first_strip to last_strip do
       let raw_strip_length = strip_bytecounts.(strip)
       and raw_strip_offset = strip_offsets.(strip) in
       let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
