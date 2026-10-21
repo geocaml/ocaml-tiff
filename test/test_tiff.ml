@@ -68,11 +68,7 @@ let test_write_basic_tiff backend _ =
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
   let ifd = Tiff.ifd tiff in
   let document_name = Tiff.Ifd.document_name ifd in
-  let width = Tiff.Ifd.width ifd in
-  let height = Tiff.Ifd.height ifd in
-  assert_equal_int ~msg:"Image width" width 10;
-  assert_equal_int ~msg:"Image Height" height 10;
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~bits_per_sample:[ 8 ] ifd;
   assert_equal ~msg:"Data" data (Tiff.data tiff r);
   assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
@@ -156,21 +152,12 @@ let test_load_uniform_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 256 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 256 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.No_compression
-    (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
+  Test_helpers.assert_ifd ~width:256 ~height:256
+    ~compression:Tiff.Ifd.No_compression ~samples_per_pixel:1
+    ~bits_per_sample:[ 8 ] ~predictor:Tiff.Ifd.No_predictor
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
@@ -206,22 +193,12 @@ let test_load_simple_int8_tiff _ =
   Tiff_unix.with_open_in "./data/uniform_int8_lzw.tiff" @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 8 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.SignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
+  Test_helpers.assert_ifd ~width:8 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 8 ]
+    ~sample_format:Tiff.Ifd.SignedInteger ~predictor:Tiff.Ifd.No_predictor
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 8; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
@@ -233,22 +210,12 @@ let test_load_simple_uint8_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 8 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~predictor:Tiff.Ifd.No_predictor
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
@@ -259,19 +226,10 @@ let test_load_simple_int16_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 16 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.SignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 16 ]
+    ~sample_format:Tiff.Ifd.SignedInteger ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
@@ -282,19 +240,10 @@ let test_load_simple_uint16_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 16 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 16 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
@@ -305,19 +254,10 @@ let test_load_simple_int32_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int32) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 32 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.SignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 32 ]
+    ~sample_format:Tiff.Ifd.SignedInteger ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] in
@@ -329,19 +269,10 @@ let test_load_simple_uint32_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint32) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 32 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 32 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises
     (Invalid_argument
        "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp")
@@ -356,19 +287,10 @@ let test_load_simple_float32_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 32 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.IEEEFloatingPoint
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 32 ]
+    ~sample_format:Tiff.Ifd.IEEEFloatingPoint ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] in
@@ -385,19 +307,10 @@ let test_load_simple_float64_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 64 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.IEEEFloatingPoint
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 64 ]
+    ~sample_format:Tiff.Ifd.IEEEFloatingPoint ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] in
@@ -412,19 +325,10 @@ let uniform_rgb_uint8_lzw backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 3
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8; 8; 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal_int ~msg:"Rows per strip" 10 (Tiff.Ifd.rows_per_strip header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Planar
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:3 ~bits_per_sample:[ 8; 8; 8 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
+    ~planar_configuration:Tiff.Ifd.Planar header;
   for plane = 0 to 2 do
     let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
     let data = Tiff.data ~plane ~window tiff ro |> Nx.of_bigarray in
@@ -442,24 +346,13 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
-  assert_equal_int ~msg:"Image width" 10 width;
-  assert_equal_int ~msg:"Image height" 10 height;
-  assert_equal_int ~msg:"Rows per strip" 1 (Tiff.Ifd.rows_per_strip header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.No_compression
-    (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
+  Test_helpers.assert_ifd ~width:10 ~height:10
+    ~compression:Tiff.Ifd.No_compression ~samples_per_pixel:1
+    ~bits_per_sample:[ 8 ] ~sample_format:Tiff.Ifd.UnsignedInteger
+    ~rows_per_strip:1 ~predictor:Tiff.Ifd.No_predictor
+    ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   for y = 0 to height - 1 do
     let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
     let data = Tiff.data ~window tiff ro in
@@ -478,23 +371,13 @@ let test_load_striped_uint8_lzw_tiff backend _ =
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
-  assert_equal_int ~msg:"Image width" 10 width;
-  assert_equal_int ~msg:"Image height" 10 height;
-  assert_equal_int ~msg:"Rows per strip" 1 (Tiff.Ifd.rows_per_strip header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 8 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:1
+    ~predictor:Tiff.Ifd.No_predictor ~planar_configuration:Tiff.Ifd.Chunky
+    header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   for y = 0 to height - 1 do
     let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
     let data = Tiff.data ~window tiff ro in
@@ -513,27 +396,17 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
-  assert_equal_int ~msg:"Image width" 10 width;
-  assert_equal_int ~msg:"Image height" 10 height;
-  assert_equal_int ~msg:"Rows per strip" 3 (Tiff.Ifd.rows_per_strip header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 8 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:3
+    ~predictor:Tiff.Ifd.No_predictor ~planar_configuration:Tiff.Ifd.Chunky
+    header;
   assert_equal_int ~msg:"Number of strips" 4
     (List.length (Tiff.Ifd.data_offsets header));
   assert_equal ~msg:"Strip byte counts" [ 16; 16; 16; 7 ]
     (Tiff.Ifd.data_bytecounts header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   for y = 0 to height - 1 do
     let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
     let data = Tiff.data ~window tiff ro in
@@ -622,23 +495,13 @@ let test_gdal_sparse_tiff backend _ =
   let header = Tiff.ifd tiff in
   let width = Tiff.Ifd.width header in
   let height = Tiff.Ifd.height header in
-  assert_equal_int ~msg:"Image width" 10 width;
-  assert_equal_int ~msg:"Image height" 10 height;
-  assert_equal_int ~msg:"Rows per strip" 1 (Tiff.Ifd.rows_per_strip header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.LZW (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 8 ]
+    ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:1
+    ~predictor:Tiff.Ifd.No_predictor ~planar_configuration:Tiff.Ifd.Chunky
+    header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
   for y = 0 to height - 1 do
     let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
     let data = Tiff.data ~window tiff ro in
@@ -671,21 +534,11 @@ let test_load_deflate_compressed_tiff backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
-  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
-  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
-  assert_equal ~msg:"Compression" Tiff.Ifd.ADOBE_DEFLATE
-    (Tiff.Ifd.compression header);
-  assert_equal_int ~msg:"Samples per pixel" 1
-    (Tiff.Ifd.samples_per_pixel header);
-  assert_equal ~msg:"BPP" [ 8 ] (Tiff.Ifd.bits_per_sample header);
-  assert_equal ~msg:"sample format" Tiff.Ifd.UnsignedInteger
-    (Tiff.Ifd.sample_format header);
-  assert_equal ~msg:"Predictor" Tiff.Ifd.No_predictor
-    (Tiff.Ifd.predictor header);
-  assert_equal
-    ~printer:(fun c -> Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
-    ~msg:"Planar configuration" Tiff.Ifd.Chunky
-    (Tiff.Ifd.planar_configuration header);
+  Test_helpers.assert_ifd ~width:10 ~height:10
+    ~compression:Tiff.Ifd.ADOBE_DEFLATE ~samples_per_pixel:1
+    ~bits_per_sample:[ 8 ] ~sample_format:Tiff.Ifd.UnsignedInteger
+    ~predictor:Tiff.Ifd.No_predictor ~planar_configuration:Tiff.Ifd.Chunky
+    header;
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
