@@ -76,6 +76,20 @@ let test_write_basic_tiff backend _ =
   assert_equal ~msg:"Data" data (Tiff.data tiff r);
   assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
+let test_write_int32_tiff backend _ =
+  with_wo backend "./data/tmp_int32.tiff" @@ fun w ->
+  with_ro backend "./data/tmp_int32.tiff" @@ fun r ->
+  let data =
+    Bigarray.Genarray.create Bigarray.int32 Bigarray.c_layout [| 2; 2 |]
+  in
+  Bigarray.Genarray.fill data (-7l);
+  let tiff = Tiff.make data in
+  Tiff.to_file tiff w;
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Int32) r in
+  assert_equal ~msg:"Sample format" Tiff.Ifd.SignedInteger
+    (Tiff.Ifd.sample_format (Tiff.ifd tiff));
+  assert_equal ~msg:"Data" data (Tiff.data tiff r)
+
 let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
@@ -742,6 +756,7 @@ let suite fs =
       "Test write simple striped TIFF"
       >:: test_write_simple_striped_tiff backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
+      "Test write int32 TIFF" >:: test_write_int32_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test odd striped TIFF window crosses boundary"
       >:: test_odd_striped_tiff_window_crosses_boundary backend;
