@@ -132,7 +132,8 @@ module Data = struct
     let planar_configuration = Ifd.planar_configuration ifd in
     match (planar_configuration, plane) with
     | Planar, Some p -> p
-    | Planar, None -> invalid_arg "Must specify plane for data read"
+    | Planar, None -> 
+        Error.invalid_arg "Must specify plane for data read"
     | Chunky, None | Chunky, Some 0 -> 0
     | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
     | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"

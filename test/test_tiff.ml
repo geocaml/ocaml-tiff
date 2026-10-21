@@ -735,7 +735,7 @@ let test_truncated_file_raises backend _ =
       let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
-
+          
 let suite fs =
   let tests backend =
     [
