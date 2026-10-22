@@ -742,16 +742,16 @@ let test_truncated_file_raises backend _ =
       let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
-          
+
 let test_invalid_window_raises backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 300; ysize = 300 } in
   assert_raises
-    (Invalid_argument
-       "Window { xoff=0, yoff=0, xsize=300, ysize=300 } for data (256 256)")
-    (fun () -> ignore (Tiff.data ~window tiff ro))
+    (Tiff.Error.Tiff_error
+       "Invalid TIFF data window { xoff=0, yoff=0, xsize=300, ysize=300 }: image dimensions are 256 x 256")
+    (fun () -> ignore (Tiff.data ~window tiff ro))  
 
 let test_tiff_error_accessible _ =
   assert_raises

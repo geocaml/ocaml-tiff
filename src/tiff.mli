@@ -79,6 +79,7 @@ val make :
 module Error : sig
   exception Tiff_error of string
   val raise_error : string -> 'a
+  val raisef : ('a, Format.formatter, unit, 'b) format4 -> 'a
 end
 
 module Private : sig

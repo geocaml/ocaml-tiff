@@ -121,7 +121,9 @@ module Data = struct
           let win_w = window.xoff + window.xsize in
           let win_h = window.yoff + window.ysize in
           if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
-            Error.invalid_argf "Window %a for data (%i %i)" pp_window window w h
+            Error.raisef
+              "Invalid TIFF data window %a: image dimensions are %i x %i"
+              pp_window window w h
     in
     match window with
     | Some w -> w
