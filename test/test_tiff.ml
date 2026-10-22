@@ -618,6 +618,26 @@ let test_truncated_file_raises backend _ =
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
 
+(* Offsets at or above 2 GiB must read as unsigned, not wrap negative. The
+   offset in high_offset.tiff is inline in the entry while in
+   high_offset_array.tiff it is the second element of an out of line array,
+   so both value decoding paths are covered. *)
+
+let test_load_high_strip_offset backend _ =
+  let data = "./data/high_offset.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Strip offsets" [ 2147483648 ] (Tiff.Ifd.data_offsets ifd)
+
+let test_load_high_strip_offset_array backend _ =
+  let data = "./data/high_offset_array.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Strip offsets" [ 138; 2147483648 ]
+    (Tiff.Ifd.data_offsets ifd)
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -709,6 +729,10 @@ let suite fs =
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
       "Test malformed TIFF header" >:: test_malformed_tiff_header backend;
+      "Test high strip offset reads as unsigned"
+      >:: test_load_high_strip_offset backend;
+      "Test high strip offset in array reads as unsigned"
+      >:: test_load_high_strip_offset_array backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
