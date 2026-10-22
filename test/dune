@@ -1,6 +1,6 @@
 (executables
  (names test_tiff test_geotiff)
- (modules test_tiff test_geotiff)
+ (modules test_tiff test_geotiff test_helpers)
  (libraries tiff tiff.unix eio_main tiff.eio ounit2 nx))
 
 (rule
