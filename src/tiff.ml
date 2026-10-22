@@ -119,7 +119,8 @@ module Data = struct
           let win_w = window.xoff + window.xsize in
           let win_h = window.yoff + window.ysize in
           if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
-            Fmt.invalid_arg "Window %a for data (%i %i)" pp_window window w h
+            (*Fmt.invalid_arg "Window %a for data (%i %i)" pp_window window w h*)
+            Error.invalid_argf "Window %a for data (%i %i)" pp_window window w h
     in
     match window with
     | Some w -> w
