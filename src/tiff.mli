@@ -92,6 +92,9 @@ module Error : sig
     kind ->
     ('a, Format.formatter, unit, 'b) format4 ->
     'a
+
+  val pp :
+    Format.formatter -> kind * string * string option -> unit  
 end
 
 module Private : sig

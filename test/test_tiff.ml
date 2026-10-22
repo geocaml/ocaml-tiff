@@ -670,6 +670,33 @@ let test_load_striped_no_rows_per_strip backend _ =
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
     (Tiff.Ifd.rows_per_strip header)
 
+let test_tiff_pretty_printer_with_filename _ =
+  let error =
+    (Tiff.Error.Malformed_file, "Invalid TIFF header", Some "image.tiff")
+  in
+  let actual = Format.asprintf "%a" Tiff.Error.pp error in
+  let expected = "TIFF error (Malformed file) in image.tiff: Invalid TIFF header" in
+  assert_equal ~printer:(fun s -> s) expected actual
+
+let test_tiff_pretty_printer_without_filename _ =
+  let error =
+    (Tiff.Error.Invalid_argument, "Invalid window", None)
+  in
+  let actual = Format.asprintf "%a" Tiff.Error.pp error in
+  let expected = "TIFF error (Invalid argument): Invalid window" in
+  assert_equal ~printer:(fun s -> s) expected actual
+
+let test_tiff_registered_exception_printer _ =
+  let exn =
+    Tiff.Error.Tiff_error
+      (Tiff.Error.Unsupported_feature, "Unsupported predictor", Some "image.tiff")
+  in
+  let actual = Printexc.to_string exn in
+  let expected =
+    "TIFF error (Unsupported feature) in image.tiff: Unsupported predictor"
+  in
+  assert_equal ~printer:(fun s -> s) expected actual
+
 let suite fs =
   let tests backend =
     [
@@ -744,6 +771,12 @@ let suite fs =
     "Tiff error with filename" >:: test_tiff_error_with_filename ;
     "Tiff formatted error with filename" 
       >:: test_tiff_formatted_error_with_filename;
+    "Tiff pretty printer with filename"
+      >:: test_tiff_pretty_printer_with_filename;
+    "Tiff pretty printer without filename"
+      >:: test_tiff_pretty_printer_without_filename;
+    "Tiff registered exception printer"
+      >:: test_tiff_registered_exception_printer;
   ]
 
 let () =
