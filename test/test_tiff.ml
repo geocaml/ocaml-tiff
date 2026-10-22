@@ -752,6 +752,13 @@ let test_invalid_window_raises backend _ =
     (Invalid_argument
        "Window { xoff=0, yoff=0, xsize=300, ysize=300 } for data (256 256)")
     (fun () -> ignore (Tiff.data ~window tiff ro))
+
+let test_tiff_error_accessible _ =
+  assert_raises
+    (Tiff.Error.Tiff_error "Test message")
+    (fun () ->
+      Tiff.Error.raise_error "Test message")   
+    
 let suite fs =
   let tests backend =
     [
@@ -815,7 +822,12 @@ let suite fs =
       "Test invalid window raises" >:: test_invalid_window_raises backend;
     ]
   in
-  "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
+  "Basic Tests"
+  >::: [
+  "Tiff error accessible" >:: test_tiff_error_accessible;
+    "Eio" >::: tests (Eio fs);
+    "Unix" >::: tests Unix;
+  ]
 
 let () =
   Eio_main.run @@ fun env ->

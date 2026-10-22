@@ -76,6 +76,11 @@ val make :
   ('repr, 'kind) t
 (** [make data] constructs a new TIFF file from some multidimensional data. *)
 
+module Error : sig
+  exception Tiff_error of string
+  val raise_error : string -> 'a
+end
+
 module Private : sig
   module Lzw = Lzw
   module Deflate = Deflate

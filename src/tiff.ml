@@ -4,6 +4,8 @@ module File = File
 module Endian = Endian
 module Ifd = Ifd
 
+module Error = Error
+
 type header = Ifd.header
 
 type ('repr, 'kind) kind =
