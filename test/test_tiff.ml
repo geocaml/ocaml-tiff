@@ -736,6 +736,17 @@ let test_truncated_file_raises backend _ =
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
 
+let test_load_striped_no_rows_per_strip backend _ =
+  let data = "./data/striped_no_rowsperstrip.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 10 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
+  (* The tag is missing, so it should default to the height (10) *)
+  assert_equal_int ~msg:"Rows per strip defaults to height" 10
+    (Tiff.Ifd.rows_per_strip header)
+
 let suite fs =
   let tests backend =
     [
@@ -778,6 +789,8 @@ let suite fs =
       "Test load odd striped uint8 lzw tiff"
       >:: test_load_odd_striped_uint8_lzw_tiff backend;
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
+      "Test load striped tiff without RowsPerStrip"
+      >:: test_load_striped_no_rows_per_strip backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test LZW predictor and NoCompress agree"
       >:: test_lzw_predictor_cea backend;
