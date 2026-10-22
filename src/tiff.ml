@@ -64,17 +64,18 @@ module Data = struct
   let read_int16_value buf buf_index tiff_endianness =
     Endian.int16 ~offset:buf_index tiff_endianness buf
 
+  (* currently unused but updated regardless incase we later use it *)
   let _read_uint32_value buf buf_index tiff_endianness =
-    Endian.uint32 ~offset:buf_index tiff_endianness buf
+    Endian.int32 ~offset:buf_index tiff_endianness buf
 
   let read_int32_value buf buf_index tiff_endianness =
-    Endian.uint32 ~offset:buf_index tiff_endianness buf
+    Endian.int32 ~offset:buf_index tiff_endianness buf
 
   let read_int64_value buf buf_index tiff_endianness =
     Endian.uint64 ~offset:buf_index tiff_endianness buf
 
   let read_float32_value buf buf_index tiff_endianness =
-    let int_value = Endian.uint32 ~offset:buf_index tiff_endianness buf in
+    let int_value = Endian.int32 ~offset:buf_index tiff_endianness buf in
     Int32.float_of_bits int_value
 
   let read_float64_value buf buf_index tiff_endianness =
@@ -487,10 +488,7 @@ let read_int64 (fmt : Ifd.sample_format) bpp buf off endian =
   | SignedInteger, 8 -> Int64.of_int (Data.read_int8_value buf off endian)
   | UnsignedInteger, 16 -> Int64.of_int (Data.read_uint16_value buf off endian)
   | SignedInteger, 16 -> Int64.of_int (Data.read_int16_value buf off endian)
-  | UnsignedInteger, 32 ->
-      Int64.logand
-        (Int64.of_int32 (Endian.uint32 ~offset:off endian buf))
-        0xffffffffL
+  | UnsignedInteger, 32 -> Endian.uint32 ~offset:off endian buf
   | SignedInteger, 32 -> Int64.of_int32 (Data.read_int32_value buf off endian)
   | SignedInteger, 64 -> Data.read_int64_value buf off endian
   | _ -> assert false

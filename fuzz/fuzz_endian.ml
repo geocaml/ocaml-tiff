@@ -18,7 +18,8 @@ let int16_roundtrip e v =
 let uint32_roundtrip e v =
   let buf = Cstruct.create 4 in
   E.set_uint32 e buf v;
-  check_eq ~pp:pp_int32 (E.uint32 e buf) v
+  let expected_value = Int64.logand (Int64.of_int32 v) 0xFFFFFFFFL in
+  check_eq ~pp:pp_int64 (E.uint32 e buf) expected_value
 
 let suite =
   ( "endian",
