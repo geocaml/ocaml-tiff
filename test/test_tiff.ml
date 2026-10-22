@@ -743,6 +743,15 @@ let test_truncated_file_raises backend _ =
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
           
+let test_invalid_window_raises backend _ =
+  let data = "./data/uniform.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 300; ysize = 300 } in
+  assert_raises
+    (Invalid_argument
+       "Window { xoff=0, yoff=0, xsize=300, ysize=300 } for data (256 256)")
+    (fun () -> ignore (Tiff.data ~window tiff ro))
 let suite fs =
   let tests backend =
     [
@@ -803,6 +812,7 @@ let suite fs =
       >:: test_load_multiple_uniform_ifds_tiff backend;
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
+      "Test invalid window raises" >:: test_invalid_window_raises backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
