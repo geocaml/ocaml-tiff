@@ -136,8 +136,10 @@ module Data = struct
     | Planar, None -> 
         Error.invalid_arg "Must specify plane for data read"
     | Chunky, None | Chunky, Some 0 -> 0
-    | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
-    | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
+  (*  | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
+    | Unknown _, _ -> invalid_arg "Unknown planar format TIFF" *)
+    | Chunky, Some _ -> Error.invalid_arg "Can not select plane on single plane TIFFs"
+    | Unknown _, _ -> Error.invalid_arg "Unknown planar format TIFF"
 
   let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
       ~after_strip =

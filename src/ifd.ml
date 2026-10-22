@@ -92,7 +92,8 @@ let field_of_int = function
   | 16 -> Long8
   | 17 -> Slong8
   | 18 -> Ifd8
-  | n -> invalid_arg ("Field kind " ^ string_of_int n)
+  (*| n -> invalid_arg ("Field kind " ^ string_of_int n)*)
+  | n -> Error.invalid_arg ("Field kind " ^ string_of_int n)
 
 let field_to_int = function
   | Byte -> 1
@@ -840,7 +841,8 @@ module GeoKeys = struct
         in
         let geo_entries = loop [] rest in
         { version; revision; minor; geo_entries }
-    | _ -> invalid_arg "GeoKeyDirectory Malformed!"
+    (*| _ -> invalid_arg "GeoKeyDirectory Malformed!" *)
+    | _ -> Error.invalid_arg "GeoKeyDirectory Malformed!"    
 
   let get_geo_entries t = t.geo_entries
 
