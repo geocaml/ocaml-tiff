@@ -77,9 +77,17 @@ val make :
 (** [make data] constructs a new TIFF file from some multidimensional data. *)
 
 module Error : sig
-  exception Tiff_error of string
-  val raise_error : string -> 'a
-  val raisef : ('a, Format.formatter, unit, 'b) format4 -> 'a
+  type kind =
+    | Invalid_argument
+    | Unsupported_feature
+    | Malformed_file
+    | Internal_error
+
+  exception Tiff_error of kind * string
+
+  val raise_error : kind -> string -> 'a
+
+  val raisef : kind -> ('a, Format.formatter, unit, 'b) format4 -> 'a
 end
 
 module Private : sig

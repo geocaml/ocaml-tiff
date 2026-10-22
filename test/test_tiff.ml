@@ -185,11 +185,13 @@ let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
   let data = "./data/uniform_rgb_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument "Must specify plane for data read") (fun _ ->
-      Tiff.data tiff ro)
+  assert_raises
+  (Tiff.Error.Tiff_error
+     ( Tiff.Error.Invalid_argument,
+       "Cannot read planar TIFF data: a plane index must be specified" ))
+  (fun () -> Tiff.data tiff ro)
 
-let test_read_multi_plane_with_plane backend _ =
+  let test_read_multi_plane_with_plane backend _ =
   let data = "./data/uniform_rgb_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
@@ -615,16 +617,22 @@ let test_invalid_window_raises backend _ =
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 300; ysize = 300 } in
+  let expected_message =
+  "Invalid TIFF data window { xoff=0, yoff=0, xsize=300, ysize=300 }: "
+  ^ "image dimensions are 256 x 256"
+  in
   assert_raises
     (Tiff.Error.Tiff_error
-       "Invalid TIFF data window { xoff=0, yoff=0, xsize=300, ysize=300 }: image dimensions are 256 x 256")
-    (fun () -> ignore (Tiff.data ~window tiff ro))  
-
+      (Tiff.Error.Invalid_argument, expected_message))
+    (fun () -> ignore (Tiff.data ~window tiff ro))
+    
 let test_tiff_error_accessible _ =
   assert_raises
-    (Tiff.Error.Tiff_error "Test message")
+    (Tiff.Error.Tiff_error
+       (Tiff.Error.Invalid_argument, "Test message"))
     (fun () ->
-      Tiff.Error.raise_error "Test message")   
+      Tiff.Error.raise_error
+        Tiff.Error.Invalid_argument "Test message")
     
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in

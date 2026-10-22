@@ -121,8 +121,8 @@ module Data = struct
           let win_w = window.xoff + window.xsize in
           let win_h = window.yoff + window.ysize in
           if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
-            Error.raisef
-              "Invalid TIFF data window %a: image dimensions are %i x %i"
+            Error.raisef Error.Invalid_argument
+              "Invalid TIFF data window %a: image dimensions are %i x %i"  
               pp_window window w h
     in
     match window with
@@ -136,8 +136,9 @@ module Data = struct
     let planar_configuration = Ifd.planar_configuration ifd in
     match (planar_configuration, plane) with
     | Planar, Some p -> p
-    | Planar, None -> 
-        Error.invalid_arg "Must specify plane for data read"
+    | Planar, None ->
+        Error.raise_error Error.Invalid_argument
+          "Cannot read planar TIFF data: a plane index must be specified"
     | Chunky, None | Chunky, Some 0 -> 0
     | Chunky, Some _ -> Error.invalid_arg "Can not select plane on single plane TIFFs"
     | Unknown _, _ -> Error.invalid_arg "Unknown planar format TIFF"

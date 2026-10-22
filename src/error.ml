@@ -1,10 +1,16 @@
-exception Tiff_error of string
+type kind =
+  | Invalid_argument
+  | Unsupported_feature
+  | Malformed_file
+  | Internal_error
 
-let raise_error message =
-  raise (Tiff_error message)
+exception Tiff_error of kind * string
 
-let raisef fmt =
-  Fmt.kstr raise_error fmt
+let raise_error kind message =
+  raise (Tiff_error (kind, message))
+
+let raisef kind fmt =
+  Fmt.kstr (raise_error kind) fmt
 
 (*Keeping old functions as is for now*)
 let invalid_arg message =
@@ -12,4 +18,3 @@ let invalid_arg message =
 
 let invalid_argf fmt =
   Fmt.kstr invalid_arg fmt  
-  
