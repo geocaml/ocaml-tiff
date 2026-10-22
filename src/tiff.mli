@@ -83,11 +83,15 @@ module Error : sig
     | Malformed_file
     | Internal_error
 
-  exception Tiff_error of kind * string
+  exception Tiff_error of kind * string * string option
 
-  val raise_error : kind -> string -> 'a
+  val raise_error : ?filename:string -> kind -> string -> 'a
 
-  val raisef : kind -> ('a, Format.formatter, unit, 'b) format4 -> 'a
+  val raisef :
+    ?filename:string ->
+    kind ->
+    ('a, Format.formatter, unit, 'b) format4 ->
+    'a
 end
 
 module Private : sig

@@ -188,7 +188,8 @@ let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
   assert_raises
   (Tiff.Error.Tiff_error
      ( Tiff.Error.Invalid_argument,
-       "Cannot read planar TIFF data: a plane index must be specified" ))
+       "Cannot read planar TIFF data: a plane index must be specified",
+       None ))
   (fun () -> Tiff.data tiff ro)
 
   let test_read_multi_plane_with_plane backend _ =
@@ -623,17 +624,41 @@ let test_invalid_window_raises backend _ =
   in
   assert_raises
     (Tiff.Error.Tiff_error
-      (Tiff.Error.Invalid_argument, expected_message))
+      (Tiff.Error.Invalid_argument, expected_message, None))
     (fun () -> ignore (Tiff.data ~window tiff ro))
     
 let test_tiff_error_accessible _ =
   assert_raises
     (Tiff.Error.Tiff_error
-       (Tiff.Error.Invalid_argument, "Test message"))
+       (Tiff.Error.Invalid_argument, "Test message",None))
     (fun () ->
       Tiff.Error.raise_error
         Tiff.Error.Invalid_argument "Test message")
     
+let test_tiff_error_with_filename _ =
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Malformed_file,
+         "Invalid TIFF header",
+         Some "image.tiff" ))
+    (fun () ->
+      Tiff.Error.raise_error
+        ~filename:"image.tiff"
+        Tiff.Error.Malformed_file
+        "Invalid TIFF header")
+
+let test_tiff_formatted_error_with_filename _ =
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Unsupported_feature,
+         "Unsupported TIFF predictor 99",
+         Some "image.tiff" ))
+    (fun () ->
+      Tiff.Error.raisef
+        ~filename:"image.tiff"
+        Tiff.Error.Unsupported_feature
+        "Unsupported TIFF predictor %d" 99)
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -713,9 +738,12 @@ let suite fs =
   in
   "Basic Tests"
   >::: [
-  "Tiff error accessible" >:: test_tiff_error_accessible;
+    "Tiff error accessible" >:: test_tiff_error_accessible;
     "Eio" >::: tests (Eio fs);
     "Unix" >::: tests Unix;
+    "Tiff error with filename" >:: test_tiff_error_with_filename ;
+    "Tiff formatted error with filename" 
+      >:: test_tiff_formatted_error_with_filename;
   ]
 
 let () =
