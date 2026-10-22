@@ -9,10 +9,6 @@ type header = {
 and tiff_kind = Tiff | Bigtiff
 and endianness = Endian.endianness
 
-(* Helper to zero-extend TIFF LONG values (unsigned 32-bit) 
-  into int64 so that large values (> 2^31 - 1) stay positive. *)
-let uint32_to_int64 v = Int64.logand (Int64.of_int32 v) 0xffffffffL
-
 let read_header ro =
   (* We may get more bytes than we want, but this is to support Bigtiffs *)
   let buf = Cstruct.create 16 in
@@ -28,9 +24,7 @@ let read_header ro =
   let kind, offset =
     match magic with
     | 42 ->
-        ( Tiff,
-          Endian.uint32 ~offset:4 byte_order buf
-          |> uint32_to_int64 |> Optint.Int63.of_int64 )
+        (Tiff, Endian.uint32 ~offset:4 byte_order buf |> Optint.Int63.of_int64)
     | 43 ->
         ( Bigtiff,
           Endian.uint64 ~offset:8 byte_order buf |> Optint.Int63.of_int64 )
@@ -514,8 +508,7 @@ let get_dataset_offsets endian entries reader =
     let strips = ref [] in
     let get_offset ~offset buf = function
       | Short -> Endian.uint16 ~offset endian buf
-      | Long ->
-          Endian.uint32 ~offset endian buf |> uint32_to_int64 |> Int64.to_int
+      | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
       | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
       | _ ->
           Error.raise_error Error.Unsupported_feature
@@ -559,8 +552,7 @@ let get_bytecounts endian entries reader =
     let strips = ref [] in
     let get_offset ~offset buf = function
       | Short -> Endian.uint16 ~offset endian buf
-      | Long ->
-          Endian.uint32 ~offset endian buf |> uint32_to_int64 |> Int64.to_int
+      | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
       | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
       | _ ->
           Error.raisef Error.Unsupported_feature "Unsupported strip length: %a"
@@ -956,7 +948,6 @@ let tile_byte_counts t =
   let offsets = read_entry_raw entry t.ro in
   if field_byte_size entry.field = 4 then
     List.map (Endian.uint32 t.header.byte_order) offsets
-    |> List.map uint32_to_int64
   else List.map (Endian.uint64 t.header.byte_order) offsets
 
 let v ~file_offset header reader =
@@ -987,9 +978,7 @@ let v ~file_offset header reader =
         let field =
           Endian.uint16 ~offset:(base_offset + 2) endian buf |> field_of_int
         in
-        let count =
-          Endian.uint32 ~offset:(base_offset + 4) endian buf |> uint32_to_int64
-        in
+        let count = Endian.uint32 ~offset:(base_offset + 4) endian buf in
         let is_immediate = is_immediate_raw ~count field in
         let offset =
           match (is_immediate, field) with
@@ -997,9 +986,7 @@ let v ~file_offset header reader =
               Cstruct.get_uint8 buf (base_offset + 8) |> Int64.of_int
           | true, Short ->
               Endian.uint16 ~offset:(base_offset + 8) endian buf |> Int64.of_int
-          | _ ->
-              Endian.uint32 ~offset:(base_offset + 8) endian buf
-              |> uint32_to_int64
+          | _ -> Endian.uint32 ~offset:(base_offset + 8) endian buf
         in
         let offset = if is_immediate then Immediate offset else Offset offset in
         let entry = { tag; field; count; offset } in
@@ -1019,9 +1006,7 @@ let v ~file_offset header reader =
           | true, Short ->
               Endian.uint16 ~offset:(base_offset + 12) endian buf
               |> Int64.of_int
-          | true, Long ->
-              Endian.uint32 ~offset:(base_offset + 12) endian buf
-              |> uint32_to_int64
+          | true, Long -> Endian.uint32 ~offset:(base_offset + 12) endian buf
           | _ -> Endian.uint64 ~offset:(base_offset + 12) endian buf
         in
         let offset = if is_immediate then Immediate offset else Offset offset in
@@ -1032,7 +1017,7 @@ let v ~file_offset header reader =
     match header.kind with
     | Tiff ->
         Endian.uint32 ~offset:0 header.byte_order next_ifd_buf
-        |> uint32_to_int64 |> Optint.Int63.of_int64
+        |> Optint.Int63.of_int64
     | Bigtiff ->
         Endian.uint64 ~offset:0 header.byte_order next_ifd_buf
         |> Optint.Int63.of_int64
