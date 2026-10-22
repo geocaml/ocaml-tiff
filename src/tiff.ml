@@ -45,6 +45,9 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
    but modern libraries override this and default to  64KB or higher for modern hardware. *)
 let default_strip_size = 65_536
 
+(* One read takes contiguous strips up to this many bytes. *)
+let default_max_read = 1_048_576
+
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
@@ -585,8 +588,9 @@ let read_repr (type r k) (t : (r, k) t) ifd plane =
       | Some (read, _) -> (bigarray_kind kind, read)
       | None -> converted_reader ~unsafe_ok:true kind fmt bpp)
 
-let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
-    (f : File.ro) : (repr, kind) Data.t =
+let data (type repr kind) ?(image_nb = 0) ?plane ?window
+    ?(max_read = default_max_read) (t : (repr, kind) t) (f : File.ro) :
+    (repr, kind) Data.t =
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
     Fmt.invalid_arg "Image n°%d requested but TIFF file only has %d ([0-%d])"
@@ -601,7 +605,9 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
       data
   | Some _ | None ->
       let kind, read_value = read_repr t ifd plane in
-      let data = Data.read_data ifd t.header f plane window kind read_value in
+      let data =
+        Data.read_data ~max_read ifd t.header f plane window kind read_value
+      in
       t.window <- Some window;
       t.plane <- Some plane;
       t.image_nb <- Some image_nb;

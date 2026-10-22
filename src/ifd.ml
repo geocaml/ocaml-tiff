@@ -930,7 +930,10 @@ let tiles_down t =
 let tile_offsets t =
   let entry = lookup_exn t.entries TileOffsets in
   let offsets = read_entry_raw entry t.ro in
-  List.map (Endian.uint64 t.header.byte_order) offsets
+  if field_byte_size entry.field = 4 then
+    List.map (Endian.uint32 t.header.byte_order) offsets
+    |> List.map Int64.of_int32
+  else List.map (Endian.uint64 t.header.byte_order) offsets
 
 let tile_byte_counts t =
   let entry = lookup_exn t.entries TileByteCounts in
