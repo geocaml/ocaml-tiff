@@ -28,11 +28,11 @@ dispatches decompression to the appropriate module (e.g. `lzw.ml`).
 * Strip-based storage
 * Uncompressed (No compression)
 * LZW Compression
+* Deflate Compression (ZIP, compression tags 8 and 32946)
 * Basic GeoTIFF metadata
 
 ### Future support
 * Writing TIFF files
 * Tile-based storage
-* Deflate Compression (ZIP)
 * JPEG Compression
 * Advanced GeoTIFF metadata (GeoKeyDirectory)
