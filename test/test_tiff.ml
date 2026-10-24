@@ -603,6 +603,36 @@ let test_truncated_file_raises backend _ =
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
 
+(* Values at or above 2 GiB must read as unsigned, not wrap negative.
+   high_offset.tiff stores its value inside the directory entry, while the
+   other two files store theirs in a separate list, so both layouts are
+   covered. *)
+
+let test_load_high_strip_offset backend _ =
+  let data = "./data/high_offset.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Strip offsets" [ 2147483648 ] (Tiff.Ifd.data_offsets ifd)
+
+let test_load_high_strip_offset_array backend _ =
+  let data = "./data/high_offset_array.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Strip offsets" [ 138; 2147483648 ]
+    (Tiff.Ifd.data_offsets ifd);
+  assert_equal ~msg:"Strip byte counts" [ 1; 2147483648 ]
+    (Tiff.Ifd.data_bytecounts ifd)
+
+let test_load_high_tile_byte_counts backend _ =
+  let data = "./data/high_tile_bytecounts.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Tile byte counts" [ 1L; 2147483648L ]
+    (Tiff.Ifd.tile_byte_counts ifd)
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -675,6 +705,12 @@ let suite fs =
       >:: test_load_multiple_uniform_ifds_tiff backend;
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
+      "Test high strip offset reads as unsigned"
+      >:: test_load_high_strip_offset backend;
+      "Test high strip offset in array reads as unsigned"
+      >:: test_load_high_strip_offset_array backend;
+      "Test high tile byte counts read as unsigned"
+      >:: test_load_high_tile_byte_counts backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
