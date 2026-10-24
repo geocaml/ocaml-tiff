@@ -244,6 +244,63 @@ module Data = struct
       row_index := !row_index + rows_in_strip
     done
 
+  (* Turn horizontal differences back into pixels. 8- or 16-bit samples. *)
+  let undo_horizontal_differencing buf ~width ~samples_per_pixel
+      ~bytes_per_sample ~endian =
+    let samples_per_row = width * samples_per_pixel in
+    let bytes_per_row = samples_per_row * bytes_per_sample in
+    let rows = Cstruct.length buf / bytes_per_row in
+    (* Differences are stored modulo 2^bits (TIFF 6, Section 14).
+       Masking wraps sums that exceed the maximum sample value,
+       e.g. (250 + 10) mod 256 = 4 for 8-bit samples. *)
+    let mask = (1 lsl (8 * bytes_per_sample)) - 1 in
+    let get position =
+      let offset = position * bytes_per_sample in
+      if bytes_per_sample = 1 then Cstruct.get_uint8 buf offset
+      else Endian.uint16 ~offset endian buf
+    in
+    let set position value =
+      let offset = position * bytes_per_sample in
+      if bytes_per_sample = 1 then Cstruct.set_uint8 buf offset value
+      else Endian.set_uint16 ~offset endian buf value
+    in
+    for r = 0 to rows - 1 do
+      let row_start = r * samples_per_row in
+      (* The first pixel has no left neighbour and is stored as-is.
+         Differencing starts at the second pixel, at samples_per_pixel. *)
+      for i = samples_per_pixel to samples_per_row - 1 do
+        let position = row_start + i in
+        let left = get (position - samples_per_pixel) in
+        let value = (get position + left) land mask in
+        set position value
+      done
+    done
+
+  let apply_predictor ifd (header : Ifd.header) planar_configuration
+      samples_per_pixel buf =
+    match Ifd.predictor ifd with
+    | Ifd.No_predictor -> ()
+    | Ifd.HorizontalDifferencing ->
+        let samples =
+          match planar_configuration with
+          | Ifd.Chunky -> samples_per_pixel
+          | Ifd.Planar -> 1
+          | Ifd.Unknown _ ->
+              failwith
+                "Should not get this far if planar config isn't recognised."
+        in
+        let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
+        if bits_per_sample <> 8 && bits_per_sample <> 16 then
+          failwith
+            (Printf.sprintf
+               "Unsupported bits per sample for horizontal differencing: %d \
+                (only 8 and 16 are supported)"
+               bits_per_sample);
+        let bytes_per_sample = bits_per_sample / 8 in
+        undo_horizontal_differencing buf ~width:(Ifd.width ifd)
+          ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
+    | Ifd.Unknown n -> failwith (Printf.sprintf "Unsupported predictor %d" n)
+
   let read_data ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
@@ -267,10 +324,14 @@ module Data = struct
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Lzw.decode buf uncompressed_buffer;
+            apply_predictor ifd header planar_configuration samples_per_pixel
+              uncompressed_buffer;
             uncompressed_buffer
         | false, DEFLATE | false, ADOBE_DEFLATE ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Deflate.decode buf uncompressed_buffer;
+            apply_predictor ifd header planar_configuration samples_per_pixel
+              uncompressed_buffer;
             uncompressed_buffer
         | _ -> failwith "Unsupported compression")
       ~on_value:(fun buf buf_offset dim endian ->
@@ -299,7 +360,7 @@ module Data = struct
     | Bigarray.Int8_signed -> (8, Ifd.SignedInteger)
     | Bigarray.Int16_signed -> (16, Ifd.SignedInteger)
     | Bigarray.Int16_unsigned -> (16, Ifd.UnsignedInteger)
-    | Bigarray.Int32 -> (32, Ifd.UnsignedInteger)
+    | Bigarray.Int32 -> (32, Ifd.SignedInteger)
     | Bigarray.Int64 -> (64, Ifd.SignedInteger)
     | Bigarray.Float32 -> (32, Ifd.IEEEFloatingPoint)
     | Bigarray.Float64 -> (64, Ifd.IEEEFloatingPoint)

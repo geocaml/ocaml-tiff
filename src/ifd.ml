@@ -483,7 +483,11 @@ let read_entry e =
 
 let height e = lookup_exn e.entries ImageLength |> read_entry
 let width e = lookup_exn e.entries ImageWidth |> read_entry
-let rows_per_strip e = lookup_exn e.entries RowsPerStrip |> read_entry
+
+let rows_per_strip e =
+  match lookup e.entries RowsPerStrip with
+  | None -> height e
+  | Some entry -> read_entry entry
 
 let samples_per_pixel e =
   try lookup_exn e.entries SamplesPerPixel |> read_entry with Not_found -> 1
