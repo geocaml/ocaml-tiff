@@ -92,7 +92,7 @@ let field_of_int = function
   | 16 -> Long8
   | 17 -> Slong8
   | 18 -> Ifd8
-  | n -> invalid_arg ("Field kind " ^ string_of_int n)
+  | n -> Error.invalid_arg ("Field kind " ^ string_of_int n)
 
 let field_to_int = function
   | Byte -> 1
@@ -469,7 +469,7 @@ let get_immediate e =
   match e.offset with
   | Immediate i -> i
   | off ->
-      Fmt.invalid_arg "Tried to coerce a non-immediate value (%a)." pp_offset
+      Error.invalid_argf "Tried to coerce a non-immediate value (%a)." pp_offset
         off
 
 let read_entry e =
@@ -541,7 +541,7 @@ let get_dataset_offsets endian entries reader =
       | Read (_o, [ buf ]) ->
           read_strips ~strip_count ~strip_bytes ~strip_offsets buf
       | Read _ ->
-          Fmt.invalid_arg
+          Error.invalid_argf
             "Reading data offsets: impossible number of strip buffers")
 
 let get_bytecounts endian entries reader =
@@ -585,8 +585,9 @@ let get_bytecounts endian entries reader =
       | Read (_o, [ buf ]) ->
           read_bytecounts ~strip_bytes ~strip_offsets ~strip_count buf
       | Read _ ->
-          Fmt.invalid_arg
+          Error.invalid_argf
             "Reading data offsets: impossible number of strip buffers")
+  
 
 let max_group lst n =
   let rec loop acc t =
@@ -844,7 +845,7 @@ module GeoKeys = struct
         in
         let geo_entries = loop [] rest in
         { version; revision; minor; geo_entries }
-    | _ -> invalid_arg "GeoKeyDirectory Malformed!"
+    | _ -> Error.invalid_arg "GeoKeyDirectory Malformed!"    
 
   let get_geo_entries t = t.geo_entries
 
@@ -1125,8 +1126,8 @@ let write_ifd ~file_offset header writer (ifd : t) =
                 (Optint.Int63.to_int32 off);
               write_entry entry writer
           | off, _ ->
-              Fmt.invalid_arg
-                "Writing a non-immediate offset with no values: %a" pp_offset
+              Error.invalid_argf
+                "Writing a non-immediate offset with no values: %a" pp_offset  
                 off)
       | Bigtiff -> (
           Endian.set_uint64 ~offset:(base_offset + 4) endian buf entry.count;
@@ -1146,7 +1147,7 @@ let write_ifd ~file_offset header writer (ifd : t) =
                 (Optint.Int63.to_int64 off);
               write_entry entry writer
           | off, _ ->
-              Fmt.invalid_arg
+              Error.invalid_argf
                 "Writing a non-immediate offset with no values: %a" pp_offset
                 off))
     ifd.entries;

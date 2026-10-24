@@ -4,6 +4,8 @@ module File = File
 module Endian = Endian
 module Ifd = Ifd
 
+module Error = Error
+
 type header = Ifd.header
 
 type ('repr, 'kind) kind =
@@ -119,7 +121,9 @@ module Data = struct
           let win_w = window.xoff + window.xsize in
           let win_h = window.yoff + window.ysize in
           if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
-            Fmt.invalid_arg "Window %a for data (%i %i)" pp_window window w h
+            Error.raisef Error.Invalid_argument
+              "Invalid TIFF data window %a: image dimensions are %i x %i"  
+              pp_window window w h
     in
     match window with
     | Some w -> w
@@ -132,10 +136,12 @@ module Data = struct
     let planar_configuration = Ifd.planar_configuration ifd in
     match (planar_configuration, plane) with
     | Planar, Some p -> p
-    | Planar, None -> invalid_arg "Must specify plane for data read"
+    | Planar, None ->
+        Error.raise_error Error.Invalid_argument
+          "Cannot read planar TIFF data: a plane index must be specified"
     | Chunky, None | Chunky, Some 0 -> 0
-    | Chunky, Some _ -> invalid_arg "Can not select plane on single plane TIFFs"
-    | Unknown _, _ -> invalid_arg "Unknown planar format TIFF"
+    | Chunky, Some _ -> Error.invalid_arg "Can not select plane on single plane TIFFs"
+    | Unknown _, _ -> Error.invalid_arg "Unknown planar format TIFF"
 
   let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
       ~after_strip =
@@ -518,17 +524,17 @@ let exact_io (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp :
   | _ -> None
 
 let datatype_mismatch kind (fmt : Ifd.sample_format) bpp =
-  Fmt.invalid_arg "datatype not correct for plane: %a, %a, %i bpp" pp_kind kind
-    Ifd.pp_sample_format fmt bpp
+  Error.invalid_argf "datatype not correct for plane: %a, %a, %i bpp" pp_kind kind
+    Ifd.pp_sample_format fmt bpp    
 
 let would_lose_precision kind (fmt : Ifd.sample_format) bpp =
-  Fmt.invalid_arg "safe cast to %a would lose data: %a, %i bpp" pp_kind kind
+  Error.invalid_argf "safe cast to %a would lose data: %a, %i bpp" pp_kind kind
     Ifd.pp_sample_format fmt bpp
 
 let exact_repr (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp =
   match kind with
   | Uint32 when fmt = UnsignedInteger && bpp = 32 ->
-      Fmt.invalid_arg "Unsupported datatype for plane: %a, %a, %i bpp" pp_kind
+      Error.invalid_argf "Unsupported datatype for plane: %a, %a, %i bpp" pp_kind
         kind Ifd.pp_sample_format fmt bpp
   | _ -> (
       match exact_io kind fmt bpp with
@@ -589,7 +595,7 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
     (f : File.ro) : (repr, kind) Data.t =
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
-    Fmt.invalid_arg "Image n°%d requested but TIFF file only has %d ([0-%d])"
+    Error.invalid_argf "Image n°%d requested but TIFF file only has %d ([0-%d])"
       image_nb nb_images (nb_images - 1);
   let ifd = t.ifds.(image_nb) in
   let window = Data.get_window ifd window in
@@ -626,7 +632,7 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
   Ifd.write_header w tiff.header;
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w ifd;
   match tiff.data with
-  | None -> Fmt.invalid_arg "Tiff file has no data associated with it."
+  | None -> Error.invalid_argf "Tiff file has no data associated with it."
   | Some data -> write_data ~plane ~window tiff ifd data w
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
@@ -742,7 +748,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     | Float32 -> Float32
     | Float64 -> Float64
     | k ->
-        Fmt.invalid_arg "Converting failed for kind %i"
+        Error.invalid_argf "Converting failed for kind %i"
           (Bigarray.kind_size_in_bytes k)
   in
   let entries =
