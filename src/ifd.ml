@@ -542,93 +542,49 @@ let is_immediate_raw_big ~count field =
   let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
   Int64.compare total_size 8L <= 0
 
-let get_dataset_offsets endian entries reader =
-  let read_strips ~strip_count ~strip_bytes ~strip_offsets buf =
-    let strips = ref [] in
-    let get_offset ~offset buf = function
-      | Short -> Endian.uint16 ~offset endian buf
-      | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
-      | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
-      | _ ->
-          Error.raise_error Error.Unsupported_feature
-            "Unsupported strip offset field type"
-    in
-    for i = 0 to strip_count - 1 do
-      strips :=
-        get_offset ~offset:(i * strip_bytes) buf strip_offsets.field :: !strips
-    done;
-    List.rev !strips
+let read_entry_ints endian reader entry =
+  let byte_size =
+    match entry.field with
+    | Short -> 2
+    | Long -> 4
+    | Long8 -> 8
+    | _ ->
+        Error.raisef Error.Unsupported_feature "Unsupported field %a for tag %a"
+          pp_field entry.field pp_tag entry.tag
   in
+  let decode_at buf i =
+    let offset = i * byte_size in
+    match entry.field with
+    | Short -> Endian.uint16 ~offset endian buf
+    | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
+    | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
+    | _ -> assert false
+  in
+  let count = Int64.to_int entry.count in
+  match entry.offset with
+  | Immediate _ ->
+      if entry.count > 1L then
+        Error.raisef Error.Unsupported_feature
+          "Inline multi-value %a tags are not supported yet" pp_tag entry.tag
+      else [ read_entry entry ]
+  | Offset offset ->
+      let buf = Cstruct.create (count * byte_size) in
+      let file_offset = Optint.Int63.of_int64 offset in
+      reader ~file_offset [ buf ];
+      List.init count (decode_at buf)
+  | Read (_, bufs) ->
+      let buf = Cstruct.concat bufs in
+      List.init count (decode_at buf)
+
+let strip_offsets endian entries reader =
   match lookup entries StripOffsets with
   | None -> []
-  | Some strip_offsets -> (
-      let strip_count = Int64.to_int strip_offsets.count in
-      let strip_bytes =
-        match strip_offsets.field with
-        | Short -> 2
-        | Long -> 4
-        | Long8 -> 8
-        | _ ->
-            Error.raisef Error.Unsupported_feature
-              "Unsupported strip length: %a" pp_field strip_offsets.field
-      in
-      match strip_offsets.offset with
-      | Immediate _ -> [ read_entry strip_offsets ]
-      | Offset offset ->
-          let length = strip_count * strip_bytes in
-          let buf = Cstruct.create length in
-          let strip_offset = Optint.Int63.of_int64 offset in
-          reader ~file_offset:strip_offset [ buf ];
-          read_strips ~strip_count ~strip_bytes ~strip_offsets buf
-      | Read (_o, [ buf ]) ->
-          read_strips ~strip_count ~strip_bytes ~strip_offsets buf
-      | Read _ ->
-          Error.raise_error Error.Internal_error
-            "Reading data offsets: impossible number of strip buffers")
+  | Some entry -> read_entry_ints endian reader entry
 
-let get_bytecounts endian entries reader =
-  let read_bytecounts ~strip_bytes ~strip_count ~strip_offsets buf =
-    let strips = ref [] in
-    let get_offset ~offset buf = function
-      | Short -> Endian.uint16 ~offset endian buf
-      | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
-      | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
-      | _ ->
-          Error.raisef Error.Unsupported_feature "Unsupported strip length: %a"
-            pp_field strip_offsets.field
-    in
-    for i = 0 to strip_count - 1 do
-      strips :=
-        get_offset ~offset:(i * strip_bytes) buf strip_offsets.field :: !strips
-    done;
-    List.rev !strips
-  in
+let strip_byte_counts endian entries reader =
   match lookup entries StripByteCounts with
   | None -> []
-  | Some strip_offsets -> (
-      let strip_count = Int64.to_int strip_offsets.count in
-      let strip_bytes =
-        match strip_offsets.field with
-        | Short -> 2
-        | Long -> 4
-        | Long8 -> 8
-        | _ ->
-            Error.raisef Error.Unsupported_feature
-              "Unsupported strip length: %a" pp_field strip_offsets.field
-      in
-      match strip_offsets.offset with
-      | Immediate _ -> [ read_entry strip_offsets ]
-      | Offset offset ->
-          let length = strip_count * strip_bytes in
-          let buf = Cstruct.create length in
-          let strip_offset = Optint.Int63.of_int64 offset in
-          reader ~file_offset:strip_offset [ buf ];
-          read_bytecounts ~strip_bytes ~strip_offsets ~strip_count buf
-      | Read (_o, [ buf ]) ->
-          read_bytecounts ~strip_bytes ~strip_offsets ~strip_count buf
-      | Read _ ->
-          Error.raise_error Error.Internal_error
-            "Reading data offsets: impossible number of strip buffers")
+  | Some entry -> read_entry_ints endian reader entry
 
 let max_group lst n =
   let rec loop acc t =
@@ -981,15 +937,11 @@ let tiles_down t =
 
 let tile_offsets t =
   let entry = lookup_exn t.entries TileOffsets in
-  let offsets = read_entry_raw entry t.ro in
-  List.map (Endian.uint64 t.header.byte_order) offsets
+  read_entry_ints t.header.byte_order t.ro entry |> List.map Int64.of_int
 
 let tile_byte_counts t =
   let entry = lookup_exn t.entries TileByteCounts in
-  let offsets = read_entry_raw entry t.ro in
-  if field_byte_size entry.field = 4 then
-    List.map (Endian.uint32 t.header.byte_order) offsets
-  else List.map (Endian.uint64 t.header.byte_order) offsets
+  read_entry_ints t.header.byte_order t.ro entry |> List.map Int64.of_int
 
 let v ~file_offset header reader =
   let endian = header.byte_order in
@@ -1063,8 +1015,8 @@ let v ~file_offset header reader =
         Endian.uint64 ~offset:0 header.byte_order next_ifd_buf
         |> Optint.Int63.of_int64
   in
-  let data_offsets = get_dataset_offsets endian entries reader in
-  let data_bytecounts = get_bytecounts endian entries reader in
+  let data_offsets = strip_offsets endian entries reader in
+  let data_bytecounts = strip_byte_counts endian entries reader in
   { entries; data_offsets; data_bytecounts; ro = reader; header; next_ifd }
 
 let next_ifd t =

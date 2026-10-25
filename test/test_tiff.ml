@@ -686,6 +686,93 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let assert_tile_grid ~tile_width ~tile_height ~tiles_across ~tiles_down ifd =
+  assert_equal_int ~msg:"Tile Width" tile_width (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" tile_height (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" tiles_across (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" tiles_down (Tiff.Ifd.tiles_down ifd)
+
+let test_load_tiled_uint8_deflate_metadata backend _ =
+  let data = "./data/tiled_uint8_deflate.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:45 ~height:50
+    ~compression:Tiff.Ifd.ADOBE_DEFLATE ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:4
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 12
+    (List.length (Tiff.Ifd.tile_offsets ifd));
+  assert_equal ~msg:"Tile byte counts"
+    [ 267L; 267L; 255L; 267L; 267L; 255L; 267L; 267L; 255L; 45L; 45L; 43L ]
+    (Tiff.Ifd.tile_byte_counts ifd)
+
+let test_load_tiled_rgb_metadata backend _ =
+  let data = "./data/tiled_rgb_uint8.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:45 ~height:50 ~samples_per_pixel:3
+    ~bits_per_sample:[ 8; 8; 8 ] ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:4
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 12
+    (List.length (Tiff.Ifd.tile_offsets ifd));
+  assert_equal ~msg:"Tile byte counts"
+    (List.init 12 (fun _ -> 768L))
+    (Tiff.Ifd.tile_byte_counts ifd)
+
+let test_load_tiled_planar_rgb_metadata backend _ =
+  let data = "./data/tiled_planar_rgb.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:45 ~height:50
+    ~planar_configuration:Tiff.Ifd.Planar ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:4
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 36
+    (List.length (Tiff.Ifd.tile_offsets ifd));
+  assert_equal ~msg:"Tile byte counts"
+    (List.init 36 (fun _ -> 256L))
+    (Tiff.Ifd.tile_byte_counts ifd)
+
+let test_load_tiled_sparse_metadata backend _ =
+  let data = "./data/tiled_sparse.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:40 ~height:40 ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:3
+    ifd;
+  let expected_counts = [ 256L; 0L; 0L; 0L; 256L; 0L; 0L; 0L; 256L ] in
+  assert_equal ~msg:"Tile byte counts (tiles 1,2,3,5,6,7 are empty)"
+    expected_counts
+    (Tiff.Ifd.tile_byte_counts ifd);
+  let offsets = Tiff.Ifd.tile_offsets ifd in
+  assert_bool "empty tiles 2, 5, 6 carry non-zero offsets"
+    (List.for_all
+       (fun t -> not (Int64.equal (List.nth offsets t) 0L))
+       [ 2; 5; 6 ]);
+  assert_bool "empty tiles 1, 3, 7 carry zero offsets"
+    (List.for_all (fun t -> Int64.equal (List.nth offsets t) 0L) [ 1; 3; 7 ]);
+  let cached_ifd = Tiff.Ifd.cache_all_entries ifd in
+  assert_equal ~msg:"Tile byte counts after cache" expected_counts
+    (Tiff.Ifd.tile_byte_counts cached_ifd);
+  assert_equal ~msg:"Tile offsets after cache" offsets
+    (Tiff.Ifd.tile_offsets cached_ifd)
+
+let test_load_tiled_single_tile_metadata backend _ =
+  let data = "./data/tiled_single_tile.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:10 ~height:10 ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:1 ~tiles_down:1
+    ifd;
+  assert_equal ~msg:"Tile byte counts" [ 256L ] (Tiff.Ifd.tile_byte_counts ifd);
+  assert_equal ~msg:"Tile offsets" [ 158L ] (Tiff.Ifd.tile_offsets ifd)
+
 let suite fs =
   let tests backend =
     [
@@ -753,6 +840,15 @@ let suite fs =
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
+      "Test load tiled deflate metadata"
+      >:: test_load_tiled_uint8_deflate_metadata backend;
+      "Test load tiled rgb metadata" >:: test_load_tiled_rgb_metadata backend;
+      "Test load planar tiled metadata"
+      >:: test_load_tiled_planar_rgb_metadata backend;
+      "Test load tiled sparse metadata"
+      >:: test_load_tiled_sparse_metadata backend;
+      "Test load tiled single tile metadata"
+      >:: test_load_tiled_single_tile_metadata backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
