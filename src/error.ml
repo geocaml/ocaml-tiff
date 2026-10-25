@@ -1,8 +1,12 @@
+(** Error categories for TIFF operations. *)
 type kind =
   | Invalid_argument
   | Unsupported_feature
   | Malformed_file
   | Internal_error
+
+(** A TIFF-specific exception containing the error category,
+    descriptive message, and optional filename. *)  
 
 exception Tiff_error of kind * string * string option
 

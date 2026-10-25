@@ -140,8 +140,11 @@ module Data = struct
         Error.raise_error Error.Invalid_argument
           "Cannot read planar TIFF data: a plane index must be specified"
     | Chunky, None | Chunky, Some 0 -> 0
-    | Chunky, Some _ -> Error.invalid_arg "Can not select plane on single plane TIFFs"
-    | Unknown _, _ -> Error.invalid_arg "Unknown planar format TIFF"
+    | Chunky, Some _ -> 
+          Error.raise_error Error.Invalid_argument
+            "Can not select plane on single plane TIFFs"
+    | Unknown _, _ -> Error.raise_error Error.Malformed_file
+          "Unknown planar format TIFF"
 
   let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
       ~after_strip =

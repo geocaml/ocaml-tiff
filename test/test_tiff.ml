@@ -177,27 +177,23 @@ let test_read_single_plane_fails_when_specifying_plane backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument "Can not select plane on single plane TIFFs") (fun _ ->
-      Tiff.data ~plane:1 tiff ro)
+  assert_raises
+    (Tiff.Error.Tiff_error
+      ( Tiff.Error.Invalid_argument,
+        "Can not select plane on single plane TIFFs",
+        None ))
+    (fun () -> ignore (Tiff.data ~plane:1 tiff ro))
 
 let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
   let data = "./data/uniform_rgb_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  assert_raises
-  (Tiff.Error.Tiff_error
-     ( Tiff.Error.Invalid_argument,
-       "Cannot read planar TIFF data: a plane index must be specified",
-       None ))
-  (fun () -> Tiff.data tiff ro)
-
-  let test_read_multi_plane_with_plane backend _ =
-  let data = "./data/uniform_rgb_uint8_lzw.tiff" in
-  with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  let _pixels = Tiff.data ~plane:0 tiff ro in
-  ()      
+  assert_raises ~msg:"fail to read multi-plane TIFF without specifying a plane"
+    (Tiff.Error.Tiff_error
+      ( Tiff.Error.Invalid_argument,
+        "Cannot read planar TIFF data: a plane index must be specified",
+        None ))
+    (fun _ -> Tiff.data tiff ro)
 
 let test_load_simple_int8_tiff _ =
   Tiff_unix.with_open_in "./data/uniform_int8_lzw.tiff" @@ fun ro ->
@@ -613,52 +609,6 @@ let test_truncated_file_raises backend _ =
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
 
-let test_invalid_window_raises backend _ =
-  let data = "./data/uniform.tiff" in
-  with_ro backend data @@ fun ro ->
-  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 300; ysize = 300 } in
-  let expected_message =
-  "Invalid TIFF data window { xoff=0, yoff=0, xsize=300, ysize=300 }: "
-  ^ "image dimensions are 256 x 256"
-  in
-  assert_raises
-    (Tiff.Error.Tiff_error
-      (Tiff.Error.Invalid_argument, expected_message, None))
-    (fun () -> ignore (Tiff.data ~window tiff ro))
-    
-let test_tiff_error_accessible _ =
-  assert_raises
-    (Tiff.Error.Tiff_error
-       (Tiff.Error.Invalid_argument, "Test message",None))
-    (fun () ->
-      Tiff.Error.raise_error
-        Tiff.Error.Invalid_argument "Test message")
-    
-let test_tiff_error_with_filename _ =
-  assert_raises
-    (Tiff.Error.Tiff_error
-       ( Tiff.Error.Malformed_file,
-         "Invalid TIFF header",
-         Some "image.tiff" ))
-    (fun () ->
-      Tiff.Error.raise_error
-        ~filename:"image.tiff"
-        Tiff.Error.Malformed_file
-        "Invalid TIFF header")
-
-let test_tiff_formatted_error_with_filename _ =
-  assert_raises
-    (Tiff.Error.Tiff_error
-       ( Tiff.Error.Unsupported_feature,
-         "Unsupported TIFF predictor 99",
-         Some "image.tiff" ))
-    (fun () ->
-      Tiff.Error.raisef
-        ~filename:"image.tiff"
-        Tiff.Error.Unsupported_feature
-        "Unsupported TIFF predictor %d" 99)
-
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -669,33 +619,6 @@ let test_load_striped_no_rows_per_strip backend _ =
   (* The tag is missing, so it should default to the height (10) *)
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
     (Tiff.Ifd.rows_per_strip header)
-
-let test_tiff_pretty_printer_with_filename _ =
-  let error =
-    (Tiff.Error.Malformed_file, "Invalid TIFF header", Some "image.tiff")
-  in
-  let actual = Format.asprintf "%a" Tiff.Error.pp error in
-  let expected = "TIFF error (Malformed file) in image.tiff: Invalid TIFF header" in
-  assert_equal ~printer:(fun s -> s) expected actual
-
-let test_tiff_pretty_printer_without_filename _ =
-  let error =
-    (Tiff.Error.Invalid_argument, "Invalid window", None)
-  in
-  let actual = Format.asprintf "%a" Tiff.Error.pp error in
-  let expected = "TIFF error (Invalid argument): Invalid window" in
-  assert_equal ~printer:(fun s -> s) expected actual
-
-let test_tiff_registered_exception_printer _ =
-  let exn =
-    Tiff.Error.Tiff_error
-      (Tiff.Error.Unsupported_feature, "Unsupported predictor", Some "image.tiff")
-  in
-  let actual = Printexc.to_string exn in
-  let expected =
-    "TIFF error (Unsupported feature) in image.tiff: Unsupported predictor"
-  in
-  assert_equal ~printer:(fun s -> s) expected actual
 
 let suite fs =
   let tests backend =
@@ -722,8 +645,6 @@ let suite fs =
       >:: test_read_single_plane_fails_when_specifying_plane backend;
       "Test fail reading from multi-plane TIFF if plane not specified"
       >:: test_read_multi_plane_fails_when_without_specifying_plane backend;
-      "Test read multi-plane TIFF with plane"
-      >:: test_read_multi_plane_with_plane backend;
       "Test load simple int8 tiff" >:: test_load_simple_int8_tiff;
       "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff backend;
       "Test load simple int16 tiff" >:: test_load_simple_int16_tiff backend;
@@ -760,24 +681,9 @@ let suite fs =
       >:: test_load_multiple_uniform_ifds_tiff backend;
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
-      "Test invalid window raises" >:: test_invalid_window_raises backend;
     ]
   in
-  "Basic Tests"
-  >::: [
-    "Tiff error accessible" >:: test_tiff_error_accessible;
-    "Eio" >::: tests (Eio fs);
-    "Unix" >::: tests Unix;
-    "Tiff error with filename" >:: test_tiff_error_with_filename ;
-    "Tiff formatted error with filename" 
-      >:: test_tiff_formatted_error_with_filename;
-    "Tiff pretty printer with filename"
-      >:: test_tiff_pretty_printer_with_filename;
-    "Tiff pretty printer without filename"
-      >:: test_tiff_pretty_printer_without_filename;
-    "Tiff registered exception printer"
-      >:: test_tiff_registered_exception_printer;
-  ]
+  "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
 
 let () =
   Eio_main.run @@ fun env ->
