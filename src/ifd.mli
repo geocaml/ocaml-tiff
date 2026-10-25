@@ -45,6 +45,17 @@ type tag =
   | TileOffsets
   | TileByteCounts
   | GdalMetadata
+  (* Defined in the TIFF 6.0 specification, Appendix A:
+     https://download.osgeo.org/libtiff/doc/TIFF6.pdf *)
+  | NewSubfileType
+  | FillOrder
+  | ImageDescription
+  | Orientation
+  | PageNumber
+  | Software
+  | DateTime
+  | ColorMap
+  | ExtraSamples
   | Unknown of int
 
 type compression =

@@ -175,6 +175,15 @@ type tag =
   | TileOffsets
   | TileByteCounts
   | GdalMetadata
+  | NewSubfileType
+  | FillOrder
+  | ImageDescription
+  | Orientation
+  | PageNumber
+  | Software
+  | DateTime
+  | ColorMap
+  | ExtraSamples
   | Unknown of int
 
 let tag_of_int = function
@@ -205,6 +214,15 @@ let tag_of_int = function
   | 324 -> TileOffsets
   | 325 -> TileByteCounts
   | 42112 -> GdalMetadata
+  | 254 -> NewSubfileType
+  | 266 -> FillOrder
+  | 270 -> ImageDescription
+  | 274 -> Orientation
+  | 297 -> PageNumber
+  | 305 -> Software
+  | 306 -> DateTime
+  | 320 -> ColorMap
+  | 338 -> ExtraSamples
   | i -> Unknown i
 
 let tag_to_int = function
@@ -235,6 +253,15 @@ let tag_to_int = function
   | TileOffsets -> 324
   | TileByteCounts -> 325
   | GdalMetadata -> 42112
+  | NewSubfileType -> 254
+  | FillOrder -> 266
+  | ImageDescription -> 270
+  | Orientation -> 274
+  | PageNumber -> 297
+  | Software -> 305
+  | DateTime -> 306
+  | ColorMap -> 320
+  | ExtraSamples -> 338
   | Unknown i -> i
 
 let tag_to_fields = function
@@ -243,12 +270,15 @@ let tag_to_fields = function
       [ Short; Long ]
   | BitsPerSample | Compression | PhotometricInterpretation | SamplesPerPixel
   | ResolutionUnit | PlanarConfiguration | SampleFormat | Predictor
-  | GeoKeyDirectory ->
+  | GeoKeyDirectory | FillOrder | Orientation | PageNumber | ColorMap
+  | ExtraSamples ->
       [ Short ]
-  | TileOffsets -> [ Long ]
+  | TileOffsets | NewSubfileType -> [ Long ]
   | ModelPixelScale | ModelTiepoint | ModelTransformation | GeoDoubleParams ->
       [ Double ]
-  | GeoAsciiParams | GdalMetadata | DocumentName -> [ Ascii ]
+  | GeoAsciiParams | GdalMetadata | DocumentName | ImageDescription | Software
+  | DateTime ->
+      [ Ascii ]
   | XResolution | YResolution -> [ Rational ]
 
 let pp_tag ppf (x : tag) =
@@ -280,6 +310,15 @@ let pp_tag ppf (x : tag) =
   | TileOffsets -> Fmt.string ppf "tile-offsets"
   | TileByteCounts -> Fmt.string ppf "tile-byte-counts"
   | GdalMetadata -> Fmt.string ppf "gdal-metadata"
+  | NewSubfileType -> Fmt.string ppf "new-subfile-type"
+  | FillOrder -> Fmt.string ppf "fill-order"
+  | ImageDescription -> Fmt.string ppf "image-description"
+  | Orientation -> Fmt.string ppf "orientation"
+  | PageNumber -> Fmt.string ppf "page-number"
+  | Software -> Fmt.string ppf "software"
+  | DateTime -> Fmt.string ppf "date-time"
+  | ColorMap -> Fmt.string ppf "color-map"
+  | ExtraSamples -> Fmt.string ppf "extra-samples"
   | Unknown i -> Fmt.pf ppf "unknown-%i" i
 
 type offset =
