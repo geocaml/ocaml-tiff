@@ -918,8 +918,7 @@ let sample_format t =
        entry itself, but e.g. an RGB image has three, so they are stored
        elsewhere in the file and the entry holds their offset. For BigTIFF,
        up to four values are inline but only the first is kept by the parser.
-       This library reads every sample with one type, so all values must
-       agree. A zero-count entry falls back to the TIFF default. *)
+       A zero-count entry falls back to the TIFF default. *)
     let values =
       match entry.offset with
       | Immediate value -> [ Int64.to_int value ]
@@ -928,11 +927,9 @@ let sample_format t =
           |> List.map (Endian.uint16 t.header.byte_order)
     in
     match values with
-    | [] -> UnsignedInteger
-    | value :: rest ->
-        if List.for_all (( = ) value) rest then sample_format_of_int value
-        else Fmt.invalid_arg "SampleFormat values differ between samples"
-  with Not_found -> UnsignedInteger
+    | [] -> [ UnsignedInteger ]
+    | _ -> List.map sample_format_of_int values
+  with Not_found -> [ UnsignedInteger ]
 
 let tile_width t =
   let entry = lookup_exn t.entries TileWidth in
