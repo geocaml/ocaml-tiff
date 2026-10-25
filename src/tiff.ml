@@ -630,7 +630,7 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
   | Some data -> write_data ~plane ~window tiff ifd data w
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
-    ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)
+    ?(compression = Ifd.No_compression) ?photometric_interpretation
     ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File") data =
   let header = Ifd.create_header ~bigtiff endian in
   let ifd_count, ifd_entries, next_ifd_ptr =
@@ -638,9 +638,6 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   in
   let compression_int = Ifd.compression_to_int compression in
   let planar_int = Ifd.planar_configuration_to_int planar_configuration in
-  let photometric_int =
-    Ifd.photometric_interpretation_to_int photometric_interpretation
-  in
   let number_of_entries = 12 in
   let ifd_size = ifd_count + (number_of_entries * ifd_entries) + next_ifd_ptr in
   let extra_data_offset = (header.offset |> Optint.Int63.to_int) + ifd_size in
@@ -649,6 +646,15 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
 
   let samples_per_pixel =
     if num_dims > 2 then Genarray.nth_dim data (num_dims - 1) else 1
+  in
+
+  let photometric_interpretation =
+    match photometric_interpretation with
+    | Some p -> p
+    | None -> if samples_per_pixel = 1 then Ifd.BlackIsZero else Ifd.RGB
+  in
+  let photometric_int =
+    Ifd.photometric_interpretation_to_int photometric_interpretation
   in
 
   let width = Genarray.nth_dim data 1 in
