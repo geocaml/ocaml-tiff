@@ -169,8 +169,10 @@ let test_load_data_as_wrong_type_fails backend _ =
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument
-       "datatype not correct for plane: float32, Unsigned Integer, 8 bpp")
+    (Tiff.Error.Tiff_error
+      ( Tiff.Error.Invalid_argument,
+        "datatype not correct for plane: float32, Unsigned Integer, 8 bpp",
+        None ))
     (fun _ -> Tiff.data ~window tiff ro)
 
 let test_read_single_plane_fails_when_specifying_plane backend _ =
@@ -280,8 +282,10 @@ let test_load_simple_uint32_tiff backend _ =
     ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises
-    (Invalid_argument
-       "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp")
+    (Tiff.Error.Tiff_error
+      ( Tiff.Error.Unsupported_feature,
+        "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp",
+        None ))
     (fun () ->
       let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
       let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
@@ -569,14 +573,19 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
   assert_equal ~printer:Nx.shape_to_string ~msg:"Aggregated data shape"
     [| 13; 314; 502 |] shape;
   OUnit2.assert_raises ~msg:"Request invalid image number"
-    (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
+    (Tiff.Error.Tiff_error
+      ( Tiff.Error.Invalid_argument,
+        "Image n°13 requested but TIFF file only has 13 ([0-12])",
+        None ))
     (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
 let test_safe_cast_rejects_lossy backend _ =
   let rejects path intent msg =
     with_ro backend path @@ fun ro ->
     let tiff = Tiff.from_file intent ro in
-    assert_raises (Invalid_argument msg) (fun () -> ignore (Tiff.data tiff ro))
+    assert_raises
+      (Tiff.Error.Tiff_error (Tiff.Error.Invalid_argument, msg, None))
+      (fun () -> ignore (Tiff.data tiff ro))
   in
   rejects "./data/uniform.tiff" (Tiff.safe_cast Tiff.Int8)
     "safe cast to int8 would lose data: Unsigned Integer, 8 bpp";

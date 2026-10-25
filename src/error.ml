@@ -16,13 +16,6 @@ let raise_error ?filename kind message =
 let raisef ?filename kind fmt =
   Fmt.kstr (raise_error ?filename kind) fmt  
 
-(*Keeping old functions as is for now*)
-let invalid_arg message =
-  Stdlib.invalid_arg message
-
-let invalid_argf fmt =
-  Fmt.kstr invalid_arg fmt  
-
 (* Convert an error category into a readable label *)
 let string_of_kind = function
   | Invalid_argument -> "Invalid argument"
