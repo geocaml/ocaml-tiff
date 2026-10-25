@@ -698,6 +698,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let samples_per_pixel, file_offset =
     make_entry file_offset SamplesPerPixel (Ifd.Ints [ samples_per_pixel ])
   in
+
   let sample_format, file_offset =
     make_entry file_offset SampleFormat (Ifd.Ints [ sample_format_int ])
   in
