@@ -645,35 +645,23 @@ let document_name t =
   let s = Cstruct.concat (read_entry_raw entry t.ro) |> Cstruct.to_string in
   String.sub s 0 (String.length s - 1)
 
+(* Several values of a Short field may be packed into the 8 byte value slot of
+   a BigTIFF entry. [imm] was decoded using the file's byte order, so writing
+   it back the same way recovers the individual values. *)
+let unpack_packed_shorts endian imm count =
+  let buf = Cstruct.create 8 in
+  (match endian with
+  | Endian.Big -> Cstruct.BE.set_uint64 buf 0 imm
+  | Endian.Little -> Cstruct.LE.set_uint64 buf 0 imm);
+  List.init (Int64.to_int count) (fun i ->
+      Endian.uint16 ~offset:(i * 2) endian buf)
+
 let bits_per_sample t =
   let entry = lookup_exn t.entries BitsPerSample in
   match entry.offset with
-  | Immediate imm ->
-      if entry.count = 1L then [ Int64.to_int imm ]
-      else if entry.count = 2L then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
-      else if entry.count = 3L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-        ])
-      else if entry.count = 4L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-          Cstruct.BE.get_uint16 buf 6;
-        ])
-      else
-        let scales = read_entry_raw entry t.ro in
-        List.map (Endian.uint16 t.header.byte_order) scales
+  | Immediate imm when entry.count > 1L ->
+      unpack_packed_shorts t.header.byte_order imm entry.count
+  | Immediate imm -> [ Int64.to_int imm ]
   | _ ->
       let scales = read_entry_raw entry t.ro in
       List.map (Endian.uint16 t.header.byte_order) scales
@@ -1009,8 +997,12 @@ let v ~file_offset header reader =
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
           | true, Short ->
-              Endian.uint16 ~offset:(base_offset + 12) endian buf
-              |> Int64.of_int
+              if count = 1L then
+                Endian.uint16 ~offset:(base_offset + 12) endian buf
+                |> Int64.of_int
+              else
+                (* More than one Short is packed into the 8 byte value slot *)
+                Endian.uint64 ~offset:(base_offset + 12) endian buf
           | true, Long ->
               Endian.uint32 ~offset:(base_offset + 12) endian buf
               |> Int64.of_int32
