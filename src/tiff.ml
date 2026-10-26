@@ -3,7 +3,6 @@ open Bigarray
 module File = File
 module Endian = Endian
 module Ifd = Ifd
-
 module Error = Error
 
 type header = Ifd.header
@@ -122,7 +121,7 @@ module Data = struct
           let win_h = window.yoff + window.ysize in
           if Int.compare win_w w > 0 || Int.compare win_h h > 0 then
             Error.raisef Error.Invalid_argument
-              "Invalid TIFF data window %a: image dimensions are %i x %i"  
+              "Invalid TIFF data window %a: image dimensions are %i x %i"
               pp_window window w h
     in
     match window with
@@ -140,11 +139,11 @@ module Data = struct
         Error.raise_error Error.Invalid_argument
           "Cannot read planar TIFF data: a plane index must be specified"
     | Chunky, None | Chunky, Some 0 -> 0
-    | Chunky, Some _ -> 
-          Error.raise_error Error.Invalid_argument
-            "Can not select plane on single plane TIFFs"
-    | Unknown _, _ -> Error.raise_error Error.Malformed_file
-          "Unknown planar format TIFF"
+    | Chunky, Some _ ->
+        Error.raise_error Error.Invalid_argument
+          "Can not select plane on single plane TIFFs"
+    | Unknown _, _ ->
+        Error.raise_error Error.Malformed_file "Unknown planar format TIFF"
 
   let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
       ~after_strip =
@@ -309,8 +308,7 @@ module Data = struct
         undo_horizontal_differencing buf ~width:(Ifd.width ifd)
           ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
     | Ifd.Unknown n ->
-          Error.raisef Error.Unsupported_feature
-            "Unsupported predictor %d" n
+        Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 
   let read_data ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
@@ -536,20 +534,20 @@ let exact_io (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp :
 
 let datatype_mismatch kind (fmt : Ifd.sample_format) bpp =
   Error.raisef Error.Invalid_argument
-    "datatype not correct for plane: %a, %a, %i bpp" 
-    pp_kind kind Ifd.pp_sample_format fmt bpp    
+    "datatype not correct for plane: %a, %a, %i bpp" pp_kind kind
+    Ifd.pp_sample_format fmt bpp
 
 let would_lose_precision kind (fmt : Ifd.sample_format) bpp =
   Error.raisef Error.Invalid_argument
-    "safe cast to %a would lose data: %a, %i bpp" 
-    pp_kind kind Ifd.pp_sample_format fmt bpp
+    "safe cast to %a would lose data: %a, %i bpp" pp_kind kind
+    Ifd.pp_sample_format fmt bpp
 
 let exact_repr (type r k) (kind : (r, k) kind) (fmt : Ifd.sample_format) bpp =
   match kind with
   | Uint32 when fmt = UnsignedInteger && bpp = 32 ->
-        Error.raisef Error.Unsupported_feature
-        "Unsupported datatype for plane: %a, %a, %i bpp" 
-        pp_kind kind Ifd.pp_sample_format fmt bpp
+      Error.raisef Error.Unsupported_feature
+        "Unsupported datatype for plane: %a, %a, %i bpp" pp_kind kind
+        Ifd.pp_sample_format fmt bpp
   | _ -> (
       match exact_io kind fmt bpp with
       | Some (read, write) -> (bigarray_kind kind, read, write)
@@ -609,9 +607,9 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
     (f : File.ro) : (repr, kind) Data.t =
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
-    Error.raisef Error.Invalid_argument 
-      "Image n°%d requested but TIFF file only has %d ([0-%d])"
-      image_nb nb_images (nb_images - 1);
+    Error.raisef Error.Invalid_argument
+      "Image n°%d requested but TIFF file only has %d ([0-%d])" image_nb
+      nb_images (nb_images - 1);
   let ifd = t.ifds.(image_nb) in
   let window = Data.get_window ifd window in
   let plane = Data.get_plane ifd plane in
@@ -648,8 +646,8 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w ifd;
   match tiff.data with
   | None ->
-    Error.raise_error Error.Malformed_file
-      "Tiff file has no data associated with it."
+      Error.raise_error Error.Malformed_file
+        "Tiff file has no data associated with it."
   | Some data -> write_data ~plane ~window tiff ifd data w
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
@@ -765,8 +763,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     | Float32 -> Float32
     | Float64 -> Float64
     | k ->
-        Error.raisef Error.Unsupported_feature
-          "Converting failed for kind %i"
+        Error.raisef Error.Unsupported_feature "Converting failed for kind %i"
           (Bigarray.kind_size_in_bytes k)
   in
   let entries =

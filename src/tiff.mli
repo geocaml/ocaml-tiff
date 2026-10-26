@@ -83,10 +83,10 @@ module Error : sig
     | Unsupported_feature
     | Malformed_file
     | Internal_error
-  
-  (** A TIFF-specific exception containing the error category,
-    descriptive message, and optional filename. *)  
+
   exception Tiff_error of kind * string * string option
+  (** A TIFF-specific exception containing the error category, descriptive
+      message, and optional filename. *)
 end
 
 module Private : sig
