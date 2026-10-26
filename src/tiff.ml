@@ -308,7 +308,9 @@ module Data = struct
         let bytes_per_sample = bits_per_sample / 8 in
         undo_horizontal_differencing buf ~width:(Ifd.width ifd)
           ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
-    | Ifd.Unknown n -> failwith (Printf.sprintf "Unsupported predictor %d" n)
+    | Ifd.Unknown n ->
+          Error.raisef Error.Unsupported_feature
+            "Unsupported predictor %d" n
 
   let read_data ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
@@ -328,7 +330,8 @@ module Data = struct
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
             if Cstruct.length buf < expected_size then
-              failwith "Strip is unexpectedly short";
+              Error.raise_error Error.Malformed_file
+                "Strip is unexpectedly short";
             buf
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
@@ -342,7 +345,9 @@ module Data = struct
             apply_predictor ifd header planar_configuration samples_per_pixel
               uncompressed_buffer;
             uncompressed_buffer
-        | _ -> failwith "Unsupported compression")
+        | _ ->
+            Error.raise_error Error.Unsupported_feature
+              "Unsupported compression")
       ~on_value:(fun buf buf_offset dim endian ->
         let value = read_value buf buf_offset endian in
         Genarray.set arr dim value)
@@ -355,9 +360,12 @@ module Data = struct
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
             if Cstruct.length buf < expected_size then
-              failwith "Strip is unexpectedly short";
+              Error.raise_error Error.Unsupported_feature
+                "Strip is unexpectedly short";
             buf
-        | _ -> failwith "compression coming soon")
+        | _ ->
+            Error.raise_error Error.Unsupported_feature
+              "Unsupported compression")
       ~on_value:(fun buf buf_offset dim tiff_endianness ->
         let value = Genarray.get data dim in
         write_value buf buf_offset value tiff_endianness)

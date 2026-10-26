@@ -87,20 +87,6 @@ module Error : sig
   (** A TIFF-specific exception containing the error category,
     descriptive message, and optional filename. *)  
   exception Tiff_error of kind * string * string option
-
-  val raise_error : ?filename:string -> kind -> string -> 'a
-
-  val raisef :
-    ?filename:string ->
-    kind ->
-    ('a, Format.formatter, unit, 'b) format4 ->
-    'a
-
-  (** [raise_error ?filename kind message] raises a TIFF-specific error.
-    @raise Tiff_error always. *)  
-
-  val pp :
-    Format.formatter -> kind * string * string option -> unit  
 end
 
 module Private : sig

@@ -629,6 +629,26 @@ let test_load_striped_no_rows_per_strip backend _ =
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
     (Tiff.Ifd.rows_per_strip header)
 
+let test_malformed_tiff_header backend _ =
+  let tmp = "./data/tmp_malformed_header.tiff" in
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists tmp then Sys.remove tmp)
+    (fun () ->
+      Out_channel.with_open_bin tmp (fun oc ->
+          output_string oc "II";
+          output_byte oc 0;
+          output_byte oc 0;
+          output_string oc "\000\000\000\000\000\000\000\000\000\000\000\000");
+      with_ro backend tmp @@ fun ro ->
+      match Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro with
+      | exception Tiff.Error.Tiff_error
+          (Tiff.Error.Malformed_file, _, None) ->
+          ()
+      | exception exn ->
+          assert_failure
+            ("Unexpected exception: " ^ Printexc.to_string exn)
+      | _ -> assert_failure "Expected Malformed_file")
+
 let suite fs =
   let tests backend =
     [
@@ -690,6 +710,8 @@ let suite fs =
       >:: test_load_multiple_uniform_ifds_tiff backend;
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
+      "Test malformed TIFF header"
+      >:: test_malformed_tiff_header backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

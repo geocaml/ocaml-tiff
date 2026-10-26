@@ -3,8 +3,10 @@ let decode input output_buffer =
   let input_len = Cstruct.length input in
   let output_len = Cstruct.length output_buffer in
 
-  if input_len = 0 then failwith "Empty DEFLATE input"
-  else if output_len = 0 then failwith "Empty DEFLATE output buffer";
+  if input_len = 0 then
+  Error.raise_error Error.Invalid_argument "Empty DEFLATE input"
+  else if output_len = 0 then
+  Error.raise_error Error.Invalid_argument "Empty DEFLATE output buffer";
 
   (* Access the underlying buffers directly - no string copies! *)
   let input_bigarray = Cstruct.to_bigarray input in
@@ -40,4 +42,6 @@ let decode input output_buffer =
     Zl.Higher.uncompress ~allocate ~refill ~flush input_bigarray output_bigarray
   with
   | Ok () -> ()
-  | Error (`Msg err) -> failwith ("DEFLATE decompression error: " ^ err)
+  | Error (`Msg err) ->
+    Error.raisef Error.Malformed_file
+      "DEFLATE decompression error: %s" err
