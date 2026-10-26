@@ -169,25 +169,33 @@ let test_load_data_as_wrong_type_fails backend _ =
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
   let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
   assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument
-       "datatype not correct for plane: float32, Unsigned Integer, 8 bpp")
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "datatype not correct for plane: float32, Unsigned Integer, 8 bpp",
+         None ))
     (fun _ -> Tiff.data ~window tiff ro)
 
 let test_read_single_plane_fails_when_specifying_plane backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument "Can not select plane on single plane TIFFs") (fun _ ->
-      Tiff.data ~plane:1 tiff ro)
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Can not select plane on single plane TIFFs",
+         None ))
+    (fun () -> ignore (Tiff.data ~plane:1 tiff ro))
 
 let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
   let data = "./data/uniform_rgb_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  assert_raises ~msg:"fail to load data as wrong type"
-    (Invalid_argument "Must specify plane for data read") (fun _ ->
-      Tiff.data tiff ro)
+  assert_raises ~msg:"fail to read multi-plane TIFF without specifying a plane"
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Cannot read planar TIFF data: a plane index must be specified",
+         None ))
+    (fun _ -> Tiff.data tiff ro)
 
 let test_load_simple_int8_tiff _ =
   Tiff_unix.with_open_in "./data/uniform_int8_lzw.tiff" @@ fun ro ->
@@ -274,8 +282,10 @@ let test_load_simple_uint32_tiff backend _ =
     ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises
-    (Invalid_argument
-       "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp")
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Unsupported_feature,
+         "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp",
+         None ))
     (fun () ->
       let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
       let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
@@ -563,14 +573,19 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
   assert_equal ~printer:Nx.shape_to_string ~msg:"Aggregated data shape"
     [| 13; 314; 502 |] shape;
   OUnit2.assert_raises ~msg:"Request invalid image number"
-    (Invalid_argument "Image n°13 requested but TIFF file only has 13 ([0-12])")
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Image n°13 requested but TIFF file only has 13 ([0-12])",
+         None ))
     (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
 let test_safe_cast_rejects_lossy backend _ =
   let rejects path intent msg =
     with_ro backend path @@ fun ro ->
     let tiff = Tiff.from_file intent ro in
-    assert_raises (Invalid_argument msg) (fun () -> ignore (Tiff.data tiff ro))
+    assert_raises
+      (Tiff.Error.Tiff_error (Tiff.Error.Invalid_argument, msg, None))
+      (fun () -> ignore (Tiff.data tiff ro))
   in
   rejects "./data/uniform.tiff" (Tiff.safe_cast Tiff.Int8)
     "safe cast to int8 would lose data: Unsigned Integer, 8 bpp";
@@ -613,6 +628,24 @@ let test_load_striped_no_rows_per_strip backend _ =
   (* The tag is missing, so it should default to the height (10) *)
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
     (Tiff.Ifd.rows_per_strip header)
+
+let test_malformed_tiff_header backend _ =
+  let tmp = "./data/tmp_malformed_header.tiff" in
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists tmp then Sys.remove tmp)
+    (fun () ->
+      Out_channel.with_open_bin tmp (fun oc ->
+          output_string oc "II";
+          output_byte oc 0;
+          output_byte oc 0;
+          output_string oc "\000\000\000\000\000\000\000\000\000\000\000\000");
+      with_ro backend tmp @@ fun ro ->
+      match Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro with
+      | exception Tiff.Error.Tiff_error (Tiff.Error.Malformed_file, _, None) ->
+          ()
+      | exception exn ->
+          assert_failure ("Unexpected exception: " ^ Printexc.to_string exn)
+      | _ -> assert_failure "Expected Malformed_file")
 
 let suite fs =
   let tests backend =
@@ -675,6 +708,7 @@ let suite fs =
       >:: test_load_multiple_uniform_ifds_tiff backend;
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
+      "Test malformed TIFF header" >:: test_malformed_tiff_header backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
