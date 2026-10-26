@@ -3,16 +3,6 @@
 (* In TIFF and GIF LZW chars are at most 12 bits *)
 type lzwstring = string
 
-module Unsafe = struct
-  external unsafe_blit_string_to_bigstring :
-    string -> int -> Cstruct.buffer -> int -> int -> unit
-    = "caml_blit_string_to_bigstring"
-  [@@noalloc]
-
-  let blit_string src srcoff (dst : Cstruct.t) dstoff len =
-    unsafe_blit_string_to_bigstring src srcoff dst.buffer (dst.off + dstoff) len
-end
-
 let rec get_bits bytedata offset count =
   match count with
   | 0 -> 0
@@ -28,7 +18,7 @@ let build_table_entry ~previous next =
 
 let update_buffer buffer offset codestr =
   let len = String.length codestr in
-  Unsafe.blit_string codestr 0 buffer offset len;
+  Cstruct.blit_from_string codestr 0 buffer offset len;
   offset + len
 
 let max_dict_size = 4096
