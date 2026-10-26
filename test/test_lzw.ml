@@ -19,11 +19,22 @@ let test_all_bit_width _ =
     done
   done
 
+let test_decode_output_too_small _ =
+  (* 9-bit codes Clear, 'A', 'B', End: decodes to "AB" *)
+  let input = Cstruct.of_string "\x80\x10\x48\x50\x10" in
+  let out = Cstruct.create 2 in
+  Tiff.Private.Lzw.decode input out;
+  assert_equal ~printer:Fun.id "AB" (Cstruct.to_string out);
+  match Tiff.Private.Lzw.decode input (Cstruct.sub out 0 1) with
+  | () -> assert_failure "decode wrote past the end of its output buffer"
+  | exception Invalid_argument _ -> ()
+
 let suite =
   "LZW"
   >::: [
          "Get bits of string" >:: test_get_bits_basic;
          "Get all bits of char" >:: test_all_bit_width;
+         "Decode into too small a buffer" >:: test_decode_output_too_small;
        ]
 
 let () = run_test_tt_main suite
