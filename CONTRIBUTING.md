@@ -51,3 +51,11 @@ Sterling](https://www.jonmsterling.com/0LWG/):
 
 Using these tools to help you think or debug a problem is okay provided you
 come to a full understanding of the code and the problem yourself.
+
+## Getting started:
+
+- This project uses the [Dune build system](https://ocaml.org/docs/using-the-ocaml-compiler-toolchain) and the [opam package manager](https://ocaml.org/docs/managing-dependencies).
+- To get started wth OCaml, please checkout 
+    - [How to Install Ocaml](https://ocaml.org/docs/installing-ocaml)
+    - [Take a tour of OCaml](https://ocaml.org/docs/tour-of-ocaml)
+    - Or, [Write your own first OCaml program](https://ocaml.org/docs/your-first-program)
