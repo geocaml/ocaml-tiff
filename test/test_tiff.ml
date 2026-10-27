@@ -579,6 +579,13 @@ let test_load_multiple_uniform_ifds_tiff backend _ =
          None ))
     (fun () -> Tiff.data ~image_nb:13 tiff ro)
 
+let test_jello_gray_bits_per_sample backend _ =
+  let data = "./data/jello-gray.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Bits per sample" [ 8; 8 ] (Tiff.Ifd.bits_per_sample ifd)
+
 let test_safe_cast_rejects_lossy backend _ =
   let rejects path intent msg =
     with_ro backend path @@ fun ro ->
@@ -706,9 +713,13 @@ let suite fs =
       "Test load GDAL sparse uint8 lzw tiff" >:: test_gdal_sparse_tiff backend;
       "Test load tiff with multiple uniform IFDs"
       >:: test_load_multiple_uniform_ifds_tiff backend;
+      "Test load tiff with multiple uniform IFDs"
+      >:: test_load_multiple_uniform_ifds_tiff backend;
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
       "Test malformed TIFF header" >:: test_malformed_tiff_header backend;
+      "Test jello-gray bits per sample"
+      >:: test_jello_gray_bits_per_sample backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

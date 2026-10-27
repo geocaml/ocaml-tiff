@@ -993,7 +993,24 @@ let v ~file_offset header reader =
               Endian.uint32 ~offset:(base_offset + 8) endian buf
               |> Int64.of_int32
         in
-        let offset = if is_immediate then Immediate offset else Offset offset in
+        let byte_size = field_byte_size field in
+        let fits_inline =
+          Int64.compare (Int64.mul count (Int64.of_int byte_size)) 4L <= 0
+        in
+        let offset =
+          if is_immediate then Immediate offset
+          else if fits_inline then
+            (* Several values that together fit in the 4-byte value field are
+               stored inline (TIFF 6.0, section 2). Keep one buffer per value,
+               as if they had been read from an offset. *)
+            let value_offset = base_offset + 8 in
+            let bufs =
+              List.init (Int64.to_int count) (fun i ->
+                  Cstruct.sub buf (value_offset + (i * byte_size)) byte_size)
+            in
+            Read (add_int (incr_offset read) value_offset, bufs)
+          else Offset offset
+        in
         let entry = { tag; field; count; offset } in
         entries := entry :: !entries
     | Bigtiff ->
