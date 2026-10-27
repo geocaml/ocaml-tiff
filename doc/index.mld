@@ -1,0 +1,23 @@
+
+{0 OCaml TIFF}
+
+OCaml TIFF is a library for reading and writing TIFF files.
+
+{1 Getting started}
+
+See the {{:https://github.com/geocaml/ocaml-tiff#readme}README}
+for installation instructions and basic usage examples.
+
+{1 API reference}
+
+See the {!module:Tiff} module for the public TIFF API.
+
+{1 Examples}
+
+See the {{:https://github.com/geocaml/ocaml-tiff/tree/main/examples}examples} directory in the project repository
+for sample programs.
+
+{1 Contributing}
+
+See {{:https://github.com/geocaml/ocaml-tiff/blob/main/CONTRIBUTING.md}CONTRIBUTING.md} for instructions on building,
+testing, and contributing to the project.
