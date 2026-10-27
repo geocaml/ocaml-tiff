@@ -145,8 +145,18 @@ module Data = struct
     | Unknown _, _ ->
         Error.raise_error Error.Malformed_file "Unknown planar format TIFF"
 
-  let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
-      ~after_strip =
+  (* One strip's precomputed layout, built before any disk I/O happens so that
+     contiguous strips can be read in a single batched call. *)
+  type strip_info = {
+    buf : Cstruct.t;
+    sparse : bool;
+    offset : int;
+    bytecount : int;
+    rows_in_strip : int;
+  }
+
+  let process_data ifd (header : Ifd.header) plane window ~on_batch_read
+      ~on_strip ~on_value ~after_strip =
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
@@ -188,27 +198,73 @@ module Data = struct
 
     let row_index = ref ((first_strip - plane_offset) * rows_per_strip) in
 
+    (* Precompute every strip's offset/size/buffer up front, without reading
+       anything yet. This lets us see which strips sit back-to-back on disk
+       before deciding how to read them. *)
+    let strips =
+      Array.init
+        (last_strip - first_strip + 1)
+        (fun i ->
+          let strip = first_strip + i in
+          let raw_strip_length = strip_bytecounts.(strip)
+          and raw_strip_offset = strip_offsets.(strip) in
+          let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
+          let rows_in_strip =
+            (* If we are the last strip in a plane, then we might have fewer rows *)
+            if strip = strips_per_plane - 1 then
+              height - (strip * rows_per_strip)
+            else rows_per_strip
+          in
+          let expected_size = rows_in_strip * width * bytes_per_pixel in
+          let strip_length =
+            match sparse with
+            | false -> raw_strip_length
+            | true -> expected_size
+          in
+          {
+            buf = Cstruct.create strip_length;
+            sparse;
+            offset = raw_strip_offset;
+            bytecount = raw_strip_length;
+            rows_in_strip;
+          })
+    in
+
+    (* Group consecutive non-sparse strips into maximal runs of strips that
+       are contiguous on disk (strip[i].offset + strip[i].bytecount =
+       strip[i+1].offset), and issue one batched read per run instead of one
+       read per strip. Sparse strips are never read, exactly as before. *)
+    let n = Array.length strips in
+    let i = ref 0 in
+    while !i < n do
+      if strips.(!i).sparse then incr i
+      else begin
+        let run_start = !i in
+        let j = ref (!i + 1) in
+        while
+          !j < n && (not strips.(!j).sparse)
+          && strips.(!j - 1).offset + strips.(!j - 1).bytecount
+             = strips.(!j).offset
+        do
+          incr j
+        done;
+        let run_bufs =
+          List.init (!j - run_start) (fun k -> strips.(run_start + k).buf)
+        in
+        on_batch_read
+          ~file_offset:(Optint.Int63.of_int strips.(run_start).offset)
+          run_bufs;
+        i := !j
+      end
+    done;
+
     (* Iterate over every strip touched by the window, including both endpoints. *)
-    for strip = first_strip to last_strip do
-      let raw_strip_length = strip_bytecounts.(strip)
-      and raw_strip_offset = strip_offsets.(strip) in
-      let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
-
-      (* Calculate the number of rows in the current strip *)
-      let rows_in_strip =
-        (* If we are the last strip in a plane, then we might have fewer rows *)
-        if strip = strips_per_plane - 1 then height - (strip * rows_per_strip)
-        else rows_per_strip
+    for i = 0 to n - 1 do
+      let { buf = raw_strip_buffer; sparse; offset; rows_in_strip; _ } =
+        strips.(i)
       in
-
       let expected_size = rows_in_strip * width * bytes_per_pixel in
-
-      let strip_length =
-        match sparse with false -> raw_strip_length | true -> expected_size
-      in
-
-      let raw_strip_buffer = Cstruct.create strip_length in
-      let strip_offset = Optint.Int63.of_int raw_strip_offset in
+      let strip_offset = Optint.Int63.of_int offset in
 
       (* Iterating through the rows of the current strip *)
       let strip_buffer =
@@ -322,9 +378,9 @@ module Data = struct
           [| window.ysize; window.xsize; samples_per_pixel |]
     in
     process_data ifd header plane window
-      ~on_strip:(fun expected_size buf sparse strip_offset ->
-        if not sparse then ro ~file_offset:strip_offset [ buf ];
-
+      ~on_batch_read:(fun ~file_offset bufs -> 
+        ro ~file_offset bufs)
+      ~on_strip:(fun expected_size buf sparse _strip_offset ->
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
             if Cstruct.length buf < expected_size then
@@ -354,6 +410,7 @@ module Data = struct
 
   let write_data ifd header plane window data w write_value =
     process_data ifd header plane window
+      ~on_batch_read:(fun ~file_offset:_ _ -> ())
       ~on_strip:(fun expected_size buf sparse _ ->
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
