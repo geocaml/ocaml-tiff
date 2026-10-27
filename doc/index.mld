@@ -1,23 +1,76 @@
 
 {0 OCaml TIFF}
 
-OCaml TIFF is a library for reading and writing TIFF files.
+OCaml TIFF is a library for working with TIFF
+(Tagged Image File Format) images in OCaml.
+
+It provides functionality for reading and writing
+TIFF images and accessing image metadata.
 
 {1 Getting started}
 
-See the {{:https://github.com/geocaml/ocaml-tiff#readme}README}
-for installation instructions and basic usage examples.
+- {{:https://github.com/geocaml/ocaml-tiff#readme}README}
+  — Introduction and installation instructions.
+- {{:https://github.com/geocaml/ocaml-tiff/tree/main/examples}Examples}
+  — Example programs demonstrating library usage.
+- {{:https://github.com/geocaml/ocaml-tiff/blob/main/CONTRIBUTING.md}Contributing}
+  — How to build, test and contribute.
 
-{1 API reference}
+{1 Library [tiff]}
 
-See the {!module:Tiff} module for the public TIFF API.
+The library provides APIs for working with TIFF
+images and their associated metadata.
 
-{1 Examples}
+- {!module:Tiff} — Main interface for working
+  with TIFF files.
+- {!module:Tiff.Ifd} — Access TIFF Image File
+  Directory (IFD) metadata.
 
-See the {{:https://github.com/geocaml/ocaml-tiff/tree/main/examples}examples} directory in the project repository
-for sample programs.
+{2 File access}
 
-{1 Contributing}
+The file access types describe how TIFF data
+is read from and written to files.
 
-See {{:https://github.com/geocaml/ocaml-tiff/blob/main/CONTRIBUTING.md}CONTRIBUTING.md} for instructions on building,
-testing, and contributing to the project.
+- {!type:Tiff.File.ro} — Read-only file access.
+- {!type:Tiff.File.wo} — Write-only file access.
+
+{1 Supported TIFF functionality}
+
+The following functionality is available through
+the library.
+
+{2 Reading TIFF images}
+
+The {!module:Tiff} module provides functionality
+for reading TIFF images.
+
+See {!Tiff.from_file} for creating a TIFF value
+from a file.
+
+{2 Image dimensions}
+
+TIFF image dimensions are stored in Image File
+Directory (IFD) entries.
+
+- {!Tiff.Ifd.width} — Retrieve the image width.
+- {!Tiff.Ifd.height} — Retrieve the image height.
+
+{2 TIFF metadata}
+
+The {!module:Tiff.Ifd} module provides access
+to TIFF Image File Directory metadata.
+
+See the module documentation for the available
+metadata accessors.
+
+{2 GeoTIFF metadata}
+
+GeoTIFF extends TIFF with geospatial metadata.
+
+The {!module:Tiff.Ifd} module contains functions
+for accessing supported GeoTIFF information.
+
+{1 Examples and resources}
+
+- {{:https://github.com/geocaml/ocaml-tiff/tree/main/examples}Example programs}
+- {{:https://gdal.org/en/stable/user/raster_data_model.html}GDAL Raster Data Model}
