@@ -197,8 +197,8 @@ let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
          None ))
     (fun _ -> Tiff.data tiff ro)
 
-let test_load_simple_int8_tiff _ =
-  Tiff_unix.with_open_in "./data/uniform_int8_lzw.tiff" @@ fun ro ->
+let test_load_simple_int8_tiff backend _ =
+  with_ro backend "./data/uniform_int8_lzw.tiff" @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
   let header = Tiff.ifd tiff in
   Test_helpers.assert_ifd ~width:8 ~height:10 ~compression:Tiff.Ifd.LZW
@@ -672,7 +672,7 @@ let suite fs =
       >:: test_read_single_plane_fails_when_specifying_plane backend;
       "Test fail reading from multi-plane TIFF if plane not specified"
       >:: test_read_multi_plane_fails_when_without_specifying_plane backend;
-      "Test load simple int8 tiff" >:: test_load_simple_int8_tiff;
+      "Test load simple int8 tiff" >:: test_load_simple_int8_tiff backend;
       "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff backend;
       "Test load simple int16 tiff" >:: test_load_simple_int16_tiff backend;
       "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff backend;
