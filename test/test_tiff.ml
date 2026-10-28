@@ -637,6 +637,18 @@ let test_truncated_file_raises backend _ =
       assert_raises ~msg:"strip data cut short" End_of_file (fun () ->
           Tiff.data tiff ro))
 
+let test_baseline_tags backend _ =
+  let has_tag path tag =
+    with_ro backend path @@ fun r ->
+    let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+    Option.is_some (Tiff.Ifd.lookup (Tiff.Ifd.entries (Tiff.ifd tiff)) tag)
+  in
+  assert_bool "Software" (has_tag "./data/color.tiff" Tiff.Ifd.Software);
+  assert_bool "ImageDescription"
+    (has_tag "./data/color.tiff" Tiff.Ifd.ImageDescription);
+  assert_bool "ExtraSamples"
+    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.ExtraSamples)
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -740,6 +752,7 @@ let suite fs =
       "Test malformed TIFF header" >:: test_malformed_tiff_header backend;
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
+      "Test baseline tags" >:: test_baseline_tags backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
