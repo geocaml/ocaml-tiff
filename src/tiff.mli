@@ -57,13 +57,15 @@ val data :
   ?image_nb:int ->
   ?plane:int ->
   ?window:window ->
+  ?max_read:int ->
   ('repr, 'kind) t ->
   File.ro ->
   ('repr, 'kind) Data.t
 (** Low-level access to the raw data inside the TIFF file.
 
-    Higher-level abstractions may wish to present a uniform interface to this
-    data. *)
+    [max_read] caps how many bytes of contiguous strips to fill in one
+    {!File.ro} call. Without it, each strip is read on its own. Higher-level
+    abstractions may wish to present a uniform interface to this data. *)
 
 val make :
   ?bigtiff:bool ->

@@ -311,7 +311,7 @@ module Data = struct
     | Ifd.Unknown n ->
         Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 
-  let read_data ifd header ro plane window arr_type read_value =
+  let read_data ~max_read ifd header ro plane window arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
 
@@ -322,9 +322,52 @@ module Data = struct
         Genarray.create arr_type c_layout
           [| window.ysize; window.xsize; samples_per_pixel |]
     in
+    let offsets = Array.of_list (Ifd.data_offsets ifd) in
+    let counts = Array.of_list (Ifd.data_bytecounts ifd) in
+    let n_offsets = Array.length offsets in
+    (* Filled strip buffers from a prior batched [ro] call, keyed by file offset. *)
+    let filled = Hashtbl.create 7 in
+    let read_batch buf file_offset =
+      let start = Optint.Int63.to_int file_offset in
+      let i = ref 0 in
+      while !i < n_offsets && offsets.(!i) <> start do
+        incr i
+      done;
+      (* One [ro] fills this strip and any following contiguous strips. *)
+      let bufs = ref [ buf ] in
+      let total = ref (Cstruct.length buf) in
+      (match max_read with
+      | None -> ()
+      | Some limit ->
+          if !i < n_offsets then
+            let j = ref (!i + 1) in
+            while
+              !j < n_offsets
+              && offsets.(!j) = offsets.(!j - 1) + counts.(!j - 1)
+              && !total + counts.(!j) <= limit
+            do
+              let next = Cstruct.create counts.(!j) in
+              Hashtbl.add filled offsets.(!j) next;
+              bufs := next :: !bufs;
+              total := !total + counts.(!j);
+              incr j
+            done);
+      ro ~file_offset (List.rev !bufs)
+    in
     process_data ifd header plane window
       ~on_strip:(fun expected_size buf sparse strip_offset ->
-        if not sparse then ro ~file_offset:strip_offset [ buf ];
+        let buf =
+          if sparse then buf
+          else
+            let start = Optint.Int63.to_int strip_offset in
+            match Hashtbl.find_opt filled start with
+            | Some cached ->
+                Hashtbl.remove filled start;
+                cached
+            | None ->
+                read_batch buf strip_offset;
+                buf
+        in
 
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
@@ -601,8 +644,8 @@ let read_repr (type r k) (t : (r, k) t) ifd plane =
       | Some (read, _) -> (bigarray_kind kind, read)
       | None -> converted_reader ~unsafe_ok:true kind fmt bpp)
 
-let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
-    (f : File.ro) : (repr, kind) Data.t =
+let data (type repr kind) ?(image_nb = 0) ?plane ?window ?max_read
+    (t : (repr, kind) t) (f : File.ro) : (repr, kind) Data.t =
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
     Error.raisef Error.Invalid_argument
@@ -618,7 +661,9 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
       data
   | Some _ | None ->
       let kind, read_value = read_repr t ifd plane in
-      let data = Data.read_data ifd t.header f plane window kind read_value in
+      let data =
+        Data.read_data ~max_read ifd t.header f plane window kind read_value
+      in
       t.window <- Some window;
       t.plane <- Some plane;
       t.image_nb <- Some image_nb;
