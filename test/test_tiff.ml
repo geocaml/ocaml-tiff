@@ -647,6 +647,14 @@ let test_malformed_tiff_header backend _ =
           assert_failure ("Unexpected exception: " ^ Printexc.to_string exn)
       | _ -> assert_failure "Expected Malformed_file")
 
+let test_missing_bits_per_sample backend _ =
+  let data = "./data/1bit_no_bps.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
+    (Tiff.Ifd.bits_per_sample ifd)
+
 let suite fs =
   let tests backend =
     [
@@ -709,6 +717,8 @@ let suite fs =
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
       "Test malformed TIFF header" >:: test_malformed_tiff_header backend;
+      "Test missing BitsPerSample defaults to 1"
+      >:: test_missing_bits_per_sample backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

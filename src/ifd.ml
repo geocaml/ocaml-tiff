@@ -646,37 +646,39 @@ let document_name t =
   String.sub s 0 (String.length s - 1)
 
 let bits_per_sample t =
-  let entry = lookup_exn t.entries BitsPerSample in
-  match entry.offset with
-  | Immediate imm ->
-      if entry.count = 1L then [ Int64.to_int imm ]
-      else if entry.count = 2L then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
-      else if entry.count = 3L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-        ])
-      else if entry.count = 4L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-          Cstruct.BE.get_uint16 buf 6;
-        ])
-      else
-        let scales = read_entry_raw entry t.ro in
-        List.map (Endian.uint16 t.header.byte_order) scales
-  | _ ->
-      let scales = read_entry_raw entry t.ro in
-      List.map (Endian.uint16 t.header.byte_order) scales
+  match lookup t.entries BitsPerSample with
+  | None -> [ 1 ] (* TIFF 6.0 default *)
+  | Some entry -> (
+      match entry.offset with
+      | Immediate imm ->
+          if entry.count = 1L then [ Int64.to_int imm ]
+          else if entry.count = 2L then (
+            let buf = Cstruct.create 8 in
+            Cstruct.BE.set_uint64 buf 0 imm;
+            [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
+          else if entry.count = 3L && t.header.kind = Bigtiff then (
+            let buf = Cstruct.create 8 in
+            Cstruct.BE.set_uint64 buf 0 imm;
+            [
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 4;
+            ])
+          else if entry.count = 4L && t.header.kind = Bigtiff then (
+            let buf = Cstruct.create 8 in
+            Cstruct.BE.set_uint64 buf 0 imm;
+            [
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 4;
+              Cstruct.BE.get_uint16 buf 6;
+            ])
+          else
+            let scales = read_entry_raw entry t.ro in
+            List.map (Endian.uint16 t.header.byte_order) scales
+      | _ ->
+          let scales = read_entry_raw entry t.ro in
+          List.map (Endian.uint16 t.header.byte_order) scales)
 
 let planar_configuration t =
   try
