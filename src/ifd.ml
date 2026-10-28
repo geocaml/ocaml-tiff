@@ -336,8 +336,13 @@ type entry = {
   mutable offset : offset;
 }
 
+type storage =
+  | Strips of { rows_per_strip : int }
+  | Tiles of { tile_width : int; tile_height : int }
+
 type t = {
   entries : entry list;
+  storage : storage;
   data_offsets : int list;
   data_bytecounts : int list;
   header : header;
@@ -528,6 +533,35 @@ let rows_per_strip e =
   match lookup e.entries RowsPerStrip with
   | None -> height e
   | Some entry -> read_entry entry
+
+(* Determine storage layout from TileWidth and TileHeight, falling back to
+   RowsPerStrip (or ImageLength) when both are absent. *)
+let storage_of_entries entries =
+  match (lookup entries TileWidth, lookup entries TileHeight) with
+  | Some tw, Some th ->
+      let tile_width = read_entry tw in
+      let tile_height = read_entry th in
+      if tile_width <= 0 || tile_height <= 0 then
+        Error.raise_error Error.Malformed_file
+          "Tile width and height must be positive";
+      Tiles { tile_width; tile_height }
+  | Some _, None ->
+      Error.raise_error Error.Malformed_file
+        "Invalid tiled IFD: TileWidth without TileHeight"
+  | None, Some _ ->
+      Error.raise_error Error.Malformed_file
+        "Invalid tiled IFD: TileHeight without TileWidth"
+  | None, None ->
+      let rows_per_strip =
+        match lookup entries RowsPerStrip with
+        | Some entry -> read_entry entry
+        | None -> lookup_exn entries ImageLength |> read_entry
+      in
+      if rows_per_strip <= 0 then
+        Error.raise_error Error.Malformed_file "Rows per strip must be positive";
+      Strips { rows_per_strip }
+
+let storage t = t.storage
 
 let samples_per_pixel e =
   try lookup_exn e.entries SamplesPerPixel |> read_entry with Not_found -> 1
@@ -1006,6 +1040,7 @@ let v ~file_offset header reader =
         entries := { tag; field; count; offset } :: !entries
   done;
   let entries = List.rev !entries in
+  let storage = storage_of_entries entries in
   let next_ifd =
     match header.kind with
     | Tiff ->
@@ -1017,7 +1052,15 @@ let v ~file_offset header reader =
   in
   let data_offsets = strip_offsets endian entries reader in
   let data_bytecounts = strip_byte_counts endian entries reader in
-  { entries; data_offsets; data_bytecounts; ro = reader; header; next_ifd }
+  {
+    entries;
+    storage;
+    data_offsets;
+    data_bytecounts;
+    ro = reader;
+    header;
+    next_ifd;
+  }
 
 let next_ifd t =
   if Optint.Int63.(equal zero t.next_ifd) then None
@@ -1206,8 +1249,10 @@ let write_raw_ifd ~file_offset header writer entries =
   writer ~file_offset:next_ifd_offset [ next_ifd_buf ]
 
 let v_of_entries entries data_offsets data_bytecounts header ro =
+  let storage = storage_of_entries entries in
   {
     entries;
+    storage;
     data_offsets;
     data_bytecounts;
     header;

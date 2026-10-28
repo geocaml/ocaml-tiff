@@ -146,112 +146,113 @@ module Data = struct
     | Unknown _, _ ->
         Error.raise_error Error.Malformed_file "Unknown planar format TIFF"
 
-  let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
-      ~after_strip =
-    let height = Ifd.height ifd in
-    let width = Ifd.width ifd in
-    let samples_per_pixel = Ifd.samples_per_pixel ifd in
-    let bits_per_sample = Ifd.bits_per_sample ifd in
-    let planar_configuration = Ifd.planar_configuration ifd in
-    let bytes_per_pixel =
-      match planar_configuration with
-      | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
-      | Planar -> List.nth bits_per_sample plane / 8
-      | Unknown _ ->
-          failwith "Should not get this far if planar config isn't recognised."
-    in
-    let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
-    let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
-    let rows_per_strip = Ifd.rows_per_strip ifd in
-    let tiff_endianness = header.byte_order in
-    let strip_offsets_length = Array.length strip_offsets in
-    if strip_offsets_length <> Array.length strip_bytecounts then
-      raise
-        (Invalid_argument
-           "strip_offsets and strip_bytecounts are of different lengths");
-    let strips_per_plane =
-      match planar_configuration with
-      | Planar -> Array.length strip_offsets / List.length bits_per_sample
-      | Chunky -> Array.length strip_offsets
-      | Unknown _ ->
-          failwith "should not get this far if planar config isn't recognised"
-    in
+  (* Returns (chunk_width, chunk_height, chunks_across) for the IFD's storage. *)
+  let chunk_grid ifd =
+    match Ifd.storage ifd with
+    | Ifd.Strips { rows_per_strip } -> (Ifd.width ifd, rows_per_strip, 1)
+    | Ifd.Tiles _ ->
+        Error.raise_error Error.Unsupported_feature
+          "Tiled TIFFs are not supported yet"
 
-    let plane_offset = strips_per_plane * plane in
-
-    (* Find the first and last strips touched by the requested window.
-       Divide the first and last row indices by rows_per_strip to get
-       their strip indices, then add the plane offset. *)
-    let first_strip = (window.yoff / rows_per_strip) + plane_offset in
-    let last_strip =
-      ((window.yoff + window.ysize - 1) / rows_per_strip) + plane_offset
-    in
-
-    let row_index = ref ((first_strip - plane_offset) * rows_per_strip) in
-
-    (* Iterate over every strip touched by the window, including both endpoints. *)
-    for strip = first_strip to last_strip do
-      let raw_strip_length = strip_bytecounts.(strip)
-      and raw_strip_offset = strip_offsets.(strip) in
-      let sparse = raw_strip_length = 0 && raw_strip_offset = 0 in
-
-      (* Calculate the number of rows in the current strip *)
-      let rows_in_strip =
-        (* If we are the last strip in a plane, then we might have fewer rows *)
-        if strip = strips_per_plane - 1 then height - (strip * rows_per_strip)
-        else rows_per_strip
+  let process_data ifd (header : Ifd.header) plane window ~on_chunk ~on_value
+      ~after_chunk =
+    if window.xsize = 0 || window.ysize = 0 then ()
+    else
+      let height = Ifd.height ifd in
+      let width = Ifd.width ifd in
+      let samples_per_pixel = Ifd.samples_per_pixel ifd in
+      let bits_per_sample = Ifd.bits_per_sample ifd in
+      let planar_configuration = Ifd.planar_configuration ifd in
+      let bytes_per_pixel =
+        match planar_configuration with
+        | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
+        | Planar -> List.nth bits_per_sample plane / 8
+        | Unknown _ ->
+            failwith
+              "Should not get this far if planar config isn't recognised."
       in
-
-      let expected_size = rows_in_strip * width * bytes_per_pixel in
-
-      let strip_length =
-        match sparse with false -> raw_strip_length | true -> expected_size
-      in
-
-      let raw_strip_buffer = Cstruct.create strip_length in
-      let strip_offset = Optint.Int63.of_int raw_strip_offset in
-
-      (* Iterating through the rows of the current strip *)
-      let strip_buffer =
-        on_strip expected_size raw_strip_buffer sparse strip_offset
-      in
-
-      for inner_row = 0 to rows_in_strip - 1 do
-        (* The actual y offset we are at *)
-        let y_offset = !row_index + inner_row in
-
-        if y_offset >= window.yoff + window.ysize || y_offset < window.yoff then
-          ()
-        else
-          (* The x offset we are at *)
-          let x_offset = ref window.xoff in
-
-          while !x_offset <= window.xoff + window.xsize - 1 do
-            (* The index into the strip buffer *)
-            let index = !x_offset + (inner_row * width) in
-
-            if samples_per_pixel = 1 || planar_configuration = Planar then
-              on_value strip_buffer (index * bytes_per_pixel)
-                [| y_offset - window.yoff; !x_offset - window.xoff |]
-                tiff_endianness
-            else
-              for channel = 0 to samples_per_pixel - 1 do
-                (*Calculate offset for each byte in the pixel*)
-                let byte_off =
-                  bytes_per_pixel / List.length bits_per_sample * channel
-                in
-
-                on_value strip_buffer
-                  ((index * bytes_per_pixel) + byte_off)
-                  [| y_offset - window.yoff; !x_offset - window.xoff; channel |]
+      let data_offsets = Array.of_list (Ifd.data_offsets ifd) in
+      let data_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
+      if Array.length data_offsets <> Array.length data_bytecounts then
+        raise
+          (Invalid_argument
+             "strip_offsets and strip_bytecounts are of different lengths");
+      let chunk_width, chunk_height, chunks_across = chunk_grid ifd in
+      let div_ceil a b = (a + b - 1) / b in
+      (* Compute the 2D chunk grid dimensions and the starting chunk index for this plane. *)
+      let chunks_down = div_ceil height chunk_height in
+      let chunks_per_plane = chunks_across * chunks_down in
+      let plane_offset = plane * chunks_per_plane in
+      (* Find the first and last chunk rows and columns touched by the requested window. *)
+      let first_chunk_row = window.yoff / chunk_height in
+      let last_chunk_row = (window.yoff + window.ysize - 1) / chunk_height in
+      let first_chunk_col = window.xoff / chunk_width in
+      let last_chunk_col = (window.xoff + window.xsize - 1) / chunk_width in
+      let storage = Ifd.storage ifd in
+      let tiff_endianness = header.byte_order in
+      for chunk_row = first_chunk_row to last_chunk_row do
+        for chunk_col = first_chunk_col to last_chunk_col do
+          let chunk_index =
+            plane_offset + (chunk_row * chunks_across) + chunk_col
+          in
+          let raw_length = data_bytecounts.(chunk_index) in
+          let raw_offset = data_offsets.(chunk_index) in
+          let sparse = raw_length = 0 && raw_offset = 0 in
+          (* Calculate the number of rows stored in the current chunk; the last strip in a plane may be shorter than rows_per_strip. *)
+          let stored_rows =
+            match storage with
+            | Ifd.Strips { rows_per_strip } ->
+                min rows_per_strip (height - (chunk_row * rows_per_strip))
+            | Ifd.Tiles _ ->
+                Error.raise_error Error.Unsupported_feature
+                  "Tiled TIFFs are not supported yet"
+          in
+          let expected_size = stored_rows * chunk_width * bytes_per_pixel in
+          let raw_buf =
+            Cstruct.create (if sparse then expected_size else raw_length)
+          in
+          let chunk_offset = Optint.Int63.of_int raw_offset in
+          let chunk_buf = on_chunk expected_size raw_buf sparse chunk_offset in
+          let chunk_y = chunk_row * chunk_height in
+          let chunk_x = chunk_col * chunk_width in
+          (* Pick the rows and columns of this chunk that fall inside the requested
+             window, stopping at the image edges to skip any padding in edge tiles. *)
+          let y_start = max window.yoff chunk_y in
+          let y_end =
+            min
+              (window.yoff + window.ysize)
+              (min height (chunk_y + stored_rows))
+          in
+          let x_start = max window.xoff chunk_x in
+          let x_end =
+            min (window.xoff + window.xsize) (min width (chunk_x + chunk_width))
+          in
+          for y = y_start to y_end - 1 do
+            for x = x_start to x_end - 1 do
+              let inner_row = y - chunk_y in
+              let inner_col = x - chunk_x in
+              let pixel_index = (inner_row * chunk_width) + inner_col in
+              if samples_per_pixel = 1 || planar_configuration = Planar then
+                on_value chunk_buf
+                  (pixel_index * bytes_per_pixel)
+                  [| y - window.yoff; x - window.xoff |]
                   tiff_endianness
-              done;
-            x_offset := !x_offset + 1
-          done
-      done;
-      after_strip strip_buffer strip_offset;
-      row_index := !row_index + rows_in_strip
-    done
+              else
+                for channel = 0 to samples_per_pixel - 1 do
+                  (* Calculate offset for each sample in the pixel *)
+                  let byte_off =
+                    bytes_per_pixel / List.length bits_per_sample * channel
+                  in
+                  on_value chunk_buf
+                    ((pixel_index * bytes_per_pixel) + byte_off)
+                    [| y - window.yoff; x - window.xoff; channel |]
+                    tiff_endianness
+                done
+            done
+          done;
+          after_chunk chunk_buf chunk_offset
+        done
+      done
 
   (* Turn horizontal differences back into pixels. 8- or 16-bit samples. *)
   let undo_horizontal_differencing buf ~width ~samples_per_pixel
@@ -285,7 +286,7 @@ module Data = struct
       done
     done
 
-  let apply_predictor ifd (header : Ifd.header) planar_configuration
+  let apply_predictor ~width ifd (header : Ifd.header) planar_configuration
       samples_per_pixel buf =
     match Ifd.predictor ifd with
     | Ifd.No_predictor -> ()
@@ -306,12 +307,13 @@ module Data = struct
                 (only 8 and 16 are supported)"
                bits_per_sample);
         let bytes_per_sample = bits_per_sample / 8 in
-        undo_horizontal_differencing buf ~width:(Ifd.width ifd)
-          ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
+        undo_horizontal_differencing buf ~width ~samples_per_pixel:samples
+          ~bytes_per_sample ~endian:header.byte_order
     | Ifd.Unknown n ->
         Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 
   let read_data ifd header ro plane window arr_type read_value =
+    let chunk_width, _, _ = chunk_grid ifd in
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
 
@@ -323,8 +325,8 @@ module Data = struct
           [| window.ysize; window.xsize; samples_per_pixel |]
     in
     process_data ifd header plane window
-      ~on_strip:(fun expected_size buf sparse strip_offset ->
-        if not sparse then ro ~file_offset:strip_offset [ buf ];
+      ~on_chunk:(fun expected_size buf sparse chunk_offset ->
+        if not sparse then ro ~file_offset:chunk_offset [ buf ];
 
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
@@ -335,14 +337,14 @@ module Data = struct
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Lzw.decode buf uncompressed_buffer;
-            apply_predictor ifd header planar_configuration samples_per_pixel
-              uncompressed_buffer;
+            apply_predictor ~width:chunk_width ifd header planar_configuration
+              samples_per_pixel uncompressed_buffer;
             uncompressed_buffer
         | false, DEFLATE | false, ADOBE_DEFLATE ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Deflate.decode buf uncompressed_buffer;
-            apply_predictor ifd header planar_configuration samples_per_pixel
-              uncompressed_buffer;
+            apply_predictor ~width:chunk_width ifd header planar_configuration
+              samples_per_pixel uncompressed_buffer;
             uncompressed_buffer
         | _ ->
             Error.raise_error Error.Unsupported_feature
@@ -350,12 +352,12 @@ module Data = struct
       ~on_value:(fun buf buf_offset dim endian ->
         let value = read_value buf buf_offset endian in
         Genarray.set arr dim value)
-      ~after_strip:(fun _ _ -> ());
+      ~after_chunk:(fun _ _ -> ());
     arr
 
   let write_data ifd header plane window data w write_value =
     process_data ifd header plane window
-      ~on_strip:(fun expected_size buf sparse _ ->
+      ~on_chunk:(fun expected_size buf sparse _ ->
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
             if Cstruct.length buf < expected_size then
@@ -368,7 +370,7 @@ module Data = struct
       ~on_value:(fun buf buf_offset dim tiff_endianness ->
         let value = Genarray.get data dim in
         write_value buf buf_offset value tiff_endianness)
-      ~after_strip:(fun buf strip_offset -> w ~file_offset:strip_offset [ buf ])
+      ~after_chunk:(fun buf strip_offset -> w ~file_offset:strip_offset [ buf ])
 
   let bits_per_sample_of_kind (type a b) (kind : (a, b) Bigarray.kind) =
     match kind with

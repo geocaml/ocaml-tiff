@@ -658,7 +658,10 @@ let test_load_striped_no_rows_per_strip backend _ =
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
   (* The tag is missing, so it should default to the height (10) *)
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
-    (Tiff.Ifd.rows_per_strip header)
+    (Tiff.Ifd.rows_per_strip header);
+  assert_equal ~msg:"Storage"
+    (Tiff.Ifd.Strips { rows_per_strip = 10 })
+    (Tiff.Ifd.storage header)
 
 let test_malformed_tiff_header backend _ =
   let tmp = "./data/tmp_malformed_header.tiff" in
@@ -690,7 +693,10 @@ let assert_tile_grid ~tile_width ~tile_height ~tiles_across ~tiles_down ifd =
   assert_equal_int ~msg:"Tile Width" tile_width (Tiff.Ifd.tile_width ifd);
   assert_equal_int ~msg:"Tile height" tile_height (Tiff.Ifd.tile_height ifd);
   assert_equal_int ~msg:"Tiles across" tiles_across (Tiff.Ifd.tiles_across ifd);
-  assert_equal_int ~msg:"Tiles down" tiles_down (Tiff.Ifd.tiles_down ifd)
+  assert_equal_int ~msg:"Tiles down" tiles_down (Tiff.Ifd.tiles_down ifd);
+  assert_equal ~msg:"Storage"
+    (Tiff.Ifd.Tiles { tile_width; tile_height })
+    (Tiff.Ifd.storage ifd)
 
 let test_load_tiled_uint8_deflate_metadata backend _ =
   let data = "./data/tiled_uint8_deflate.tiff" in

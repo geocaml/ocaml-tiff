@@ -126,6 +126,13 @@ val width : t -> int
 val height : t -> int
 (** [height t] returns the height of the image. *)
 
+type storage =
+  | Strips of { rows_per_strip : int }
+  | Tiles of { tile_width : int; tile_height : int }
+
+val storage : t -> storage
+(** [storage t] returns the storage layout of the image. *)
+
 val rows_per_strip : t -> int
 (** [rows_per_strip t] returns the number of rows per strip. *)
 
