@@ -21,5 +21,5 @@
    (bechamel :with-test)
    (mdx :with-test)
    (ounit2 :with-test)
-   (eio_main :with-test)
+   (eio_main (and (>= "1.3") :with-test))
    (nx (and (= 1.0.0~alpha3) :with-test))))
