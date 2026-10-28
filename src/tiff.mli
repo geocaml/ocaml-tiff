@@ -57,11 +57,13 @@ val data :
   ?image_nb:int ->
   ?plane:int ->
   ?window:window ->
+  ?max_read:int ->
   ('repr, 'kind) t ->
   File.ro ->
   ('repr, 'kind) Data.t
 (** Low-level access to the raw data inside the TIFF file.
 
+    [max_read] is how many bytes of contiguous strips to read at once.
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
 
