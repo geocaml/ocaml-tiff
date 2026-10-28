@@ -393,6 +393,28 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_batched_contiguous_strip_reads backend _ =
+  (* All 10 strips in this fixture are contiguous on disk (verified via
+     Tiff.Ifd.data_offsets/data_bytecounts: offset[i] + bytecount[i] =
+     offset[i+1] for every i). Reading them should therefore take a single
+     disk read, not one read per strip (issue #11: batch contiguous strip
+     reads instead of reading each strip separately). *)
+  let data = "./data/striped_uint8_uncompressed.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let strip_read_calls = ref 0 in
+  let counting_ro ~file_offset bufs =
+    incr strip_read_calls;
+    ro ~file_offset bufs
+  in
+  (* Wrap ro only for the Tiff.data call, so the count reflects strip reads
+     alone and not the header/IFD reads already done by Tiff.from_file. *)
+  let data = Tiff.data tiff counting_ro |> Nx.of_bigarray in
+  let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
+  assert_equal_int ~msg:"Value sum" 550 res;
+  assert_equal_int ~msg:"Disk read calls to fetch all 10 contiguous strips" 1
+    !strip_read_calls
+
 let test_load_striped_uint8_lzw_tiff backend _ =
   let data = "./data/striped_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -714,6 +736,8 @@ let suite fs =
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
+      "Test contiguous strips are read in a single batched disk read"
+      >:: test_batched_contiguous_strip_reads backend;
       "Test load striped uint8 lzw tiff"
       >:: test_load_striped_uint8_lzw_tiff backend;
       "Test load odd striped uint8 lzw tiff"
