@@ -1,5 +1,5 @@
 
-{0 OCaml TIFF}
+{0 TIFF}
 
 {! Tiff} is a library for working with TIFF
 (Tagged Image File Format) images in OCaml.
@@ -33,44 +33,3 @@ is read from and written to files.
 
 - {!type:Tiff.File.ro} — Read-only file access.
 - {!type:Tiff.File.wo} — Write-only file access.
-
-{1 Supported TIFF functionality}
-
-The following functionality is available through
-the library.
-
-{2 Reading TIFF images}
-
-The {!module:Tiff} module provides functionality
-for reading TIFF images.
-
-See {!Tiff.from_file} for creating a TIFF value
-from a file.
-
-{2 Image dimensions}
-
-TIFF image dimensions are stored in Image File
-Directory (IFD) entries.
-
-- {!Tiff.Ifd.width} — Retrieve the image width.
-- {!Tiff.Ifd.height} — Retrieve the image height.
-
-{2 TIFF metadata}
-
-The {!module:Tiff.Ifd} module provides access
-to TIFF Image File Directory metadata.
-
-See the module documentation for the available
-metadata accessors.
-
-{2 GeoTIFF metadata}
-
-GeoTIFF extends TIFF with geospatial metadata.
-
-The {!module:Tiff.Ifd} module contains functions
-for accessing supported GeoTIFF information.
-
-{1 Examples and resources}
-
-- {{:https://github.com/geocaml/ocaml-tiff/tree/main/examples}Example programs}
-- {{:https://gdal.org/en/stable/user/raster_data_model.html}GDAL Raster Data Model}
