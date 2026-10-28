@@ -86,6 +86,25 @@ let test_write_int32_tiff backend _ =
     (Tiff.Ifd.sample_format (Tiff.ifd tiff));
   assert_equal ~msg:"Data" data (Tiff.data tiff r)
 
+let test_write_grayscale_photometric backend _ =
+  with_wo backend "./data/tmp_gray.tiff" @@ fun w ->
+  with_ro backend "./data/tmp_gray.tiff" @@ fun r ->
+  let data =
+    Bigarray.Genarray.create Bigarray.int8_unsigned Bigarray.c_layout [| 2; 2 |]
+  in
+  Bigarray.Genarray.fill data 1;
+  Tiff.to_file (Tiff.make data) w;
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+  let photometric =
+    Tiff.Ifd.lookup_exn
+      (Tiff.Ifd.entries (Tiff.ifd tiff))
+      Tiff.Ifd.PhotometricInterpretation
+    |> Tiff.Ifd.read_entry
+  in
+  assert_equal ~msg:"Photometric interpretation"
+    (Tiff.Ifd.photometric_interpretation_to_int Tiff.Ifd.BlackIsZero)
+    photometric
+
 let test_normal_header_roundtrip backend _ =
   with_ro backend "./data/uniform.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
@@ -686,6 +705,8 @@ let suite fs =
       "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff backend;
       "Test load simple int32 tiff" >:: test_load_simple_int32_tiff backend;
       "Test load simple uint32 tiff" >:: test_load_simple_uint32_tiff backend;
+      "Test write grayscale photometric"
+      >:: test_write_grayscale_photometric backend;
       "Test safe cast rejects lossy conversion"
       >:: test_safe_cast_rejects_lossy backend;
       "Test load simple float32 tiff" >:: test_load_simple_float32_tiff backend;
