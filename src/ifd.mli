@@ -172,7 +172,7 @@ val predictor : t -> predictor
 (** The predictor is used in certain compression algorithms to improve
     performance. *)
 
-val sample_format : t -> sample_format
+val sample_format : t -> sample_format list
 (** This field specifies how to interpret each data sample in a pixel. *)
 
 val planar_configuration : t -> planar_configuration

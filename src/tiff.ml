@@ -584,8 +584,17 @@ let converted_reader (type r k) ~unsafe_ok (kind : (r, k) kind)
   in
   (bigarray_kind kind, read)
 
+(* SampleFormat holds one value per sample, but this library decodes and
+   encodes every sample of an image with a single representation, so all of
+   them must agree. We have not found a real-world TIFF whose samples use
+   different formats; if one turns up, this is the place to update. *)
+let uniform_sample_format ifd =
+  match Ifd.sample_format ifd with
+  | fmt :: rest when List.for_all (( = ) fmt) rest -> fmt
+  | _ -> Fmt.invalid_arg "SampleFormat values differ between samples"
+
 let read_repr (type r k) (t : (r, k) t) ifd plane =
-  let fmt = Ifd.sample_format ifd in
+  let fmt = uniform_sample_format ifd in
   let bpp = List.nth (Ifd.bits_per_sample ifd) plane in
   let kind = kind_of_intent t.intent in
   match t.intent with
@@ -632,7 +641,7 @@ let write_data (type repr kind) ?(plane = None) ?(window = None) tiff ifd
   let _, _, write_value =
     exact_repr
       (kind_of_intent tiff.intent)
-      (Ifd.sample_format ifd)
+      (uniform_sample_format ifd)
       (List.nth (Ifd.bits_per_sample ifd) plane)
   in
   Data.write_data ifd tiff.header plane window data w write_value

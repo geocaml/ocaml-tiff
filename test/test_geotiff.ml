@@ -11,7 +11,9 @@ let test_load_simple_uint8_tiff fs _ =
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
   let header = Tiff.ifd tiff in
   Test_helpers.assert_ifd ~width:514 ~height:515 ~samples_per_pixel:1
-    ~bits_per_sample:[ 8 ] ~sample_format:Tiff.Ifd.UnsignedInteger header;
+    ~bits_per_sample:[ 8 ]
+    ~sample_format:[ Tiff.Ifd.UnsignedInteger ]
+    header;
   let pixel_scale = Array.to_list (Tiff.Ifd.pixel_scale header) in
   let expected = [ 60.022136983193739; 60.022136983193739; 0.0 ] in
   assert_bool "Pixel width" (cmp_float_list expected pixel_scale);
@@ -31,7 +33,9 @@ let test_load_simple_float32_geotiff fs _ =
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
   let header = Tiff.ifd tiff in
   Test_helpers.assert_ifd ~width:7 ~height:3 ~samples_per_pixel:1
-    ~bits_per_sample:[ 32 ] ~sample_format:Tiff.Ifd.IEEEFloatingPoint header;
+    ~bits_per_sample:[ 32 ]
+    ~sample_format:[ Tiff.Ifd.IEEEFloatingPoint ]
+    header;
 
   let pixel_scale = Array.to_list (Tiff.Ifd.pixel_scale header) in
   let expected = [ 0.016666666666667; 0.016666666666667; 0.0 ] in
