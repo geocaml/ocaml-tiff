@@ -46,9 +46,6 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
    but modern libraries override this and default to  64KB or higher for modern hardware. *)
 let default_strip_size = 65_536
 
-(* One read takes contiguous strips up to this many bytes. *)
-let default_max_read = 1_048_576
-
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
 module Data = struct
@@ -327,39 +324,50 @@ module Data = struct
     in
     let offsets = Array.of_list (Ifd.data_offsets ifd) in
     let counts = Array.of_list (Ifd.data_bytecounts ifd) in
-    let cache = ref None in
-    let read_contiguous buf file_offset =
-      let len = Cstruct.length buf in
+    let n_offsets = Array.length offsets in
+    (* Filled strip buffers from a prior batched [ro] call, keyed by file offset. *)
+    let filled = Hashtbl.create 7 in
+    let read_batch buf file_offset =
       let start = Optint.Int63.to_int file_offset in
-      match !cache with
-      | Some (base, raw)
-        when start >= base && start + len <= base + Cstruct.length raw ->
-          Cstruct.blit raw (start - base) buf 0 len
-      | _ ->
-          let i = ref 0 in
-          while !i < Array.length offsets && offsets.(!i) <> start do
-            incr i
-          done;
-          (* Pull following strips into this read when they sit against this one. *)
-          let total = ref len in
-          (if !i < Array.length offsets then
-             let j = ref (!i + 1) in
-             while
-               !j < Array.length offsets
-               && offsets.(!j) = offsets.(!j - 1) + counts.(!j - 1)
-               && !total + counts.(!j) <= max_read
-             do
-               total := !total + counts.(!j);
-               incr j
-             done);
-          let raw = Cstruct.create !total in
-          ro ~file_offset [ raw ];
-          cache := Some (start, raw);
-          Cstruct.blit raw 0 buf 0 len
+      let i = ref 0 in
+      while !i < n_offsets && offsets.(!i) <> start do
+        incr i
+      done;
+      (* One [ro] fills this strip and any following contiguous strips. *)
+      let bufs = ref [ buf ] in
+      let total = ref (Cstruct.length buf) in
+      (match max_read with
+      | None -> ()
+      | Some limit ->
+          if !i < n_offsets then
+            let j = ref (!i + 1) in
+            while
+              !j < n_offsets
+              && offsets.(!j) = offsets.(!j - 1) + counts.(!j - 1)
+              && !total + counts.(!j) <= limit
+            do
+              let next = Cstruct.create counts.(!j) in
+              Hashtbl.add filled offsets.(!j) next;
+              bufs := next :: !bufs;
+              total := !total + counts.(!j);
+              incr j
+            done);
+      ro ~file_offset (List.rev !bufs)
     in
     process_data ifd header plane window
       ~on_strip:(fun expected_size buf sparse strip_offset ->
-        if not sparse then read_contiguous buf strip_offset;
+        let buf =
+          if sparse then buf
+          else
+            let start = Optint.Int63.to_int strip_offset in
+            match Hashtbl.find_opt filled start with
+            | Some cached ->
+                Hashtbl.remove filled start;
+                cached
+            | None ->
+                read_batch buf strip_offset;
+                buf
+        in
 
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
@@ -636,9 +644,8 @@ let read_repr (type r k) (t : (r, k) t) ifd plane =
       | Some (read, _) -> (bigarray_kind kind, read)
       | None -> converted_reader ~unsafe_ok:true kind fmt bpp)
 
-let data (type repr kind) ?(image_nb = 0) ?plane ?window
-    ?(max_read = default_max_read) (t : (repr, kind) t) (f : File.ro) :
-    (repr, kind) Data.t =
+let data (type repr kind) ?(image_nb = 0) ?plane ?window ?max_read
+    (t : (repr, kind) t) (f : File.ro) : (repr, kind) Data.t =
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
     Error.raisef Error.Invalid_argument
