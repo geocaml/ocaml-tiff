@@ -1,7 +1,7 @@
 
 {0 OCaml TIFF}
 
-OCaml TIFF is a library for working with TIFF
+{! Tiff} is a library for working with TIFF
 (Tagged Image File Format) images in OCaml.
 
 It provides functionality for reading and writing
