@@ -1,0 +1,5 @@
+(executable
+ (public_name tiff-traceback)
+ (name tiff_traceback)
+ (libraries tiff cmdliner))
+ 
