@@ -536,7 +536,12 @@ let add_int optint i = Optint.Int63.(add optint (of_int i))
 
 let is_immediate_raw ~count field =
   let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
-  Int64.compare total_size 4L <= 0 && count = 1L
+  Int64.compare total_size 4L <= 0
+
+
+ (** Helper for writer *)
+let is_immediate_raw_for_writer ~count field =
+  is_immediate_raw ~count field && count = 1L 
 
 let is_immediate_raw_big ~count field =
   let total_size = Int64.mul count (Int64.of_int (field_byte_size field)) in
@@ -692,9 +697,12 @@ let bits_per_sample t =
       | Immediate imm ->
           if entry.count = 1L then [ Int64.to_int imm ]
           else if entry.count = 2L then (
-            let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
+            let buf = Cstruct.create 4 in
+            Endian.set_uint32 t.header.byte_order buf (Int64.to_int32 imm);
+            [
+              Endian.uint16 ~offset:0 t.header.byte_order buf;
+              Endian.uint16 ~offset:2 t.header.byte_order buf;
+            ])
           else if entry.count = 3L && t.header.kind = Bigtiff then (
             let buf = Cstruct.create 8 in
             Cstruct.BE.set_uint64 buf 0 imm;
@@ -1025,9 +1033,12 @@ let v ~file_offset header reader =
           match (is_immediate, field) with
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 8) |> Int64.of_int
-          | true, Short ->
+          | true, Short when count = 1L ->
               Endian.uint16 ~offset:(base_offset + 8) endian buf |> Int64.of_int
-          | _ -> Endian.uint32 ~offset:(base_offset + 8) endian buf
+          | true, Short ->
+              Endian.uint32 ~offset:(base_offset + 8) endian buf
+          | _ ->
+              Endian.uint32 ~offset:(base_offset + 8) endian buf
         in
         let offset = if is_immediate then Immediate offset else Offset offset in
         let entry = { tag; field; count; offset } in
@@ -1336,7 +1347,7 @@ let make_entry endian file_offset tag values =
             Error.raise_error Error.Unsupported_feature
               "Cannot determine field for non-int multi-field tag")
   in
-  let is_immediate = is_immediate_raw ~count field in
+  let is_immediate = is_immediate_raw_for_writer ~count field in
   let offset =
     if is_immediate then
       match values with

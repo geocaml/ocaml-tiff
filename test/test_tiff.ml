@@ -31,6 +31,17 @@ let with_ro backend path fn =
       Tiff_eio.with_open_in path fn
   | Unix -> Tiff_unix.with_open_in path fn
 
+let test_inline_bits_per_sample _ =
+  Eio_posix.run @@ fun env ->
+  let file = Eio.Path.(env#fs / "data/jello-gray.tiff") in
+  Tiff_eio.with_open_in file @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Int8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal
+    ~msg:"Two inline SHORT values should decode to [8; 8]"
+    [8; 8]
+    (Tiff.Ifd.bits_per_sample ifd)  
+
 let with_wo backend path fn =
   match backend with
   | Eio fs ->
@@ -753,6 +764,11 @@ let suite fs =
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
+      "Test missing BitsPerSample defaults to 1"
+      >:: test_missing_bits_per_sample backend;
+      "Test baseline tags" >:: test_baseline_tags backend;
+      "Test inline BitsPerSample values"
+      >:: test_inline_bits_per_sample;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
