@@ -42,24 +42,6 @@ let test_inline_bits_per_sample _ =
     [8; 8]
     (Tiff.Ifd.bits_per_sample ifd)  
 
-      (*
-let test_multiple_short_writer _ =
-  let entry, _ =
-    Tiff.Ifd.make_entry
-      Tiff.Ifd.Endian.Little
-      1024
-      Tiff.Ifd.BitsPerSample
-      (Tiff.Ifd.Ints [8; 16])
-  in
-  match entry.offset with
-  | Tiff.Ifd.Read (_, bufs) ->
-      assert_equal
-        [8; 16]
-        (List.map (Tiff.Ifd.Endian.uint16 Tiff.Ifd.Endian.Little) bufs)
-  | _ ->
-      assert_failure "Multiple SHORT values should be preserved"      
-*)
-
 let with_wo backend path fn =
   match backend with
   | Eio fs ->
@@ -787,8 +769,6 @@ let suite fs =
       "Test baseline tags" >:: test_baseline_tags backend;
       "Test inline BitsPerSample values"
       >:: test_inline_bits_per_sample;
-      (*"Test preserve multiple SHORT values in writer"
-      >:: test_multiple_short_writer; *)
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
