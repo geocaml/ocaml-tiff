@@ -650,34 +650,27 @@ let bits_per_sample t =
   match entry.offset with
   | Immediate imm ->
       if entry.count = 1L then [ Int64.to_int imm ]
-      else if entry.count = 2L then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
-      else if entry.count = 3L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-        ])
-      else if entry.count = 4L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-          Cstruct.BE.get_uint16 buf 6;
-        ])
       else
-        let scales = read_entry_raw entry t.ro in
-        List.map (Endian.uint16 t.header.byte_order) scales
+        let buf_size = if t.header.kind = Bigtiff then 8 else 4 in
+        let buf = Cstruct.create buf_size in
+        (match (t.header.kind = Bigtiff, t.header.byte_order) with
+        | true, Endian.Little ->
+            Cstruct.LE.set_uint64 buf 0 imm
+        | true, Endian.Big ->
+            Cstruct.BE.set_uint64 buf 0 imm
+        | false, Endian.Little ->
+            Cstruct.LE.set_uint32 buf 0 (Int64.to_int32 imm)
+        | false, Endian.Big ->
+            Cstruct.BE.set_uint32 buf 0 (Int64.to_int32 imm));
+        List.init (Int64.to_int entry.count) (fun i ->
+            let offset = i * 2 in
+            match t.header.byte_order with
+            | Endian.Little -> Cstruct.LE.get_uint16 buf offset
+            | Endian.Big -> Cstruct.BE.get_uint16 buf offset)
   | _ ->
       let scales = read_entry_raw entry t.ro in
       List.map (Endian.uint16 t.header.byte_order) scales
-
+      
 let planar_configuration t =
   try
     lookup_exn t.entries PlanarConfiguration
@@ -1008,9 +1001,11 @@ let v ~file_offset header reader =
           match (is_immediate, field) with
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
-          | true, Short ->
+          | true, Short when count = 1L ->
               Endian.uint16 ~offset:(base_offset + 12) endian buf
               |> Int64.of_int
+          | true, Short ->
+              Endian.uint64 ~offset:(base_offset + 12) endian buf
           | true, Long ->
               Endian.uint32 ~offset:(base_offset + 12) endian buf
               |> Int64.of_int32

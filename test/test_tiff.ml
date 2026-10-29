@@ -647,6 +647,20 @@ let test_malformed_tiff_header backend _ =
           assert_failure ("Unexpected exception: " ^ Printexc.to_string exn)
       | _ -> assert_failure "Expected Malformed_file")
 
+let test_bigtiff_bits_per_sample _ =
+  Eio_posix.run @@ fun env ->
+  let file =
+    Eio.Path.(env#fs / "data/uniform_rgb_uint8_bigtiff.tiff")
+  in
+  Tiff_eio.with_open_in file @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal
+    ~msg:"BigTIFF should read three inline SHORT values"
+    [8; 8; 8]
+    (Tiff.Ifd.bits_per_sample ifd)
+
+
 let suite fs =
   let tests backend =
     [
@@ -709,6 +723,7 @@ let suite fs =
       "Test truncated file raises End_of_file"
       >:: test_truncated_file_raises backend;
       "Test malformed TIFF header" >:: test_malformed_tiff_header backend;
+      "BigTIFF inline BitsPerSample" >:: test_bigtiff_bits_per_sample;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
