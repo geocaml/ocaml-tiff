@@ -610,16 +610,6 @@ let read_entry_ints endian reader entry =
       let buf = Cstruct.concat bufs in
       List.init count (decode_at buf)
 
-let strip_offsets endian entries reader =
-  match lookup entries StripOffsets with
-  | None -> []
-  | Some entry -> read_entry_ints endian reader entry
-
-let strip_byte_counts endian entries reader =
-  match lookup entries StripByteCounts with
-  | None -> []
-  | Some entry -> read_entry_ints endian reader entry
-
 let max_group lst n =
   let rec loop acc t =
     match (acc, t) with
@@ -969,14 +959,6 @@ let tiles_down t =
   let theight = tile_height t in
   (height t + theight - 1) / theight
 
-let tile_offsets t =
-  let entry = lookup_exn t.entries TileOffsets in
-  read_entry_ints t.header.byte_order t.ro entry |> List.map Int64.of_int
-
-let tile_byte_counts t =
-  let entry = lookup_exn t.entries TileByteCounts in
-  read_entry_ints t.header.byte_order t.ro entry |> List.map Int64.of_int
-
 let v ~file_offset header reader =
   let endian = header.byte_order in
   let incr_offset = add_int file_offset in
@@ -1050,8 +1032,18 @@ let v ~file_offset header reader =
         Endian.uint64 ~offset:0 header.byte_order next_ifd_buf
         |> Optint.Int63.of_int64
   in
-  let data_offsets = strip_offsets endian entries reader in
-  let data_bytecounts = strip_byte_counts endian entries reader in
+  (* Load strip or tile offsets and byte counts based on how the image is stored. *)
+  let offset_tag, bytecount_tag =
+    match storage with
+    | Strips _ -> (StripOffsets, StripByteCounts)
+    | Tiles _ -> (TileOffsets, TileByteCounts)
+  in
+  let data_offsets =
+    lookup_exn entries offset_tag |> read_entry_ints endian reader
+  in
+  let data_bytecounts =
+    lookup_exn entries bytecount_tag |> read_entry_ints endian reader
+  in
   {
     entries;
     storage;

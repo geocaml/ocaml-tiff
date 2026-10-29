@@ -150,9 +150,8 @@ module Data = struct
   let chunk_grid ifd =
     match Ifd.storage ifd with
     | Ifd.Strips { rows_per_strip } -> (Ifd.width ifd, rows_per_strip, 1)
-    | Ifd.Tiles _ ->
-        Error.raise_error Error.Unsupported_feature
-          "Tiled TIFFs are not supported yet"
+    | Ifd.Tiles { tile_width; tile_height } ->
+        (tile_width, tile_height, Ifd.tiles_across ifd)
 
   let process_data ifd (header : Ifd.header) plane window ~on_chunk ~on_value
       ~after_chunk =
@@ -176,7 +175,7 @@ module Data = struct
       if Array.length data_offsets <> Array.length data_bytecounts then
         raise
           (Invalid_argument
-             "strip_offsets and strip_bytecounts are of different lengths");
+             "data_offsets and data_bytecounts are of different lengths");
       let chunk_width, chunk_height, chunks_across = chunk_grid ifd in
       let div_ceil a b = (a + b - 1) / b in
       (* Compute the 2D chunk grid dimensions and the starting chunk index for this plane. *)
@@ -198,14 +197,14 @@ module Data = struct
           let raw_length = data_bytecounts.(chunk_index) in
           let raw_offset = data_offsets.(chunk_index) in
           let sparse = raw_length = 0 && raw_offset = 0 in
-          (* Calculate the number of rows stored in the current chunk; the last strip in a plane may be shorter than rows_per_strip. *)
+          (* Calculate how many rows are stored in this chunk.
+             The last strip of a plane can be shorter than rows_per_strip,
+             while every tile on disk has the full tile_height. *)
           let stored_rows =
             match storage with
             | Ifd.Strips { rows_per_strip } ->
                 min rows_per_strip (height - (chunk_row * rows_per_strip))
-            | Ifd.Tiles _ ->
-                Error.raise_error Error.Unsupported_feature
-                  "Tiled TIFFs are not supported yet"
+            | Ifd.Tiles { tile_height; _ } -> tile_height
           in
           let expected_size = stored_rows * chunk_width * bytes_per_pixel in
           let raw_buf =
@@ -332,7 +331,7 @@ module Data = struct
         | true, _ | false, No_compression ->
             if Cstruct.length buf < expected_size then
               Error.raise_error Error.Malformed_file
-                "Strip is unexpectedly short";
+                "Data chunk is unexpectedly short";
             buf
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
@@ -362,7 +361,7 @@ module Data = struct
         | true, _ | false, No_compression ->
             if Cstruct.length buf < expected_size then
               Error.raise_error Error.Unsupported_feature
-                "Strip is unexpectedly short";
+                "Data chunk is unexpectedly short";
             buf
         | _ ->
             Error.raise_error Error.Unsupported_feature
@@ -370,7 +369,7 @@ module Data = struct
       ~on_value:(fun buf buf_offset dim tiff_endianness ->
         let value = Genarray.get data dim in
         write_value buf buf_offset value tiff_endianness)
-      ~after_chunk:(fun buf strip_offset -> w ~file_offset:strip_offset [ buf ])
+      ~after_chunk:(fun buf chunk_offset -> w ~file_offset:chunk_offset [ buf ])
 
   let bits_per_sample_of_kind (type a b) (kind : (a, b) Bigarray.kind) =
     match kind with
