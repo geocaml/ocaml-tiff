@@ -7,4 +7,4 @@ let () =
   |> Fmt.pr "%a\n%!" Fmt.(list Tiff.Ifd.pp_entry);
   let ifd = Tiff.ifd tiff in
   Tiff.Ifd.bits_per_sample ifd
-  |> Fmt.pr "bps: %a\n%!" Fmt.(list ~sep:(any ", ") int)
+  |> Fmt.pr "bps: %a\n%!" Fmt.(brackets @@ list ~sep:(any ", ") int)
