@@ -46,6 +46,9 @@ let write_header wo header =
         (header.offset |> Optint.Int63.to_int32)
   | Bigtiff ->
       Endian.set_uint16 ~offset:2 header.byte_order buf 43;
+      (* Bytes 4-5 hold the offset size (always 8) and bytes 6-7 are
+         reserved and must be zero; the buffer is zero-initialised. *)
+      Endian.set_uint16 ~offset:4 header.byte_order buf 8;
       Endian.set_uint64 ~offset:8 header.byte_order buf
         (header.offset |> Optint.Int63.to_int64));
 

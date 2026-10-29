@@ -145,6 +145,26 @@ let test_write_entries_roundtrip backend _ =
   assert_equal ~msg:"Predictor" predictor (Tiff.Ifd.predictor ifd);
   assert_equal ~msg:"Data" data data2
 
+let test_bigtiff_header_fields backend _ =
+  (* A BigTIFF header must carry the offset size (8) at bytes 4-5 and zero
+     at bytes 6-7, otherwise libtiff rejects the file. *)
+  let check endian =
+    with_wo backend "./data/tmp.tiff" @@ fun w ->
+    with_ro backend "./data/tmp.tiff" @@ fun r ->
+    let header = Tiff.Ifd.create_header ~bigtiff:true endian in
+    Tiff.Ifd.write_header w header;
+    let buf = Cstruct.create 16 in
+    r ~file_offset:Optint.Int63.zero [ buf ];
+    assert_equal_int ~msg:"BigTIFF magic" 43
+      (Tiff.Endian.uint16 ~offset:2 endian buf);
+    assert_equal_int ~msg:"BigTIFF offset size" 8
+      (Tiff.Endian.uint16 ~offset:4 endian buf);
+    assert_equal_int ~msg:"BigTIFF reserved bytes" 0
+      (Tiff.Endian.uint16 ~offset:6 endian buf)
+  in
+  check Tiff.Endian.Little;
+  check Tiff.Endian.Big
+
 let test_bigtiff_write_entries_roundtrip backend _ =
   with_ro backend "./data/color.tiff" @@ fun r ->
   with_wo backend "./data/tmp.tiff" @@ fun w ->
@@ -700,6 +720,7 @@ let suite fs =
       >:: test_bigtiff_write_entries_roundtrip backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
       "Test Bigtiff header roundtrip" >:: test_bigtiff_header_roundtrip backend;
+      "Test Bigtiff header fields" >:: test_bigtiff_header_fields backend;
       "Test DEFLATE compression types" >:: test_deflate_compression_types;
       "Test load DEFLATE compressed TIFF"
       >:: test_load_deflate_compressed_tiff backend;
