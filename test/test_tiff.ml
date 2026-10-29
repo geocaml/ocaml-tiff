@@ -852,6 +852,44 @@ let test_load_tiled_single_tile backend _ =
   let pixel_data = Tiff.data tiff ro in
   check_pixels2 ~width:10 ~height:10 pixel_data (fun ~x ~y -> (y * 10) + x)
 
+let test_load_tiled_u16_rgb_lzw_predictor_be backend _ =
+  let data = "./data/tiled_u16_rgb_lzw_predictor_be.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint16) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:35 ~height:25 ~compression:Tiff.Ifd.LZW
+    ~predictor:Tiff.Ifd.HorizontalDifferencing ~samples_per_pixel:3
+    ~bits_per_sample:[ 16; 16; 16 ] ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:2
+    ifd;
+  let expected_pixel ~x ~y ~c =
+    if c = 0 then ((x * 257) + (y * 13)) mod 65536
+    else if c = 1 then ((x * 17) + (y * 509)) mod 65536
+    else (x + y) * 1021 mod 65536
+  in
+  let full = Tiff.data tiff ro in
+  check_pixels3 ~width:35 ~height:25 ~channels:3 full expected_pixel;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels3 ~window ~width:35 ~height:25 ~channels:3 win_data expected_pixel
+
+let test_load_tiled_bigtiff backend _ =
+  let data = "./data/tiled_bigtiff.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:40 ~height:40 ~compression:Tiff.Ifd.LZW ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:3
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 9
+    (List.length (Tiff.Ifd.data_offsets ifd));
+  let expected_pixel ~x ~y = ((y * 40) + x) mod 256 in
+  let full = Tiff.data tiff ro in
+  check_pixels2 ~width:40 ~height:40 full expected_pixel;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels2 ~window ~width:40 ~height:40 win_data expected_pixel
+
 let suite fs =
   let tests backend =
     [
@@ -924,6 +962,9 @@ let suite fs =
       "Test load planar tiled" >:: test_load_tiled_planar_rgb backend;
       "Test load tiled sparse" >:: test_load_tiled_sparse backend;
       "Test load tiled single tile" >:: test_load_tiled_single_tile backend;
+      "Test load tiled u16 rgb lzw predictor be"
+      >:: test_load_tiled_u16_rgb_lzw_predictor_be backend;
+      "Test load tiled bigtiff" >:: test_load_tiled_bigtiff backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
