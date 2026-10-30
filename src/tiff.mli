@@ -15,6 +15,8 @@ type window
 
 module Window : sig
   val make : xoff:int -> yoff:int -> xsize:int -> ysize:int -> window
+  (** Creates a pixel window. Negative arguments raise [Error.Tiff_error] with
+      category [Error.Invalid_argument]. Image bounds are checked on use. *)
 end
 
 type ('repr, 'kind) kind =

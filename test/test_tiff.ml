@@ -481,31 +481,23 @@ let test_window_rejects_negative_values _ =
   check ~msg:"Negative width" ~xoff:0 ~yoff:0 ~xsize:(-1) ~ysize:1;
   check ~msg:"Negative height" ~xoff:0 ~yoff:0 ~xsize:2 ~ysize:(-1)
 
-let test_window_exceeds_image_width backend _ =
+let test_window_exceeds_image_dimensions backend _ =
   let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
   with_ro backend path @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  let window = Tiff.Window.make ~xoff:9 ~yoff:0 ~xsize:2 ~ysize:1 in
-  assert_raises
-    (Tiff.Error.Tiff_error
-       ( Tiff.Error.Invalid_argument,
-         "Invalid TIFF data window { xoff=9, yoff=0, xsize=2, ysize=1 }: image \
-          dimensions are 10 x 10",
-         None ))
-    (fun () -> ignore (Tiff.data ~window tiff ro))
-
-let test_window_exceeds_image_height backend _ =
-  let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
-  with_ro backend path @@ fun ro ->
-  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  let window = Tiff.Window.make ~xoff:0 ~yoff:9 ~xsize:1 ~ysize:2 in
-  assert_raises
-    (Tiff.Error.Tiff_error
-       ( Tiff.Error.Invalid_argument,
-         "Invalid TIFF data window { xoff=0, yoff=9, xsize=1, ysize=2 }: image \
-          dimensions are 10 x 10",
-         None ))
-    (fun () -> ignore (Tiff.data ~window tiff ro))
+  let check window message =
+    assert_raises
+      (Tiff.Error.Tiff_error (Tiff.Error.Invalid_argument, message, None))
+      (fun () -> ignore (Tiff.data ~window tiff ro))
+  in
+  check
+    (Tiff.Window.make ~xoff:9 ~yoff:0 ~xsize:2 ~ysize:1)
+    "Invalid TIFF data window { xoff=9, yoff=0, xsize=2, ysize=1 }: image \
+     dimensions are 10 x 10";
+  check
+    (Tiff.Window.make ~xoff:0 ~yoff:9 ~xsize:1 ~ysize:2)
+    "Invalid TIFF data window { xoff=0, yoff=9, xsize=1, ysize=2 }: image \
+     dimensions are 10 x 10"
 
 let test_window_at_image_boundary backend _ =
   let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
@@ -749,10 +741,8 @@ let suite fs =
       >:: test_odd_striped_tiff_window_crosses_boundary backend;
       "Test window rejects negative values"
       >:: test_window_rejects_negative_values;
-      "Test window exceeds image width"
-      >:: test_window_exceeds_image_width backend;
-      "Test window exceeds image height"
-      >:: test_window_exceeds_image_height backend;
+      "Test window exceeds image dimensions"
+      >:: test_window_exceeds_image_dimensions backend;
       "Test window at image boundary" >:: test_window_at_image_boundary backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;
