@@ -48,6 +48,14 @@ let default_strip_size = 65_536
 
 type window = { xoff : int; yoff : int; xsize : int; ysize : int }
 
+module Window = struct
+  let make ~xoff ~yoff ~xsize ~ysize =
+    if xoff < 0 || yoff < 0 || xsize < 0 || ysize < 0 then
+      Error.raise_error Error.Invalid_argument
+        "TIFF window offsets and sizes must be non-negative";
+    { xoff; yoff; xsize; ysize }
+end
+
 module Data = struct
   (* open Bigarray *)
 
@@ -130,7 +138,7 @@ module Data = struct
     | None ->
         let width = Ifd.width ifd in
         let height = Ifd.height ifd in
-        { xoff = 0; yoff = 0; xsize = width; ysize = height }
+        Window.make ~xoff:0 ~yoff:0 ~xsize:width ~ysize:height
 
   let get_plane ifd plane =
     let planar_configuration = Ifd.planar_configuration ifd in
