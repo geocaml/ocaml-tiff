@@ -24,6 +24,7 @@ type tag =
   | Compression
   | PhotometricInterpretation
   | DocumentName
+  | InterColorProfile
   | StripOffsets
   | RowsPerStrip
   | StripByteCounts
