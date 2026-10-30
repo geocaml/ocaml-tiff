@@ -658,7 +658,10 @@ let test_load_striped_no_rows_per_strip backend _ =
   assert_equal_int ~msg:"Image height" 10 (Tiff.Ifd.height header);
   (* The tag is missing, so it should default to the height (10) *)
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
-    (Tiff.Ifd.rows_per_strip header)
+    (Tiff.Ifd.rows_per_strip header);
+  assert_equal ~msg:"Storage"
+    (Tiff.Ifd.Strips { rows_per_strip = 10 })
+    (Tiff.Ifd.storage header)
 
 let test_malformed_tiff_header backend _ =
   let tmp = "./data/tmp_malformed_header.tiff" in
@@ -685,6 +688,207 @@ let test_missing_bits_per_sample backend _ =
   let ifd = Tiff.ifd tiff in
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
+
+let check_pixels2 ?window ~width ~height arr f =
+  let xoff, yoff, expected_w, expected_h =
+    match window with
+    | None -> (0, 0, width, height)
+    | Some (w : Tiff.window) -> (w.xoff, w.yoff, w.xsize, w.ysize)
+  in
+  assert_equal_int ~msg:"Data height" expected_h
+    (Bigarray.Genarray.nth_dim arr 0);
+  assert_equal_int ~msg:"Data width" expected_w
+    (Bigarray.Genarray.nth_dim arr 1);
+  for wy = 0 to expected_h - 1 do
+    let y = yoff + wy in
+    for wx = 0 to expected_w - 1 do
+      let x = xoff + wx in
+      assert_equal_int
+        ~msg:(Printf.sprintf "Pixel at (%d, %d)" x y)
+        (f ~x ~y)
+        (Bigarray.Genarray.get arr [| wy; wx |])
+    done
+  done
+
+let check_pixels3 ?window ~width ~height ~channels arr f =
+  let xoff, yoff, expected_w, expected_h =
+    match window with
+    | None -> (0, 0, width, height)
+    | Some (w : Tiff.window) -> (w.xoff, w.yoff, w.xsize, w.ysize)
+  in
+  assert_equal_int ~msg:"Data height" expected_h
+    (Bigarray.Genarray.nth_dim arr 0);
+  assert_equal_int ~msg:"Data width" expected_w
+    (Bigarray.Genarray.nth_dim arr 1);
+  assert_equal_int ~msg:"Data channels" channels
+    (Bigarray.Genarray.nth_dim arr 2);
+  for wy = 0 to expected_h - 1 do
+    let y = yoff + wy in
+    for wx = 0 to expected_w - 1 do
+      let x = xoff + wx in
+      for c = 0 to channels - 1 do
+        assert_equal_int
+          ~msg:(Printf.sprintf "Pixel at (%d, %d, %d)" x y c)
+          (f ~x ~y ~c)
+          (Bigarray.Genarray.get arr [| wy; wx; c |])
+      done
+    done
+  done
+
+let assert_tile_grid ~tile_width ~tile_height ~tiles_across ~tiles_down ifd =
+  assert_equal_int ~msg:"Tile Width" tile_width (Tiff.Ifd.tile_width ifd);
+  assert_equal_int ~msg:"Tile height" tile_height (Tiff.Ifd.tile_height ifd);
+  assert_equal_int ~msg:"Tiles across" tiles_across (Tiff.Ifd.tiles_across ifd);
+  assert_equal_int ~msg:"Tiles down" tiles_down (Tiff.Ifd.tiles_down ifd);
+  assert_equal ~msg:"Storage"
+    (Tiff.Ifd.Tiles { tile_width; tile_height })
+    (Tiff.Ifd.storage ifd)
+
+let test_load_tiled_uint8_deflate backend _ =
+  let data = "./data/tiled_uint8_deflate.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:45 ~height:50
+    ~compression:Tiff.Ifd.ADOBE_DEFLATE ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:4
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 12
+    (List.length (Tiff.Ifd.data_offsets ifd));
+  assert_equal ~msg:"Tile byte counts"
+    [ 267; 267; 255; 267; 267; 255; 267; 267; 255; 45; 45; 43 ]
+    (Tiff.Ifd.data_bytecounts ifd);
+  let expected_pixel ~x ~y = ((y * 45) + x) mod 256 in
+  let full = Tiff.data tiff ro in
+  check_pixels2 ~width:45 ~height:50 full expected_pixel;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels2 ~window ~width:45 ~height:50 win_data expected_pixel
+
+let test_load_tiled_rgb backend _ =
+  let data = "./data/tiled_rgb_uint8.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:45 ~height:50 ~samples_per_pixel:3
+    ~bits_per_sample:[ 8; 8; 8 ] ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:4
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 12
+    (List.length (Tiff.Ifd.data_offsets ifd));
+  assert_equal ~msg:"Tile byte counts"
+    (List.init 12 (fun _ -> 768))
+    (Tiff.Ifd.data_bytecounts ifd);
+  let expected_pixel ~x ~y ~c =
+    if c = 0 then x else if c = 1 then y else (x + y) mod 256
+  in
+  let full = Tiff.data tiff ro in
+  check_pixels3 ~width:45 ~height:50 ~channels:3 full expected_pixel;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels3 ~window ~width:45 ~height:50 ~channels:3 win_data expected_pixel
+
+let test_load_tiled_planar_rgb backend _ =
+  let data = "./data/tiled_planar_rgb.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:45 ~height:50
+    ~planar_configuration:Tiff.Ifd.Planar ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:4
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 36
+    (List.length (Tiff.Ifd.data_offsets ifd));
+  assert_equal ~msg:"Tile byte counts"
+    (List.init 36 (fun _ -> 256))
+    (Tiff.Ifd.data_bytecounts ifd);
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  for plane = 0 to 2 do
+    let expected_pixel ~x ~y = (x + y + (10 * plane)) mod 256 in
+    let full = Tiff.data ~plane tiff ro in
+    check_pixels2 ~width:45 ~height:50 full expected_pixel;
+    let win_data = Tiff.data ~plane ~window tiff ro in
+    check_pixels2 ~window ~width:45 ~height:50 win_data expected_pixel
+  done
+
+let test_load_tiled_sparse backend _ =
+  let data = "./data/tiled_sparse.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:40 ~height:40 ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:3
+    ifd;
+  let expected_counts = [ 256; 0; 0; 0; 256; 0; 0; 0; 256 ] in
+  assert_equal ~msg:"Tile byte counts (tiles 1,2,3,5,6,7 are empty)"
+    expected_counts
+    (Tiff.Ifd.data_bytecounts ifd);
+  let offsets = Tiff.Ifd.data_offsets ifd in
+  assert_bool "empty tiles [1; 2; 3; 5; 6; 7] carry zero offsets"
+    (List.for_all (fun t -> List.nth offsets t = 0) [ 1; 2; 3; 5; 6; 7 ]);
+  assert_bool "non-empty tiles [0; 4; 8] carry non-zero offsets"
+    (List.for_all (fun t -> List.nth offsets t > 0) [ 0; 4; 8 ]);
+  let expected_pixel ~x ~y =
+    let tile_idx = (y / 16 * 3) + (x / 16) in
+    if tile_idx = 0 || tile_idx = 4 || tile_idx = 8 then ((y * 40) + x) mod 256
+    else 0
+  in
+  let full = Tiff.data tiff ro in
+  check_pixels2 ~width:40 ~height:40 full expected_pixel;
+  let window = Tiff.{ xoff = 8; yoff = 8; xsize = 26; ysize = 26 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels2 ~window ~width:40 ~height:40 win_data expected_pixel
+
+let test_load_tiled_single_tile backend _ =
+  let data = "./data/tiled_single_tile.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:10 ~height:10 ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:1 ~tiles_down:1
+    ifd;
+  assert_equal ~msg:"Tile byte counts" [ 256 ] (Tiff.Ifd.data_bytecounts ifd);
+  assert_equal ~msg:"Tile offsets" [ 158 ] (Tiff.Ifd.data_offsets ifd);
+  let pixel_data = Tiff.data tiff ro in
+  check_pixels2 ~width:10 ~height:10 pixel_data (fun ~x ~y -> (y * 10) + x)
+
+let test_load_tiled_u16_rgb_lzw_predictor_be backend _ =
+  let data = "./data/tiled_u16_rgb_lzw_predictor_be.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint16) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:35 ~height:25 ~compression:Tiff.Ifd.LZW
+    ~predictor:Tiff.Ifd.HorizontalDifferencing ~samples_per_pixel:3
+    ~bits_per_sample:[ 16; 16; 16 ] ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:2
+    ifd;
+  let expected_pixel ~x ~y ~c =
+    if c = 0 then ((x * 257) + (y * 13)) mod 65536
+    else if c = 1 then ((x * 17) + (y * 509)) mod 65536
+    else (x + y) * 1021 mod 65536
+  in
+  let full = Tiff.data tiff ro in
+  check_pixels3 ~width:35 ~height:25 ~channels:3 full expected_pixel;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels3 ~window ~width:35 ~height:25 ~channels:3 win_data expected_pixel
+
+let test_load_tiled_bigtiff backend _ =
+  let data = "./data/tiled_bigtiff.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:40 ~height:40 ~compression:Tiff.Ifd.LZW ifd;
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:3
+    ifd;
+  assert_equal_int ~msg:"Number of tiles" 9
+    (List.length (Tiff.Ifd.data_offsets ifd));
+  let expected_pixel ~x ~y = ((y * 40) + x) mod 256 in
+  let full = Tiff.data tiff ro in
+  check_pixels2 ~width:40 ~height:40 full expected_pixel;
+  let window = Tiff.{ xoff = 14; yoff = 14; xsize = 6; ysize = 6 } in
+  let win_data = Tiff.data ~window tiff ro in
+  check_pixels2 ~window ~width:40 ~height:40 win_data expected_pixel
 
 let suite fs =
   let tests backend =
@@ -753,6 +957,14 @@ let suite fs =
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
+      "Test load tiled deflate" >:: test_load_tiled_uint8_deflate backend;
+      "Test load tiled rgb" >:: test_load_tiled_rgb backend;
+      "Test load planar tiled" >:: test_load_tiled_planar_rgb backend;
+      "Test load tiled sparse" >:: test_load_tiled_sparse backend;
+      "Test load tiled single tile" >:: test_load_tiled_single_tile backend;
+      "Test load tiled u16 rgb lzw predictor be"
+      >:: test_load_tiled_u16_rgb_lzw_predictor_be backend;
+      "Test load tiled bigtiff" >:: test_load_tiled_bigtiff backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
