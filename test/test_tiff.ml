@@ -649,6 +649,20 @@ let test_baseline_tags backend _ =
   assert_bool "ExtraSamples"
     (has_tag "./data/jello-gray.tiff" Tiff.Ifd.ExtraSamples)
 
+let test_color_map backend _ =
+  let color_map path =
+    with_ro backend path @@ fun r ->
+    let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+    Tiff.Ifd.color_map (Tiff.ifd tiff)
+  in
+  match color_map "./data/palette_uint8.tiff" with
+  | None -> assert_failure "Expected a ColorMap"
+  | Some cm ->
+      assert_equal_int ~msg:"Entries" 256 (Array.length cm);
+      assert_equal ~msg:"Red" (65535, 0, 0) cm.(0);
+      assert_equal ~msg:"Blue" (0, 0, 65535) cm.(2);
+      assert_bool "No ColorMap" (color_map "./data/uniform.tiff" = None)
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -753,6 +767,7 @@ let suite fs =
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
+      "Test color map" >:: test_color_map backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

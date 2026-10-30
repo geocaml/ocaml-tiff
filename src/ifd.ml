@@ -725,6 +725,24 @@ let planar_configuration t =
     |> read_entry |> planar_configuration_of_int
   with Not_found -> Chunky
 
+let color_map t =
+  match lookup t.entries ColorMap with
+  | None -> None
+  | Some entry ->
+      let values =
+        read_entry_raw entry t.ro
+        |> List.map (Endian.uint16 t.header.byte_order)
+        |> Array.of_list
+      in
+      let len = Array.length values in
+      if len mod 3 <> 0 then
+        Error.raise_error Error.Malformed_file
+          "ColorMap count is not a multiple of 3";
+      let n = len / 3 in
+      Some
+        (Array.init n (fun i ->
+             (values.(i), values.(n + i), values.((2 * n) + i))))
+
 let compression t =
   lookup_exn t.entries Compression |> read_entry |> compression_of_int
 
