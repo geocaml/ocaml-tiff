@@ -10,8 +10,12 @@ module File = File
 module Endian = Endian
 module Ifd = Ifd
 
-type window = { xoff : int; yoff : int; xsize : int; ysize : int }
+type window
 (** A window can be used to reduce the size of data returned by {! data} *)
+
+module Window : sig
+  val make : xoff:int -> yoff:int -> xsize:int -> ysize:int -> window
+end
 
 type ('repr, 'kind) kind =
   | Uint8 : (int, int8_unsigned_elt) kind

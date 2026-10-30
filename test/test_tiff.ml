@@ -177,7 +177,7 @@ let test_load_uniform_tiff backend _ =
     ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 128) res
@@ -186,7 +186,7 @@ let test_load_data_as_wrong_type_fails backend _ =
   let data = "./data/uniform.tiff" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   assert_raises ~msg:"fail to load data as wrong type"
     (Tiff.Error.Tiff_error
        ( Tiff.Error.Invalid_argument,
@@ -226,7 +226,7 @@ let test_load_simple_int8_tiff backend _ =
     ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 8; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:8 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
   (* uses alternating +ve and -ve values, so sum should be zero *)
@@ -243,7 +243,7 @@ let test_load_simple_uint8_tiff backend _ =
     ~planar_configuration:Tiff.Ifd.Chunky header;
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 234) res
@@ -257,7 +257,7 @@ let test_load_simple_int16_tiff backend _ =
     ~samples_per_pixel:1 ~bits_per_sample:[ 16 ]
     ~sample_format:Tiff.Ifd.SignedInteger ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 1234) res
@@ -271,7 +271,7 @@ let test_load_simple_uint16_tiff backend _ =
     ~samples_per_pixel:1 ~bits_per_sample:[ 16 ]
     ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
   assert_equal_int ~msg:"Value sum" (10 * 10 * 61234) res
@@ -285,7 +285,7 @@ let test_load_simple_int32_tiff backend _ =
     ~samples_per_pixel:1 ~bits_per_sample:[ 32 ]
     ~sample_format:Tiff.Ifd.SignedInteger ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] in
   (* sum of data is 0 as it is an equal mix of +ve and -ve values *)
@@ -306,7 +306,7 @@ let test_load_simple_uint32_tiff backend _ =
          "Unsupported datatype for plane: uint32, Unsigned Integer, 32 bpp",
          None ))
     (fun () ->
-      let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+      let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
       let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
       let res = Nx.sum (Nx.cast Int32 data) |> Nx.item [] in
       assert_equal ~printer:Int32.to_string ~msg:"Value sum" Int32.zero res)
@@ -320,7 +320,7 @@ let test_load_simple_float32_tiff backend _ =
     ~samples_per_pixel:1 ~bits_per_sample:[ 32 ]
     ~sample_format:Tiff.Ifd.IEEEFloatingPoint ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] in
   (* We need to force OCaml to get the 32 bit float representation of the number *)
@@ -340,7 +340,7 @@ let test_load_simple_float64_tiff backend _ =
     ~samples_per_pixel:1 ~bits_per_sample:[ 64 ]
     ~sample_format:Tiff.Ifd.IEEEFloatingPoint ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Chunky header;
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] in
   let expected = ref 0. in
@@ -359,7 +359,7 @@ let uniform_rgb_uint8_lzw backend _ =
     ~sample_format:Tiff.Ifd.UnsignedInteger ~rows_per_strip:10
     ~planar_configuration:Tiff.Ifd.Planar header;
   for plane = 0 to 2 do
-    let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+    let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
     let data = Tiff.data ~plane ~window tiff ro |> Nx.of_bigarray in
     let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
     assert_equal_int
@@ -383,7 +383,7 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
   for y = 0 to height - 1 do
-    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let window = Tiff.Window.make ~xoff:0 ~yoff:y ~xsize:width ~ysize:1 in
     let data = Tiff.data ~window tiff ro in
     let data2d = Bigarray.array2_of_genarray data in
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
@@ -408,7 +408,7 @@ let test_load_striped_uint8_lzw_tiff backend _ =
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
   for y = 0 to height - 1 do
-    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let window = Tiff.Window.make ~xoff:0 ~yoff:y ~xsize:width ~ysize:1 in
     let data = Tiff.data ~window tiff ro in
     let data2d = Bigarray.array2_of_genarray data in
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
@@ -437,7 +437,7 @@ let test_load_odd_striped_uint8_lzw_tiff backend _ =
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
   for y = 0 to height - 1 do
-    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let window = Tiff.Window.make ~xoff:0 ~yoff:y ~xsize:width ~ysize:1 in
     let data = Tiff.data ~window tiff ro in
     let data2d = Bigarray.array2_of_genarray data in
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
@@ -451,7 +451,7 @@ let test_odd_striped_tiff_window_crosses_boundary backend _ =
   let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
   with_ro backend path @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
-  let window = Tiff.{ xoff = 0; yoff = 2; xsize = 10; ysize = 3 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:2 ~xsize:10 ~ysize:3 in
   let data = Tiff.data ~window tiff ro in
   let data2d = Bigarray.array2_of_genarray data in
   assert_equal_int ~msg:"Window height" 3 (Bigarray.Array2.dim1 data2d);
@@ -466,6 +466,57 @@ let test_odd_striped_tiff_window_crosses_boundary backend _ =
       ((row + 3) * 10)
       row_sum
   done
+
+let test_window_rejects_negative_values _ =
+  let check ~msg ~xoff ~yoff ~xsize ~ysize =
+    assert_raises ~msg
+      (Tiff.Error.Tiff_error
+         ( Tiff.Error.Invalid_argument,
+           "TIFF window offsets and sizes must be non-negative",
+           None ))
+      (fun () -> ignore (Tiff.Window.make ~xoff ~yoff ~xsize ~ysize))
+  in
+  check ~msg:"Negative x offset" ~xoff:(-1) ~yoff:1 ~xsize:2 ~ysize:1;
+  check ~msg:"Negative y offset" ~xoff:0 ~yoff:(-1) ~xsize:2 ~ysize:1;
+  check ~msg:"Negative width" ~xoff:0 ~yoff:0 ~xsize:(-1) ~ysize:1;
+  check ~msg:"Negative height" ~xoff:0 ~yoff:0 ~xsize:2 ~ysize:(-1)
+
+let test_window_exceeds_image_width backend _ =
+  let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let window = Tiff.Window.make ~xoff:9 ~yoff:0 ~xsize:2 ~ysize:1 in
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Invalid TIFF data window { xoff=9, yoff=0, xsize=2, ysize=1 }: image \
+          dimensions are 10 x 10",
+         None ))
+    (fun () -> ignore (Tiff.data ~window tiff ro))
+
+let test_window_exceeds_image_height backend _ =
+  let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:9 ~xsize:1 ~ysize:2 in
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Invalid TIFF data window { xoff=0, yoff=9, xsize=1, ysize=2 }: image \
+          dimensions are 10 x 10",
+         None ))
+    (fun () -> ignore (Tiff.data ~window tiff ro))
+
+let test_window_at_image_boundary backend _ =
+  let path = "./data/striped_uint8_lzw_odd_strip_size.tiff" in
+  with_ro backend path @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let window = Tiff.Window.make ~xoff:9 ~yoff:9 ~xsize:1 ~ysize:1 in
+  let data = Tiff.data ~window tiff ro in
+  let data2d = Bigarray.array2_of_genarray data in
+  assert_equal_int ~msg:"Window height" 1 (Bigarray.Array2.dim1 data2d);
+  assert_equal_int ~msg:"Window width" 1 (Bigarray.Array2.dim2 data2d);
+  assert_equal_int ~msg:"Bottom-right pixel" 10 (Bigarray.Array2.get data2d 0 0)
 
 let test_uneven_rows_per_strip backend _ =
   let data = "./data/uneven_rows_per_strip.tiff" in
@@ -532,7 +583,7 @@ let test_gdal_sparse_tiff backend _ =
   assert_raises ~msg:"Pixel width" Not_found (fun () ->
       Tiff.Ifd.pixel_scale header);
   for y = 0 to height - 1 do
-    let window = Tiff.{ xoff = 0; yoff = y; xsize = width; ysize = 1 } in
+    let window = Tiff.Window.make ~xoff:0 ~yoff:y ~xsize:width ~ysize:1 in
     let data = Tiff.data ~window tiff ro in
     let data2d = Bigarray.array2_of_genarray data in
     assert_equal_int ~msg:"data height" 1 (Bigarray.Array2.dim1 data2d);
@@ -568,7 +619,7 @@ let test_load_deflate_compressed_tiff backend _ =
     ~bits_per_sample:[ 8 ] ~sample_format:Tiff.Ifd.UnsignedInteger
     ~predictor:Tiff.Ifd.No_predictor ~planar_configuration:Tiff.Ifd.Chunky
     header;
-  let window = Tiff.{ xoff = 0; yoff = 0; xsize = 10; ysize = 10 } in
+  let window = Tiff.Window.make ~xoff:0 ~yoff:0 ~xsize:10 ~ysize:10 in
   let data = Tiff.data ~window tiff ro |> Nx.of_bigarray in
   let res = Nx.sum data |> Nx.item [] |> Int64.to_int in
   (* The test image is filled with value 128, so sum should be 10*10*128 = 12800 *)
@@ -696,6 +747,13 @@ let suite fs =
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test odd striped TIFF window crosses boundary"
       >:: test_odd_striped_tiff_window_crosses_boundary backend;
+      "Test window rejects negative values"
+      >:: test_window_rejects_negative_values;
+      "Test window exceeds image width"
+      >:: test_window_exceeds_image_width backend;
+      "Test window exceeds image height"
+      >:: test_window_exceeds_image_height backend;
+      "Test window at image boundary" >:: test_window_at_image_boundary backend;
       "Test write bigtiff ifd roundtrip"
       >:: test_bigtiff_write_entries_roundtrip backend;
       "Test header roundtrip" >:: test_normal_header_roundtrip backend;
