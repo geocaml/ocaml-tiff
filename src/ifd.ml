@@ -154,6 +154,7 @@ type tag =
   | Compression
   | PhotometricInterpretation
   | DocumentName
+  | InterColorProfile
   | StripOffsets
   | RowsPerStrip
   | StripByteCounts
@@ -192,8 +193,11 @@ let tag_of_int = function
   | 258 -> BitsPerSample
   | 259 -> Compression
   | 262 -> PhotometricInterpretation
+  | 266 -> FillOrder
   | 269 -> DocumentName
+  | 270 -> ImageDescription
   | 273 -> StripOffsets
+  | 274 -> Orientation
   | 277 -> SamplesPerPixel
   | 278 -> RowsPerStrip
   | 279 -> StripByteCounts
@@ -201,10 +205,12 @@ let tag_of_int = function
   | 283 -> YResolution
   | 284 -> PlanarConfiguration
   | 296 -> ResolutionUnit
+  | 297 -> PageNumber
   | 339 -> SampleFormat
   | 33550 -> ModelPixelScale
   | 33922 -> ModelTiepoint
   | 34264 -> ModelTransformation
+  | 34675 -> InterColorProfile
   | 34736 -> GeoDoubleParams
   | 34737 -> GeoAsciiParams
   | 34735 -> GeoKeyDirectory
@@ -215,10 +221,6 @@ let tag_of_int = function
   | 325 -> TileByteCounts
   | 42112 -> GdalMetadata
   | 254 -> NewSubfileType
-  | 266 -> FillOrder
-  | 270 -> ImageDescription
-  | 274 -> Orientation
-  | 297 -> PageNumber
   | 305 -> Software
   | 306 -> DateTime
   | 320 -> ColorMap
@@ -231,8 +233,10 @@ let tag_to_int = function
   | BitsPerSample -> 258
   | Compression -> 259
   | PhotometricInterpretation -> 262
+  | FillOrder -> 266
   | DocumentName -> 269
   | StripOffsets -> 273
+  | Orientation -> 274
   | SamplesPerPixel -> 277
   | RowsPerStrip -> 278
   | StripByteCounts -> 279
@@ -240,10 +244,12 @@ let tag_to_int = function
   | YResolution -> 283
   | PlanarConfiguration -> 284
   | ResolutionUnit -> 296
+  | PageNumber -> 297
   | SampleFormat -> 339
   | ModelPixelScale -> 33550
   | ModelTiepoint -> 33922
   | ModelTransformation -> 34264
+  | InterColorProfile -> 34675
   | GeoDoubleParams -> 34736
   | GeoAsciiParams -> 34737
   | GeoKeyDirectory -> 34735
@@ -254,10 +260,7 @@ let tag_to_int = function
   | TileByteCounts -> 325
   | GdalMetadata -> 42112
   | NewSubfileType -> 254
-  | FillOrder -> 266
   | ImageDescription -> 270
-  | Orientation -> 274
-  | PageNumber -> 297
   | Software -> 305
   | DateTime -> 306
   | ColorMap -> 320
@@ -280,6 +283,7 @@ let tag_to_fields = function
   | DateTime ->
       [ Ascii ]
   | XResolution | YResolution -> [ Rational ]
+  | InterColorProfile -> [ Undefined ]
 
 let pp_tag ppf (x : tag) =
   match x with
@@ -289,6 +293,7 @@ let pp_tag ppf (x : tag) =
   | Compression -> Fmt.string ppf "compression"
   | PhotometricInterpretation -> Fmt.string ppf "photometric-interpretation"
   | DocumentName -> Fmt.string ppf "document-name"
+  | InterColorProfile -> Fmt.string ppf "inter-color-profile"
   | StripOffsets -> Fmt.string ppf "strip-offsets"
   | RowsPerStrip -> Fmt.string ppf "rows-per-strip"
   | StripByteCounts -> Fmt.string ppf "strip-byte-counts"

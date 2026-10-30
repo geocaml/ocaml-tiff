@@ -647,7 +647,9 @@ let test_baseline_tags backend _ =
   assert_bool "ImageDescription"
     (has_tag "./data/color.tiff" Tiff.Ifd.ImageDescription);
   assert_bool "ExtraSamples"
-    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.ExtraSamples)
+    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.ExtraSamples);
+  assert_bool "InterColorProfile"
+    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.InterColorProfile)  
 
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
