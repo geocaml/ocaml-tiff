@@ -177,6 +177,10 @@ val sample_format : t -> sample_format
 
 val planar_configuration : t -> planar_configuration
 
+val color_map : t -> (int * int * int) array option
+(** The red, green and blue values for each index of a palette image, or [None]
+    if the image has no ColorMap. *)
+
 (** {3 GeoTIFF Specific} *)
 
 val pixel_scale : t -> float array
