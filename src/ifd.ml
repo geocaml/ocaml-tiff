@@ -179,6 +179,7 @@ type tag =
   | TileOffsets
   | TileByteCounts
   | GdalMetadata
+  | GdalNodata
   | NewSubfileType
   | FillOrder
   | ImageDescription
@@ -223,6 +224,7 @@ let tag_of_int = function
   | 324 -> TileOffsets
   | 325 -> TileByteCounts
   | 42112 -> GdalMetadata
+  | 42113 -> GdalNodata
   | 254 -> NewSubfileType
   | 305 -> Software
   | 306 -> DateTime
@@ -262,6 +264,7 @@ let tag_to_int = function
   | TileOffsets -> 324
   | TileByteCounts -> 325
   | GdalMetadata -> 42112
+  | GdalNodata -> 42113
   | NewSubfileType -> 254
   | ImageDescription -> 270
   | Software -> 305
@@ -282,7 +285,7 @@ let tag_to_fields = function
   | TileOffsets | NewSubfileType -> [ Long ]
   | ModelPixelScale | ModelTiepoint | ModelTransformation | GeoDoubleParams ->
       [ Double ]
-  | GeoAsciiParams | GdalMetadata | DocumentName | ImageDescription | Software
+  | GeoAsciiParams | GdalMetadata | GdalNodata | DocumentName | ImageDescription | Software
   | DateTime ->
       [ Ascii ]
   | XResolution | YResolution -> [ Rational ]
@@ -318,6 +321,7 @@ let pp_tag ppf (x : tag) =
   | TileOffsets -> Fmt.string ppf "tile-offsets"
   | TileByteCounts -> Fmt.string ppf "tile-byte-counts"
   | GdalMetadata -> Fmt.string ppf "gdal-metadata"
+  | GdalNodata -> Fmt.string ppf "gdal-nodata"
   | NewSubfileType -> Fmt.string ppf "new-subfile-type"
   | FillOrder -> Fmt.string ppf "fill-order"
   | ImageDescription -> Fmt.string ppf "image-description"
