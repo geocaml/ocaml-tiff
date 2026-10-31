@@ -106,4 +106,5 @@ end
 module Private : sig
   module Lzw = Lzw
   module Deflate = Deflate
+  module Packbits = Packbits
 end
