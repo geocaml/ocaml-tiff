@@ -693,7 +693,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     Data.compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row
   in
 
-  let make_entry = Ifd.make_entry endian in
+  let make_entry = Ifd.make_entry ~kind:header.kind endian in
   let image_width, file_offset =
     make_entry file_offset ImageWidth (Ifd.Ints [ width ])
   in

@@ -37,10 +37,8 @@ let test_inline_bits_per_sample _ =
   Tiff_eio.with_open_in file @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Int8) ro in
   let ifd = Tiff.ifd tiff in
-  assert_equal
-    ~msg:"Two inline SHORT values should decode to [8; 8]"
-    [8; 8]
-    (Tiff.Ifd.bits_per_sample ifd)  
+  assert_equal ~msg:"Two inline SHORT values should decode to [8; 8]" [ 8; 8 ]
+    (Tiff.Ifd.bits_per_sample ifd)
 
 let with_wo backend path fn =
   match backend with
@@ -697,6 +695,71 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_inline_shorts ~bigtiff endian expected_bytes _ =
+  let header = Tiff.Ifd.create_header ~bigtiff endian in
+  let values = if bigtiff then [ 8; 8; 8; 8 ] else [ 8; 8 ] in
+
+  let entry, _ =
+    Tiff.Ifd.make_entry ~kind:header.kind endian 256 Tiff.Ifd.BitsPerSample
+      (Tiff.Ifd.Ints values)
+  in
+
+  let entry_size = if bigtiff then 20 else 12 in
+  let count_size = if bigtiff then 8 else 2 in
+  let value_offset = count_size + if bigtiff then 12 else 8 in
+
+  let output = Cstruct.create (count_size + entry_size + 8) in
+
+  let writer ~file_offset bufs =
+    let pos = Optint.Int63.to_int file_offset in
+    ignore
+      (List.fold_left
+         (fun pos buf ->
+           Cstruct.blit buf 0 output pos (Cstruct.length buf);
+           pos + Cstruct.length buf)
+         pos bufs)
+  in
+
+  Tiff.Ifd.write_raw_ifd ~file_offset:Optint.Int63.zero header writer [ entry ];
+
+  let actual =
+    Cstruct.to_string
+      (Cstruct.sub output value_offset (String.length expected_bytes))
+  in
+
+  assert_equal ~msg:"Inline SHORT values must be serialized correctly"
+    ~printer:(fun s ->
+      String.concat " "
+        (List.init (String.length s) (fun i ->
+             Printf.sprintf "%02x" (Char.code s.[i]))))
+    expected_bytes actual
+
+let test_classic_little_inline_shorts =
+  test_inline_shorts ~bigtiff:false Tiff.Endian.Little "\x08\x00\x08\x00"
+
+let test_classic_big_inline_shorts =
+  test_inline_shorts ~bigtiff:false Tiff.Endian.Big "\x00\x08\x00\x08"
+
+let test_bigtiff_little_inline_shorts =
+  test_inline_shorts ~bigtiff:true Tiff.Endian.Little
+    "\x08\x00\x08\x00\x08\x00\x08\x00"
+
+let test_bigtiff_big_inline_shorts =
+  test_inline_shorts ~bigtiff:true Tiff.Endian.Big
+    "\x00\x08\x00\x08\x00\x08\x00\x08"
+
+let test_bigtiff_read_four_shorts filename _ =
+  Eio_posix.run @@ fun env ->
+  let file = Eio.Path.(env#fs / "data" / filename) in
+  Tiff_eio.with_open_in file @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"BigTIFF should decode four inline SHORT values"
+    ~printer:(fun values ->
+      "[" ^ String.concat "; " (List.map string_of_int values) ^ "]")
+    [ 8; 8; 8; 8 ]
+    (Tiff.Ifd.bits_per_sample ifd)
+
 let suite fs =
   let tests backend =
     [
@@ -764,11 +827,17 @@ let suite fs =
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
-      "Test missing BitsPerSample defaults to 1"
-      >:: test_missing_bits_per_sample backend;
-      "Test baseline tags" >:: test_baseline_tags backend;
-      "Test inline BitsPerSample values"
-      >:: test_inline_bits_per_sample;
+      "Test inline BitsPerSample values" >:: test_inline_bits_per_sample;
+      "Classic TIFF little-endian inline SHORTs"
+      >:: test_classic_little_inline_shorts;
+      "Classic TIFF big-endian inline SHORTs" >:: test_classic_big_inline_shorts;
+      "BigTIFF little-endian inline SHORTs"
+      >:: test_bigtiff_little_inline_shorts;
+      "BigTIFF big-endian inline SHORTs" >:: test_bigtiff_big_inline_shorts;
+      "BigTIFF reads four inline SHORTs (little-endian)"
+      >:: test_bigtiff_read_four_shorts "inline_four_shorts_le.tiff";
+      "BigTIFF reads four inline SHORTs (big-endian)"
+      >:: test_bigtiff_read_four_shorts "inline_four_shorts_be.tiff";
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
