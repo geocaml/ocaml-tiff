@@ -72,9 +72,12 @@ val make :
   ?photometric_interpretation:Ifd.photometric_interpretation ->
   ?planar_configuration:Ifd.planar_configuration ->
   ?file_name:string ->
+  ?tile_size:int * int ->
   ('repr, 'kind) Data.t ->
   ('repr, 'kind) t
-(** [make data] constructs a new TIFF file from some multidimensional data. *)
+(** [make data] constructs a new TIFF file from some multidimensional data.
+    [tile_size] specifies [(tile_width, tile_height)] in pixels (both must be
+    positive multiples of 16); when omitted, the image is stored in strips. *)
 
 module Error : sig
   (** Error categories for TIFF operations. *)
