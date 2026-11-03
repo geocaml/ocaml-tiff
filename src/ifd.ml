@@ -1324,6 +1324,12 @@ let write_raw_ifd ~file_offset header writer entries =
 
 let v_of_entries entries data_offsets data_bytecounts header ro =
   let storage = storage_of_entries entries in
+  (* Keep IFD entries in ascending tag order as required by the TIFF spec. *)
+  let entries =
+    List.sort
+      (fun a b -> Int.compare (tag_to_int a.tag) (tag_to_int b.tag))
+      entries
+  in
   {
     entries;
     storage;

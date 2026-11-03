@@ -684,14 +684,28 @@ let apply_color_map color_map data =
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
     ?(compression = Ifd.No_compression) ?photometric_interpretation
-    ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File") data =
+    ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File") ?tile_size
+    data =
+  (* Tiled IFDs store TileWidth and TileHeight (13 entries) instead of RowsPerStrip (12). *)
+  let number_of_entries, offset_tag, bytecount_tag =
+    match tile_size with
+    | None -> (12, Ifd.StripOffsets, Ifd.StripByteCounts)
+    | Some (tile_width, tile_height) ->
+        if
+          tile_width <= 0 || tile_height <= 0
+          || tile_width mod 16 <> 0
+          || tile_height mod 16 <> 0
+        then
+          Error.raise_error Error.Invalid_argument
+            "Tile dimensions must be positive multiples of 16";
+        (13, Ifd.TileOffsets, Ifd.TileByteCounts)
+  in
   let header = Ifd.create_header ~bigtiff endian in
   let ifd_count, ifd_entries, next_ifd_ptr =
     match header.kind with Tiff -> (2, 12, 4) | Bigtiff -> (8, 20, 8)
   in
   let compression_int = Ifd.compression_to_int compression in
   let planar_int = Ifd.planar_configuration_to_int planar_configuration in
-  let number_of_entries = 12 in
   let ifd_size = ifd_count + (number_of_entries * ifd_entries) + next_ifd_ptr in
   let extra_data_offset = (header.offset |> Optint.Int63.to_int) + ifd_size in
   let file_offset = extra_data_offset in
@@ -724,7 +738,17 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   in
 
   let data_bytecounts =
-    Data.compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row
+    match tile_size with
+    | None ->
+        Data.compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row
+    | Some (tile_width, tile_height) ->
+        let tiles_across = (width + tile_width - 1) / tile_width in
+        let tiles_down = (height + tile_height - 1) / tile_height in
+        (* Every tile on disk is padded to the full tile_width * tile_height. *)
+        let tile_bytes =
+          tile_width * tile_height * samples_per_pixel * (bits_per_sample / 8)
+        in
+        List.init (tiles_across * tiles_down) (fun _ -> tile_bytes)
   in
 
   let make_entry = Ifd.make_entry endian in
@@ -747,12 +771,24 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let planar_config, file_offset =
     make_entry file_offset PlanarConfiguration (Ifd.Ints [ planar_int ])
   in
-  let rows_per_strip, file_offset =
-    make_entry file_offset RowsPerStrip (Ifd.Ints [ rows_per_strip ])
+  let storage_entries, file_offset =
+    match tile_size with
+    | None ->
+        let entry, file_offset =
+          make_entry file_offset RowsPerStrip (Ifd.Ints [ rows_per_strip ])
+        in
+        ([ entry ], file_offset)
+    | Some (tile_width, tile_height) ->
+        let tw, file_offset =
+          make_entry file_offset TileWidth (Ifd.Ints [ tile_width ])
+        in
+        let th, file_offset =
+          make_entry file_offset TileHeight (Ifd.Ints [ tile_height ])
+        in
+        ([ tw; th ], file_offset)
   in
-
-  let strip_bytecounts, file_offset =
-    make_entry file_offset StripByteCounts (Ifd.Ints data_bytecounts)
+  let bytecounts, file_offset =
+    make_entry file_offset bytecount_tag (Ifd.Ints data_bytecounts)
   in
   let samples_per_pixel, file_offset =
     make_entry file_offset SamplesPerPixel (Ifd.Ints [ samples_per_pixel ])
@@ -764,12 +800,17 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   let document_name, file_offset =
     make_entry file_offset DocumentName (Ifd.String file_name)
   in
-  let num_strips = List.length data_bytecounts in
+  let num_chunks = List.length data_bytecounts in
   let data_offsets, start_image_data_offset, array_element_size =
-    if num_strips = 1 then ([ file_offset ], file_offset, 0)
+    if num_chunks = 1 then ([ file_offset ], file_offset, 0)
+    else if Option.is_some tile_size then
+      (* TileOffsets is always stored as 4-byte LONG values. Not including bigtiff though*)
+      let start_offset = file_offset + (num_chunks * 4) in
+      let offsets = Data.compute_data_offsets data_bytecounts start_offset in
+      (offsets, start_offset, 4)
     else
       let total_image_bytes = bytes_per_row * height in
-      let short_array_size = num_strips * 2 in
+      let short_array_size = num_chunks * 2 in
       let last_offset_if_short =
         file_offset + short_array_size + total_image_bytes
         - List.hd (List.rev data_bytecounts)
@@ -779,16 +820,16 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
         let offsets = Data.compute_data_offsets data_bytecounts start_offset in
         (offsets, start_offset, 2)
       else
-        let long_array_size = num_strips * 4 in
+        let long_array_size = num_chunks * 4 in
         let start_offset = file_offset + long_array_size in
         let offsets = Data.compute_data_offsets data_bytecounts start_offset in
         (offsets, start_offset, 4)
   in
 
-  let strip_offset, _ =
+  let offsets, _ =
     make_entry
-      (start_image_data_offset - (num_strips * array_element_size))
-      StripOffsets (Ifd.Ints data_offsets)
+      (start_image_data_offset - (num_chunks * array_element_size))
+      offset_tag (Ifd.Ints data_offsets)
   in
 
   let of_ba_kind (type r k) : (r, k) Bigarray.kind -> (r, k) kind = function
@@ -812,13 +853,13 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
       compression;
       photometric_interpretation;
       document_name;
-      strip_offset;
+      offsets;
       samples_per_pixel;
-      rows_per_strip;
-      strip_bytecounts;
+      bytecounts;
       planar_config;
       sample_format;
     ]
+    @ storage_entries
   in
   let ro = fun ~file_offset:_ _ -> Fmt.failwith "No file" in
   let data_type = of_ba_kind (Bigarray.Genarray.kind data) in

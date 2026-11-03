@@ -1023,9 +1023,41 @@ let test_load_tiled_bigtiff backend _ =
   let win_data = Tiff.data ~window tiff ro in
   check_pixels2 ~xoff:14 ~yoff:14 ~width:6 ~height:6 win_data expected_pixel
 
+let test_write_tiled_tiff backend _ =
+  let dummy = Nx.init UInt8 [| 16; 16 |] (fun _ -> 0) |> Nx.to_bigarray in
+  List.iter
+    (fun tile_size ->
+      match Tiff.make ~tile_size dummy with
+      | _ -> assert_failure "Expected invalid tile_size to fail"
+      | exception Tiff.Error.Tiff_error (Tiff.Error.Invalid_argument, _, _) ->
+          ())
+    [ (0, 16); (16, -16); (15, 16); (16, 17) ];
+  let data =
+    Nx.init UInt16 [| 25; 35; 3 |] (fun i ->
+        ((i.(0) * 257) + (i.(1) * 17) + (i.(2) * 509)) mod 65536)
+    |> Nx.to_bigarray
+  in
+  with_wo backend "./data/tmp_tiled_write.tiff" @@ fun w ->
+  with_ro backend "./data/tmp_tiled_write.tiff" @@ fun r ->
+  let tiff = Tiff.make ~tile_size:(16, 16) data in
+  Tiff.to_file tiff w;
+  let loaded = Tiff.from_file (Tiff.as_kind Tiff.Uint16) r in
+  let ifd = Tiff.ifd loaded in
+  assert_tile_grid ~tile_width:16 ~tile_height:16 ~tiles_across:3 ~tiles_down:2
+    ifd;
+  assert_equal ~msg:"Tile byte counts"
+    (List.init 6 (fun _ -> 1536))
+    (Tiff.Ifd.data_bytecounts ifd);
+  assert_equal_ba data (Tiff.data loaded r);
+  let window = Tiff.Window.make ~xoff:14 ~yoff:14 ~xsize:6 ~ysize:6 in
+  check_pixels3 ~xoff:14 ~yoff:14 ~width:6 ~height:6 ~channels:3
+    (Tiff.data ~window loaded r) (fun ~x ~y ~c ->
+      ((y * 257) + (x * 17) + (c * 509)) mod 65536)
+
 let suite fs =
   let tests backend =
     [
+      "Test write tiled TIFF" >:: test_write_tiled_tiff backend;
       "Test write simple striped TIFF"
       >:: test_write_simple_striped_tiff backend;
       "Test write striped TIFF with large offsets"
