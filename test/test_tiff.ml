@@ -393,6 +393,30 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_batch_contiguous_strip_reads backend _ =
+  let data = "./data/striped_uint8_uncompressed.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let read_count = ref 0 in
+  let counted_ro ~file_offset buffers =
+    incr read_count;
+    ro ~file_offset buffers
+  in
+
+  let loaded = Tiff.data ~max_read:10 tiff counted_ro |> Nx.of_bigarray in
+  let sum = Nx.sum loaded |> Nx.item [] |> Int64.to_int in
+  assert_equal_int ~msg:"Pixel data sum" 550 sum;
+  let small_batch_reads = !read_count in
+
+  read_count := 0;
+  let loaded = Tiff.data ~max_read:20 tiff counted_ro |> Nx.of_bigarray in
+  let sum = Nx.sum loaded |> Nx.item [] |> Int64.to_int in
+  assert_equal_int ~msg:"Pixel data sum" 550 sum;
+  let large_batch_reads = !read_count in
+
+  assert_bool "Larger max_read should use fewer read calls"
+    (large_batch_reads < small_batch_reads)
+
 let test_load_striped_uint8_lzw_tiff backend _ =
   let data = "./data/striped_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -726,6 +750,8 @@ let suite fs =
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
+      "Test batch contiguous strip reads"
+      >:: test_batch_contiguous_strip_reads backend;
       "Test load striped uint8 lzw tiff"
       >:: test_load_striped_uint8_lzw_tiff backend;
       "Test load odd striped uint8 lzw tiff"

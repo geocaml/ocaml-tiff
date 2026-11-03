@@ -311,7 +311,8 @@ module Data = struct
     | Ifd.Unknown n ->
         Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 
-  let read_data ifd header ro plane window arr_type read_value =
+
+  let read_data ifd header ro plane window arr_type read_value max_read =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
 
@@ -322,9 +323,85 @@ module Data = struct
         Genarray.create arr_type c_layout
           [| window.ysize; window.xsize; samples_per_pixel |]
     in
+
+    (* Batch contiguous strip reads, up to 64 KB. *)
+    let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
+    let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
+    let rows_per_strip = Ifd.rows_per_strip ifd in
+
+    let strips_per_plane =
+      match planar_configuration with
+      | Planar -> Array.length strip_offsets / List.length (Ifd.bits_per_sample ifd)
+      | Chunky -> Array.length strip_offsets
+      | Unknown _ -> failwith "Unknown planar configuration"
+    in
+
+    let plane_offset = strips_per_plane * plane in
+    let first_strip = (window.yoff / rows_per_strip) + plane_offset in
+    let last_strip =
+      ((window.yoff + window.ysize - 1) / rows_per_strip) + plane_offset
+    in
+
+    let next_strip = ref first_strip in
+    let pending = ref [] in
+
+    let read_batch first =
+      let first_length = strip_bytecounts.(first) in
+
+      let rec find_batch_end current total =
+        if current >= last_strip then (current, total)
+        else
+          let next = current + 1 in
+          let current_end =
+            strip_offsets.(current) + strip_bytecounts.(current)
+          in
+          let next_length = strip_bytecounts.(next) in
+
+          if
+            next_length > 0
+            && strip_offsets.(next) = current_end
+            && total <= max_read
+            && next_length <= max_read - total
+          then find_batch_end next (total + next_length)
+          else (current, total)
+      in
+
+      let batch_last, batch_length =
+        find_batch_end first first_length
+      in
+
+      let batch_buffer = Cstruct.create batch_length in
+      ro
+        ~file_offset:(Optint.Int63.of_int strip_offsets.(first))
+        [ batch_buffer ];
+
+      let rec make_slices index offset acc =
+        if index > batch_last then List.rev acc
+        else
+          let length = strip_bytecounts.(index) in
+          let slice = Cstruct.sub batch_buffer offset length in
+          make_slices (index + 1) (offset + length)
+            ((index, slice) :: acc)
+      in
+
+      pending := make_slices first 0 []
+    in
+
     process_data ifd header plane window
-      ~on_strip:(fun expected_size buf sparse strip_offset ->
-        if not sparse then ro ~file_offset:strip_offset [ buf ];
+      ~on_strip:(fun expected_size buf sparse _strip_offset ->
+        let buf =
+          if sparse then buf
+          else (
+            if !pending = [] then read_batch !next_strip;
+
+            match !pending with
+            | (index, slice) :: rest when index = !next_strip ->
+                pending := rest;
+                slice
+            | _ -> failwith "Unexpected strip batch order")
+        in
+
+        incr next_strip;
 
         match (sparse, Ifd.compression ifd) with
         | true, _ | false, No_compression ->
@@ -351,6 +428,7 @@ module Data = struct
         let value = read_value buf buf_offset endian in
         Genarray.set arr dim value)
       ~after_strip:(fun _ _ -> ());
+
     arr
 
   let write_data ifd header plane window data w write_value =
@@ -419,6 +497,7 @@ type ('repr, 'kind) t = {
   mutable window : window option;
   mutable plane : int option;
   mutable image_nb : int option;
+  mutable max_read : int option;
   mutable data : ('repr, 'kind) Data.t option;
   header : header;
   ifds : Ifd.t array;
@@ -445,6 +524,7 @@ let from_file (type a b) (intent : (a, b) intent) (f : File.ro) : (a, b) t =
     window = None;
     plane = None;
     image_nb = None;
+    max_read = None;
     data = None;
     ifds;
   }
@@ -601,8 +681,12 @@ let read_repr (type r k) (t : (r, k) t) ifd plane =
       | Some (read, _) -> (bigarray_kind kind, read)
       | None -> converted_reader ~unsafe_ok:true kind fmt bpp)
 
-let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
-    (f : File.ro) : (repr, kind) Data.t =
+let data (type repr kind) ?(image_nb = 0) ?plane ?window
+    ?(max_read = 65_536) (t : (repr, kind) t) (f : File.ro) :
+    (repr, kind) Data.t =
+  if max_read <= 0 then
+    Error.raise_error Error.Invalid_argument
+      "max_read must be positive";
   let nb_images = Array.length t.ifds in
   if image_nb < 0 || image_nb >= nb_images then
     Error.raisef Error.Invalid_argument
@@ -613,15 +697,20 @@ let data (type repr kind) ?(image_nb = 0) ?plane ?window (t : (repr, kind) t)
   let plane = Data.get_plane ifd plane in
   match t.data with
   | Some data
-    when t.window = Some window && t.plane = Some plane
-         && t.image_nb = Some image_nb ->
+    when t.window = Some window
+         && t.plane = Some plane
+         && t.image_nb = Some image_nb
+         && t.max_read = Some max_read ->
       data
   | Some _ | None ->
       let kind, read_value = read_repr t ifd plane in
-      let data = Data.read_data ifd t.header f plane window kind read_value in
+      let data =
+        Data.read_data ifd t.header f plane window kind read_value max_read
+      in
       t.window <- Some window;
       t.plane <- Some plane;
       t.image_nb <- Some image_nb;
+      t.max_read <- Some max_read;
       t.data <- Some data;
       data
 
@@ -795,6 +884,7 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
     window = None;
     plane = None;
     image_nb = None;
+    max_read = None;
     header;
     ifds = Array.make 1 ifd;
   }

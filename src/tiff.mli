@@ -57,6 +57,7 @@ val data :
   ?image_nb:int ->
   ?plane:int ->
   ?window:window ->
+  ?max_read:int ->
   ('repr, 'kind) t ->
   File.ro ->
   ('repr, 'kind) Data.t
