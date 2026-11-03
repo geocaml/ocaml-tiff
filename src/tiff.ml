@@ -648,6 +648,11 @@ let write_data (type repr kind) ?(plane = None) ?(window = None) tiff ifd
 let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
     (w : File.wo) =
   let ifd = Ifd.cache_all_entries (ifd tiff) in
+  (match Ifd.compression ifd with
+  | Ifd.No_compression -> ()
+  | _ ->
+      Error.raise_error Error.Unsupported_feature
+        "Writing compressed TIFF data is not supported");
   Ifd.write_header w tiff.header;
   Ifd.write_ifd ~file_offset:tiff.header.offset tiff.header w ifd;
   match tiff.data with

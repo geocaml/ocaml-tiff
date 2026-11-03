@@ -83,6 +83,26 @@ let test_write_basic_tiff backend _ =
   assert_equal ~msg:"Data" data (Tiff.data tiff r);
   assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
+let test_lzw_write_early_validation _ =
+  let data =
+    Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make ~compression:Tiff.Ifd.LZW data in
+  let writes = ref 0 in
+  let writer ~file_offset:_ buffers =
+    incr writes;
+    ignore buffers
+  in
+  let rejected =
+    try
+      Tiff.to_file tiff writer;
+      false
+    with Tiff.Error.Tiff_error (Tiff.Error.Unsupported_feature, _, _) -> true
+  in
+  assert_bool "LZW writing should be rejected" rejected;
+  assert_equal ~msg:"Number of writes before rejection" 0 !writes
+
 let test_write_int32_tiff backend _ =
   with_wo backend "./data/tmp_int32.tiff" @@ fun w ->
   with_ro backend "./data/tmp_int32.tiff" @@ fun r ->
@@ -839,6 +859,7 @@ let suite fs =
       "Test write striped TIFF with large offsets"
       >:: test_write_striped_tiff_large_offsets backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
+      "Test LZW write early validation" >:: test_lzw_write_early_validation;
       "Test write int32 TIFF" >:: test_write_int32_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test odd striped TIFF window crosses boundary"
