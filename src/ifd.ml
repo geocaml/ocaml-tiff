@@ -46,6 +46,9 @@ let write_header wo header =
         (header.offset |> Optint.Int63.to_int32)
   | Bigtiff ->
       Endian.set_uint16 ~offset:2 header.byte_order buf 43;
+      (* Bytes 4-5 hold the offset size (always 8) and bytes 6-7 are
+         reserved and must be zero; the buffer is zero-initialised. *)
+      Endian.set_uint16 ~offset:4 header.byte_order buf 8;
       Endian.set_uint64 ~offset:8 header.byte_order buf
         (header.offset |> Optint.Int63.to_int64));
 
@@ -715,6 +718,24 @@ let planar_configuration t =
     lookup_exn t.entries PlanarConfiguration
     |> read_entry |> planar_configuration_of_int
   with Not_found -> Chunky
+
+let color_map t =
+  match lookup t.entries ColorMap with
+  | None -> None
+  | Some entry ->
+      let values =
+        read_entry_raw entry t.ro
+        |> List.map (Endian.uint16 t.header.byte_order)
+        |> Array.of_list
+      in
+      let len = Array.length values in
+      if len mod 3 <> 0 then
+        Error.raise_error Error.Malformed_file
+          "ColorMap count is not a multiple of 3";
+      let n = len / 3 in
+      Some
+        (Array.init n (fun i ->
+             (values.(i), values.(n + i), values.((2 * n) + i))))
 
 let compression t =
   lookup_exn t.entries Compression |> read_entry |> compression_of_int
