@@ -46,7 +46,15 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
    but modern libraries override this and default to  64KB or higher for modern hardware. *)
 let default_strip_size = 65_536
 
-type window = { xoff : int; yoff : int; xsize : int; ysize : int }
+module Window = struct
+  type t = { xoff : int; yoff : int; xsize : int; ysize : int }
+
+  let make ~xoff ~yoff ~xsize ~ysize =
+    if xoff < 0 || yoff < 0 || xsize < 0 || ysize < 0 then
+      Error.raise_error Error.Invalid_argument
+        "TIFF window offsets and sizes must be non-negative";
+    { xoff; yoff; xsize; ysize }
+end
 
 module Data = struct
   (* open Bigarray *)
@@ -107,11 +115,11 @@ module Data = struct
   let write_float64_value buf buf_index value tiff_endianness =
     Endian.set_double ~offset:buf_index tiff_endianness buf value
 
-  let pp_window fmt window =
+  let pp_window fmt (window : Window.t) =
     Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff
       window.yoff window.xsize window.ysize
 
-  let get_window ifd window =
+  let get_window ifd (window : Window.t option) =
     (* Check the window, if any, makes sense for the TIFF file *)
     let () =
       match window with
@@ -130,7 +138,7 @@ module Data = struct
     | None ->
         let width = Ifd.width ifd in
         let height = Ifd.height ifd in
-        { xoff = 0; yoff = 0; xsize = width; ysize = height }
+        Window.make ~xoff:0 ~yoff:0 ~xsize:width ~ysize:height
 
   let get_plane ifd plane =
     let planar_configuration = Ifd.planar_configuration ifd in
@@ -146,8 +154,8 @@ module Data = struct
     | Unknown _, _ ->
         Error.raise_error Error.Malformed_file "Unknown planar format TIFF"
 
-  let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
-      ~after_strip =
+  let process_data ifd (header : Ifd.header) plane (window : Window.t) ~on_strip
+      ~on_value ~after_strip =
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
@@ -311,7 +319,7 @@ module Data = struct
     | Ifd.Unknown n ->
         Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 
-  let read_data ifd header ro plane window arr_type read_value =
+  let read_data ifd header ro plane (window : Window.t) arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
 
@@ -416,7 +424,7 @@ end
 
 type ('repr, 'kind) t = {
   intent : ('repr, 'kind) intent;
-  mutable window : window option;
+  mutable window : Window.t option;
   mutable plane : int option;
   mutable image_nb : int option;
   mutable data : ('repr, 'kind) Data.t option;
