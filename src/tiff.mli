@@ -65,6 +65,14 @@ val data :
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
 
+val apply_color_map :
+  (int * int * int) array ->
+  (int, 'kind) Data.t ->
+  (int, int16_unsigned_elt) Data.t
+(** For palette images, {!data} returns indices into the ColorMap.
+    [apply_color_map color_map data] turns the palette indices in [data] into
+    red, green and blue values, using [color_map] from {!Ifd.color_map}. *)
+
 val make :
   ?bigtiff:bool ->
   ?endian:Endian.endianness ->
