@@ -747,7 +747,9 @@ let color_map t =
              (values.(i), values.(n + i), values.((2 * n) + i))))
 
 let compression t =
-  lookup_exn t.entries Compression |> read_entry |> compression_of_int
+  match lookup t.entries Compression with
+  | None -> No_compression
+  | Some entry -> read_entry entry |> compression_of_int
 
 let tiepoint t =
   let entry = lookup_exn t.entries ModelTiepoint in
