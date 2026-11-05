@@ -73,7 +73,7 @@ module Data = struct
   let read_int16_value buf buf_index tiff_endianness =
     Endian.int16 ~offset:buf_index tiff_endianness buf
 
-  (* currently unused but updated regardless incase we later use it *)
+  (* currently unused but updated regardless in case we later use it *)
   let _read_uint32_value buf buf_index tiff_endianness =
     Endian.int32 ~offset:buf_index tiff_endianness buf
 
@@ -399,7 +399,7 @@ module Data = struct
     let rows_per_strip = max 1 (default_strip_size / bytes_per_row) in
     (rows_per_strip, bytes_per_row)
 
-  (* Total byte counts per strip, must strips will be full (i.e. have [rows_per_strip] rows
+  (* Total byte counts per strip, most strips will be full (i.e. have [rows_per_strip] rows
      in them). Only the last might be short. *)
   let compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row =
     let num_strips = height / rows_per_strip in
