@@ -1352,7 +1352,9 @@ let make_entry endian file_offset tag values =
     | [] -> Error.raise_error Error.Unsupported_feature "Unknown field for tag"
     | _ -> (
         match values with
-        | Ints (v :: _) -> smallest_int_field_for v allowed_fields
+        | Ints (v :: rest) ->
+            let largest = List.fold_left max v rest in
+            smallest_int_field_for largest allowed_fields
         | _ ->
             Error.raise_error Error.Unsupported_feature
               "Cannot determine field for non-int multi-field tag")
