@@ -890,6 +890,24 @@ let test_load_tiled_bigtiff backend _ =
   let win_data = Tiff.data ~window tiff ro in
   check_pixels2 ~window ~width:40 ~height:40 win_data expected_pixel
 
+let test_load_tiled_geotiff_uncompressed backend _ =
+  let original = "./data/cea.tiff" in
+  let tiled = "./data/cea_tiled.tif" in
+  let read_data ?(check_tiles = false) filename =
+    with_ro backend filename @@ fun ro ->
+    let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+    let ifd = Tiff.ifd tiff in
+    if check_tiles then (
+      Test_helpers.assert_ifd ~width:514 ~height:515
+        ~compression:Tiff.Ifd.No_compression ifd;
+      assert_tile_grid ~tile_width:256 ~tile_height:256 ~tiles_across:3
+        ~tiles_down:3 ifd;
+      assert_equal_int ~msg:"Number of tiles" 9
+        (List.length (Tiff.Ifd.data_offsets ifd)));
+    Tiff.data tiff ro
+  in
+  assert_equal_ba (read_data original) (read_data ~check_tiles:true tiled)
+
 let test_write_tiled_tiff backend _ =
   let dummy = Nx.init UInt8 [| 16; 16 |] (fun _ -> 0) |> Nx.to_bigarray in
   List.iter
@@ -997,6 +1015,8 @@ let suite fs =
       "Test load tiled u16 rgb lzw predictor be"
       >:: test_load_tiled_u16_rgb_lzw_predictor_be backend;
       "Test load tiled bigtiff" >:: test_load_tiled_bigtiff backend;
+      "Test load uncompressed tiled GeoTIFF"
+      >:: test_load_tiled_geotiff_uncompressed backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
