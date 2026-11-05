@@ -184,6 +184,7 @@ type tag =
   | DateTime
   | ColorMap
   | ExtraSamples
+  | JPEGTables
   | Unknown of int
 
 let tag_of_int = function
@@ -223,6 +224,7 @@ let tag_of_int = function
   | 306 -> DateTime
   | 320 -> ColorMap
   | 338 -> ExtraSamples
+  | 347 -> JPEGTables
   | i -> Unknown i
 
 let tag_to_int = function
@@ -262,9 +264,11 @@ let tag_to_int = function
   | DateTime -> 306
   | ColorMap -> 320
   | ExtraSamples -> 338
+  | JPEGTables -> 347
   | Unknown i -> i
 
 let tag_to_fields = function
+  | JPEGTables -> [ Undefined ]
   | ImageLength | ImageWidth | RowsPerStrip | StripOffsets | StripByteCounts
   | TileWidth | TileByteCounts | TileHeight | Unknown _ ->
       [ Short; Long ]
@@ -283,6 +287,7 @@ let tag_to_fields = function
 
 let pp_tag ppf (x : tag) =
   match x with
+  | JPEGTables -> Fmt.string ppf "jpeg_tables"
   | ImageWidth -> Fmt.string ppf "image-width"
   | ImageLength -> Fmt.string ppf "image-length"
   | BitsPerSample -> Fmt.string ppf "bits-per-sample"
@@ -724,6 +729,25 @@ let planar_configuration t =
     lookup_exn t.entries PlanarConfiguration
     |> read_entry |> planar_configuration_of_int
   with Not_found -> Chunky
+
+let jpeg_tables t =
+  match lookup t.entries JPEGTables with
+  | None -> None
+  | Some entry ->
+      if entry.field <> Undefined then
+        Error.raise_error Error.Malformed_file
+          "JPEGTables must have field type UNDEFINED";
+      if entry.count < 4L || entry.count > Int64.of_int max_int then
+        Error.raise_error Error.Malformed_file "Invalid JPEGTables byte count";
+      let tables =
+        match entry.offset with
+        | Immediate value ->
+            let buf = Cstruct.create 8 in
+            Endian.set_uint64 t.header.byte_order buf value;
+            Cstruct.sub buf 0 (Int64.to_int entry.count)
+        | Offset _ | Read _ -> Cstruct.concat (read_entry_raw entry t.ro)
+      in
+      Some tables
 
 let compression t =
   lookup_exn t.entries Compression |> read_entry |> compression_of_int

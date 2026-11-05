@@ -332,6 +332,36 @@ module Data = struct
               Error.raise_error Error.Malformed_file
                 "Strip is unexpectedly short";
             buf
+        | false, JPEG ->
+            if
+              samples_per_pixel <> 1
+              || Ifd.bits_per_sample ifd <> [ 8 ]
+              || Ifd.sample_format ifd <> Ifd.UnsignedInteger
+            then
+              Error.raise_error Error.Unsupported_feature
+                "JPEG requires single-component unsigned 8-bit samples";
+            (match
+               Ifd.lookup_exn (Ifd.entries ifd) Ifd.PhotometricInterpretation
+               |> Ifd.read_entry |> Ifd.photometric_interpretation_of_int
+             with
+            | BlackIsZero | WhiteIsZero -> ()
+            | _ ->
+                Error.raise_error Error.Unsupported_feature
+                  "JPEG currently supports grayscale TIFF images only");
+            (match Ifd.predictor ifd with
+            | No_predictor -> ()
+            | _ ->
+                Error.raise_error Error.Unsupported_feature
+                  "JPEG does not support TIFF predictors");
+            let width = Ifd.width ifd in
+            if width <= 0 || expected_size mod width <> 0 then
+              Error.raise_error Error.Malformed_file
+                "Invalid JPEG strip dimensions";
+            let height = expected_size / width in
+            let uncompressed_buffer = Cstruct.create expected_size in
+            Jpeg.decode ?tables:(Ifd.jpeg_tables ifd) ~width ~height buf
+              uncompressed_buffer;
+            uncompressed_buffer
         | false, LZW ->
             let uncompressed_buffer = Cstruct.create expected_size in
             Lzw.decode buf uncompressed_buffer;

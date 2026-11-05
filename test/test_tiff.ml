@@ -686,9 +686,184 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_load_uniform_jpeg backend _ =
+  let data = "./data/issue19-gray-jpeg.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"JPEG bits per sample" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
+
+  (match Tiff.Ifd.jpeg_tables ifd with
+  | None -> assert_failure "Expected shared JPEG tables"
+  | Some tables ->
+      assert_equal ~msg:"JPEG tables length" ~printer:Int.to_string 289
+        (Cstruct.length tables);
+      assert_equal ~msg:"JPEG tables start marker" "\xff\xd8"
+        (Cstruct.to_string (Cstruct.sub tables 0 2));
+      assert_equal ~msg:"JPEG tables end marker" "\xff\xd9"
+        (Cstruct.to_string (Cstruct.sub tables (Cstruct.length tables - 2) 2)));
+
+  let pixels = Tiff.data tiff ro in
+  assert_equal ~msg:"Image dimensions" [| 16; 16 |]
+    (Bigarray.Genarray.dims pixels);
+
+  for row = 0 to 15 do
+    for col = 0 to 15 do
+      assert (Bigarray.Genarray.get pixels [| row; col |] = 128)
+    done
+  done
+
+let test_load_quadrants_jpeg backend _ =
+  let data = "./data/issue19-quadrants-jpeg.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"JPEG bits per sample" [ 8 ] (Tiff.Ifd.bits_per_sample ifd);
+
+  let pixels = Tiff.data tiff ro in
+  assert_equal ~msg:"Image dimensions" [| 16; 16 |]
+    (Bigarray.Genarray.dims pixels);
+
+  for row = 0 to 15 do
+    for col = 0 to 15 do
+      let expected =
+        if row < 8 then if col < 8 then 32 else 96
+        else if col < 8 then 160
+        else 224
+      in
+      assert_equal ~msg:"Quadrant pixel" ~printer:Int.to_string expected
+        (Bigarray.Genarray.get pixels [| row; col |])
+    done
+  done
+
+let test_load_pattern_jpeg backend _ =
+  with_ro backend "./data/issue19-pattern-jpeg.tiff" @@ fun jpeg_ro ->
+  with_ro backend "./data/issue19-pattern-reference.tiff" @@ fun reference_ro ->
+  let jpeg = Tiff.from_file (Tiff.as_kind Tiff.Uint8) jpeg_ro in
+  let reference = Tiff.from_file (Tiff.as_kind Tiff.Uint8) reference_ro in
+  let actual = Tiff.data jpeg jpeg_ro in
+  let expected = Tiff.data reference reference_ro in
+  assert_equal ~msg:"Pattern JPEG dimensions" [| 13; 19 |]
+    (Bigarray.Genarray.dims actual);
+  assert_equal ~msg:"Pattern reference dimensions" [| 13; 19 |]
+    (Bigarray.Genarray.dims expected);
+  for row = 0 to 12 do
+    for col = 0 to 18 do
+      let actual_value = Bigarray.Genarray.get actual [| row; col |] in
+      let expected_value = Bigarray.Genarray.get expected [| row; col |] in
+      assert_bool
+        (Printf.sprintf "Pixel (%d, %d): expected %d, got %d; tolerance is 2"
+           row col expected_value actual_value)
+        (abs (actual_value - expected_value) <= 2)
+    done
+  done
+
+let test_load_multistrip_jpeg backend _ =
+  with_ro backend "./data/issue19-multistrip-jpeg.tiff" @@ fun jpeg_ro ->
+  with_ro backend "./data/issue19-multistrip-reference.tiff"
+  @@ fun reference_ro ->
+  let jpeg = Tiff.from_file (Tiff.as_kind Tiff.Uint8) jpeg_ro in
+  let reference = Tiff.from_file (Tiff.as_kind Tiff.Uint8) reference_ro in
+  assert_equal ~msg:"JPEG rows per strip" ~printer:Int.to_string 16
+    (Tiff.Ifd.rows_per_strip (Tiff.ifd jpeg));
+  let actual = Tiff.data jpeg jpeg_ro in
+  let expected = Tiff.data reference reference_ro in
+  assert_equal ~msg:"Multistrip JPEG dimensions" [| 35; 19 |]
+    (Bigarray.Genarray.dims actual);
+  assert_equal ~msg:"Multistrip reference dimensions" [| 35; 19 |]
+    (Bigarray.Genarray.dims expected);
+  for row = 0 to 34 do
+    for col = 0 to 18 do
+      let actual_value = Bigarray.Genarray.get actual [| row; col |] in
+      let expected_value = Bigarray.Genarray.get expected [| row; col |] in
+      assert_bool
+        (Printf.sprintf "Pixel (%d, %d): expected %d, got %d; tolerance is 2"
+           row col expected_value actual_value)
+        (abs (actual_value - expected_value) <= 2)
+    done
+  done
+
+let test_truncated_jpeg backend _ =
+  with_ro backend "./data/issue19-truncated-jpeg.tiff" @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  match Tiff.data tiff ro with
+  | exception Tiff.Error.Tiff_error (Tiff.Error.Malformed_file, _, _) -> ()
+  | exception exn ->
+      assert_failure ("Expected Malformed_file, got: " ^ Printexc.to_string exn)
+  | _ -> assert_failure "Expected truncated JPEG decoding to fail"
+
+let test_load_restart_jpeg backend _ =
+  with_ro backend "./data/issue19-restart-jpeg.tiff" @@ fun jpeg_ro ->
+  with_ro backend "./data/issue19-restart-reference.tiff" @@ fun reference_ro ->
+  let jpeg = Tiff.from_file (Tiff.as_kind Tiff.Uint8) jpeg_ro in
+  let reference = Tiff.from_file (Tiff.as_kind Tiff.Uint8) reference_ro in
+  (match Tiff.Ifd.jpeg_tables (Tiff.ifd jpeg) with
+  | None -> ()
+  | Some _ -> assert_failure "Expected no shared JPEG tables");
+  let actual = Tiff.data jpeg jpeg_ro in
+  let expected = Tiff.data reference reference_ro in
+  assert_equal ~msg:"Restart JPEG dimensions" [| 35; 19 |]
+    (Bigarray.Genarray.dims actual);
+  assert_equal ~msg:"Restart reference dimensions" [| 35; 19 |]
+    (Bigarray.Genarray.dims expected);
+  for row = 0 to 34 do
+    for col = 0 to 18 do
+      let actual_value = Bigarray.Genarray.get actual [| row; col |] in
+      let expected_value = Bigarray.Genarray.get expected [| row; col |] in
+      assert_bool
+        (Printf.sprintf "Pixel (%d, %d): expected %d, got %d; tolerance is 2"
+           row col expected_value actual_value)
+        (abs (actual_value - expected_value) <= 2)
+    done
+  done
+
+let test_shared_misc_jpeg backend _ =
+  with_ro backend "./data/issue19-shared-misc-jpeg.tiff" @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let pixels = Tiff.data tiff ro in
+  assert_equal ~msg:"Shared-table image dimensions" [| 16; 16 |]
+    (Bigarray.Genarray.dims pixels);
+  for row = 0 to 15 do
+    for col = 0 to 15 do
+      assert_equal
+        ~msg:(Printf.sprintf "Shared-table pixel (%d, %d)" row col)
+        ~printer:Int.to_string 128
+        (Bigarray.Genarray.get pixels [| row; col |])
+    done
+  done
+
+let test_redefined_jpeg_table backend filename expected_message _ =
+  with_ro backend ("./data/" ^ filename) @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  match Tiff.data tiff ro with
+  | exception Tiff.Error.Tiff_error (Tiff.Error.Malformed_file, message, _) ->
+      assert_equal ~msg:"Shared-table redefinition error"
+        ~printer:(fun value -> value)
+        expected_message message
+  | exception exn ->
+      assert_failure ("Expected Malformed_file, got: " ^ Printexc.to_string exn)
+  | _ -> assert_failure "Expected shared-table redefinition to fail"
+
 let suite fs =
   let tests backend =
     [
+      "Test load uniform JPEG" >:: test_load_uniform_jpeg backend;
+      "Test load quadrant JPEG" >:: test_load_quadrants_jpeg backend;
+      "Test load patterned JPEG" >:: test_load_pattern_jpeg backend;
+      "Test load multistrip JPEG" >:: test_load_multistrip_jpeg backend;
+      "Test truncated JPEG" >:: test_truncated_jpeg backend;
+      "Test JPEG restart markers" >:: test_load_restart_jpeg backend;
+      "Test miscellaneous markers in shared JPEG tables"
+      >:: test_shared_misc_jpeg backend;
+      "Test shared JPEG quantization table redefinition"
+      >:: test_redefined_jpeg_table backend "issue19-redefine-quant-jpeg.tiff"
+            "JPEG: Image segment redefines a shared quantization table";
+      "Test shared JPEG DC table redefinition"
+      >:: test_redefined_jpeg_table backend "issue19-redefine-dc-jpeg.tiff"
+            "JPEG: Image segment redefines a shared Huffman table";
+      "Test shared JPEG AC table redefinition"
+      >:: test_redefined_jpeg_table backend "issue19-redefine-ac-jpeg.tiff"
+            "JPEG: Image segment redefines a shared Huffman table";
       "Test write simple striped TIFF"
       >:: test_write_simple_striped_tiff backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;

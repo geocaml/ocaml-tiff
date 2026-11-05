@@ -56,6 +56,7 @@ type tag =
   | DateTime
   | ColorMap
   | ExtraSamples
+  | JPEGTables
   | Unknown of int
 
 type compression =
@@ -139,6 +140,9 @@ val bits_per_sample : t -> int list
 
 val compression : t -> compression
 (** Compression scheme used in the image data *)
+
+val jpeg_tables : t -> Cstruct.t option
+(** Shared JPEG table bytes, or [None] when JPEGTables is absent. *)
 
 val tile_width : t -> int
 (** If the tiff is tiled, then the width of individual tiles. *)
