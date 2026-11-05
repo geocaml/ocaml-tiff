@@ -751,6 +751,7 @@ let jpeg_tables t =
         | Offset _ | Read _ -> Cstruct.concat (read_entry_raw entry t.ro)
       in
       Some tables
+
 let color_map t =
   match lookup t.entries ColorMap with
   | None -> None
