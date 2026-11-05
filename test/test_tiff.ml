@@ -737,6 +737,22 @@ let test_load_striped_no_rows_per_strip backend _ =
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
     (Tiff.Ifd.rows_per_strip header)
 
+let test_load_no_compression_tag backend _ =
+  let data = "./data/no_compression_tag.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 2 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 2 (Tiff.Ifd.height header);
+  assert_equal ~msg:"Compression defaults to No_compression"
+    Tiff.Ifd.No_compression
+    (Tiff.Ifd.compression header);
+  let pixels = Tiff.data tiff ro |> Bigarray.array2_of_genarray in
+  assert_equal_int ~msg:"Pixel 0" 10 pixels.{0, 0};
+  assert_equal_int ~msg:"Pixel 1" 20 pixels.{0, 1};
+  assert_equal_int ~msg:"Pixel 2" 30 pixels.{1, 0};
+  assert_equal_int ~msg:"Pixel 3" 40 pixels.{1, 1}
+
 let test_malformed_tiff_header backend _ =
   let tmp = "./data/tmp_malformed_header.tiff" in
   Fun.protect
@@ -816,6 +832,8 @@ let suite fs =
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test load striped tiff without RowsPerStrip"
       >:: test_load_striped_no_rows_per_strip backend;
+      "Test load tiff without compression tag"
+      >:: test_load_no_compression_tag backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test LZW predictor and NoCompress agree"
       >:: test_lzw_predictor_cea backend;
