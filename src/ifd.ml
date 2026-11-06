@@ -76,6 +76,7 @@ type field =
   | Srational
   | Float
   | Double
+  | Ifd
   | Long8
   | Slong8
   | Ifd8
@@ -93,6 +94,7 @@ let field_of_int = function
   | 10 -> Srational
   | 11 -> Float
   | 12 -> Double
+  | 13 -> Ifd
   | 16 -> Long8
   | 17 -> Slong8
   | 18 -> Ifd8
@@ -111,6 +113,7 @@ let field_to_int = function
   | Srational -> 10
   | Float -> 11
   | Double -> 12
+  | Ifd -> 13
   | Long8 -> 16
   | Slong8 -> 17
   | Ifd8 -> 18
@@ -128,6 +131,7 @@ let pp_field ppf = function
   | Srational -> Fmt.pf ppf "srational"
   | Float -> Fmt.pf ppf "float"
   | Double -> Fmt.pf ppf "double"
+  | Ifd -> Fmt.pf ppf "ifd"
   | Long8 -> Fmt.pf ppf "long8"
   | Slong8 -> Fmt.pf ppf "slong8"
   | Ifd8 -> Fmt.pf ppf "ifd8"
@@ -146,6 +150,7 @@ let rec field_byte_size (x : field) =
   | Srational -> field_byte_size Slong * 2
   | Float -> 4
   | Double -> 8
+  | Ifd -> 4
   | Long8 -> 8
   | Slong8 -> 8
   | Ifd8 -> 8

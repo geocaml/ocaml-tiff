@@ -753,6 +753,23 @@ let test_load_no_compression_tag backend _ =
   assert_equal_int ~msg:"Pixel 2" 30 pixels.{1, 0};
   assert_equal_int ~msg:"Pixel 3" 40 pixels.{1, 1}
 
+let test_load_ifd_field_type backend _ =
+  let data = "./data/exif_ifd_type13.tif" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 2 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 2 (Tiff.Ifd.height header);
+  (* The ExifIFD entry (tag 34665) has field type 13 and should be kept *)
+  assert_bool "ExifIFD entry is present"
+    (Option.is_some
+       (Tiff.Ifd.lookup (Tiff.Ifd.entries header) (Tiff.Ifd.Unknown 34665)));
+  let pixels = Tiff.data tiff ro |> Bigarray.array2_of_genarray in
+  assert_equal_int ~msg:"Pixel 0" 10 pixels.{0, 0};
+  assert_equal_int ~msg:"Pixel 1" 20 pixels.{0, 1};
+  assert_equal_int ~msg:"Pixel 2" 30 pixels.{1, 0};
+  assert_equal_int ~msg:"Pixel 3" 40 pixels.{1, 1}
+
 let test_malformed_tiff_header backend _ =
   let tmp = "./data/tmp_malformed_header.tiff" in
   Fun.protect
@@ -834,6 +851,8 @@ let suite fs =
       >:: test_load_striped_no_rows_per_strip backend;
       "Test load tiff without compression tag"
       >:: test_load_no_compression_tag backend;
+      "Test load tiff with an IFD-typed (13) field"
+      >:: test_load_ifd_field_type backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test LZW predictor and NoCompress agree"
       >:: test_lzw_predictor_cea backend;
