@@ -23,7 +23,10 @@ let test_load_simple_uint8_tiff fs _ =
   assert_bool "Pixel width" (cmp_float_list expected tie_point);
 
   assert_equal ~msg:"ascii params" [ "unnamed"; "NAD27" ]
-    (Tiff.Ifd.geo_ascii_params header)
+    (Tiff.Ifd.geo_ascii_params header);
+  let geo_keys = Tiff.Ifd.geo_key_directory header in
+  assert_equal ~msg:"geographic citation" "NAD27"
+    (Tiff.Ifd.GeoKeys.geo_citation header geo_keys)
 
 let test_load_simple_float32_geotiff fs _ =
   Eio.Path.(with_open_in (fs / "./data/aoh.tiff")) @@ fun r ->

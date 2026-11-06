@@ -944,7 +944,15 @@ module GeoKeys = struct
     | `Loc i -> (
         match tag_of_int i with
         | GeoAsciiParams ->
-            List.nth (geo_ascii_params t) (Int64.to_int key.offset)
+            let entry = lookup_exn t.entries GeoAsciiParams in
+            let s =
+              match entry.offset with
+              | Immediate imm -> string_of_int64 t.header.byte_order imm
+              | Offset _ | Read _ ->
+                  let ascii = read_entry_raw entry t.ro in
+                  Cstruct.concat ascii |> Cstruct.to_string
+            in
+            String.sub s (Int64.to_int key.offset) (key.count - 1)
         | _ -> "Unknown")
 
   let semi_major_axis t e =
