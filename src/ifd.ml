@@ -692,35 +692,35 @@ let bits_per_sample t =
   | None -> [ 1 ] (* TIFF 6.0 default *)
   | Some entry -> (
       match entry.offset with
-      | Immediate imm ->
-          if entry.count = 1L then [ Int64.to_int imm ]
-          else if entry.count = 2L then (
-            let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
-          else if entry.count = 3L && t.header.kind = Bigtiff then (
-            let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 4;
-            ])
-          else if entry.count = 4L && t.header.kind = Bigtiff then (
-            let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 4;
-              Cstruct.BE.get_uint16 buf 6;
-            ])
-          else
-            let scales = read_entry_raw entry t.ro in
-            List.map (Endian.uint16 t.header.byte_order) scales
-      | _ ->
-          let scales = read_entry_raw entry t.ro in
-          List.map (Endian.uint16 t.header.byte_order) scales)
+  | Immediate imm ->
+      if entry.count = 1L then [ Int64.to_int imm ]
+      else if entry.count = 2L then (
+        let buf = Cstruct.create 8 in
+        Cstruct.BE.set_uint64 buf 0 imm;
+        [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
+      else if entry.count = 3L && t.header.kind = Bigtiff then (
+        let buf = Cstruct.create 8 in
+        Cstruct.BE.set_uint64 buf 0 imm;
+        [
+          Cstruct.BE.get_uint16 buf 2;
+          Cstruct.BE.get_uint16 buf 2;
+          Cstruct.BE.get_uint16 buf 4;
+        ])
+      else if entry.count = 4L && t.header.kind = Bigtiff then (
+        let buf = Cstruct.create 8 in
+        Cstruct.BE.set_uint64 buf 0 imm;
+        [
+          Cstruct.BE.get_uint16 buf 2;
+          Cstruct.BE.get_uint16 buf 2;
+          Cstruct.BE.get_uint16 buf 4;
+          Cstruct.BE.get_uint16 buf 6;
+        ])
+      else
+        let scales = read_entry_raw entry t.ro in
+        List.map (Endian.uint16 t.header.byte_order) scales
+  | _ ->
+      let scales = read_entry_raw entry t.ro in
+      List.map (Endian.uint16 t.header.byte_order) scales)
 
 let planar_configuration t =
   try
@@ -1067,10 +1067,11 @@ let v ~file_offset header reader =
           match (is_immediate, field) with
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 12) |> Int64.of_int
-          | true, Short ->
+          | true, Short when count = 1L ->
               Endian.uint16 ~offset:(base_offset + 12) endian buf
               |> Int64.of_int
-          | true, Long -> Endian.uint32 ~offset:(base_offset + 12) endian buf
+          | true, Long ->
+              Endian.uint32 ~offset:(base_offset + 12) endian buf
           | _ -> Endian.uint64 ~offset:(base_offset + 12) endian buf
         in
         let offset = if is_immediate then Immediate offset else Offset offset in
