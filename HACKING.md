@@ -22,17 +22,21 @@ dispatches decompression to the appropriate module (e.g. `lzw.ml`).
 
 ## Current state of the codebase
 
+The library is still experimental: the API may change, and even the features
+listed as supported below may have bugs or missing edge cases.
+
 ### Currently supported
 * Reading TIFF files
+* Writing TIFF files (uncompressed only)
 * Classic TIFFs (32-bit offsets)
+* BigTIFF (64-bit offsets)
 * Strip-based storage
 * Uncompressed (No compression)
 * LZW Compression
-* Basic GeoTIFF metadata
+* Horizontal differencing predictor
+* Basic GeoTIFF metadata, including the GeoKeyDirectory
 
 ### Future support
-* Writing TIFF files
 * Tile-based storage
 * Deflate Compression (ZIP)
 * JPEG Compression
-* Advanced GeoTIFF metadata (GeoKeyDirectory)
