@@ -413,6 +413,29 @@ let test_load_striped_uint8_uncompressed_tiff backend _ =
     assert_equal_int ~msg:"Value sum" ((y + 1) * width) res
   done
 
+let test_load_known_pixel_tiff backend _ =
+  let data = "./data/known_pixels.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let header = Tiff.ifd tiff in
+  let width = Tiff.Ifd.width header in
+  let height = Tiff.Ifd.height header in
+  Test_helpers.assert_ifd ~width:10 ~height:10
+    ~compression:Tiff.Ifd.No_compression ~samples_per_pixel:1
+    ~bits_per_sample:[ 8 ] ~sample_format:Tiff.Ifd.UnsignedInteger
+    ~rows_per_strip:10 ~predictor:Tiff.Ifd.No_predictor
+    ~planar_configuration:Tiff.Ifd.Chunky header;
+  let data = Tiff.data tiff ro in
+  let data2d = Bigarray.array2_of_genarray data in
+  assert_equal_int ~msg:"data height" 10 (Bigarray.Array2.dim1 data2d);
+  assert_equal_int ~msg:"data width" 10 (Bigarray.Array2.dim2 data2d);
+  for y = 0 to height - 1 do
+    for x = 0 to width - 1 do
+      let actual = Bigarray.Array2.get data2d y x |> Int64.to_int in
+      assert_equal_int ~msg:"Pixel value" ((y * 10) + x + 1) actual
+    done
+  done
+
 let test_load_striped_uint8_lzw_tiff backend _ =
   let data = "./data/striped_uint8_lzw.tiff" in
   with_ro backend data @@ fun ro ->
@@ -809,6 +832,8 @@ let suite fs =
       "Test load three channel tiff" >:: uniform_rgb_uint8_lzw backend;
       "Test load striped uint8 uncompressed tiff"
       >:: test_load_striped_uint8_uncompressed_tiff backend;
+      "Test load known data pixel values Tiff"
+      >:: test_load_known_pixel_tiff backend;
       "Test load striped uint8 lzw tiff"
       >:: test_load_striped_uint8_lzw_tiff backend;
       "Test load odd striped uint8 lzw tiff"
