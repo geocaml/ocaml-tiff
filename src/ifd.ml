@@ -1353,7 +1353,7 @@ let make_entry endian file_offset tag values =
     | _ -> (
         match values with
         | Ints (v :: rest) ->
-            let largest = List.fold_left max v rest in
+            let largest = List.fold_left Int.max v rest in
             smallest_int_field_for largest allowed_fields
         | _ ->
             Error.raise_error Error.Unsupported_feature
