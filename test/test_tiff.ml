@@ -726,6 +726,30 @@ let test_color_map backend _ =
       assert_equal ~msg:"Blue" (0, 0, 65535) cm.(2);
       assert_bool "No ColorMap" (color_map "./data/uniform.tiff" = None)
 
+let test_apply_color_map backend _ =
+  with_ro backend "./data/palette_uint8.tiff" @@ fun r ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+  let color_map = Option.get (Tiff.Ifd.color_map (Tiff.ifd tiff)) in
+  let colors = Tiff.apply_color_map color_map (Tiff.data tiff r) in
+  assert_equal ~msg:"Dimensions" [| 2; 4; 3 |] (Bigarray.Genarray.dims colors);
+  let pixel y x =
+    ( Bigarray.Genarray.get colors [| y; x; 0 |],
+      Bigarray.Genarray.get colors [| y; x; 1 |],
+      Bigarray.Genarray.get colors [| y; x; 2 |] )
+  in
+  assert_equal ~msg:"Red" (65535, 0, 0) (pixel 0 0);
+  assert_equal ~msg:"Blue" (0, 0, 65535) (pixel 0 2);
+  assert_equal ~msg:"White" (65535, 65535, 65535) (pixel 1 0)
+
+let test_apply_color_map_bad_index _ =
+  let data =
+    Bigarray.Genarray.create Bigarray.Int8_unsigned Bigarray.c_layout [| 1; 1 |]
+  in
+  Bigarray.Genarray.set data [| 0; 0 |] 5;
+  match Tiff.apply_color_map [| (0, 0, 0) |] data with
+  | exception Tiff.Error.Tiff_error (Invalid_argument, _, _) -> ()
+  | _ -> assert_failure "Expected an out-of-range index to be rejected"
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -874,6 +898,8 @@ let suite fs =
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
       "Test color map" >:: test_color_map backend;
+      "Test apply color map" >:: test_apply_color_map backend;
+      "Test apply color map bad index" >:: test_apply_color_map_bad_index;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

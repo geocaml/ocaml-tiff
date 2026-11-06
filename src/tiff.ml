@@ -656,6 +656,31 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
         "Tiff file has no data associated with it."
   | Some data -> write_data ~plane ~window tiff ifd data w
 
+let apply_color_map color_map data =
+  match Genarray.dims data with
+  | [| height; width |] ->
+      let entries = Array.length color_map in
+      let colors =
+        Genarray.create Int16_unsigned c_layout [| height; width; 3 |]
+      in
+      for y = 0 to height - 1 do
+        for x = 0 to width - 1 do
+          let index = Genarray.get data [| y; x |] in
+          if index < 0 || index >= entries then
+            Error.raisef Error.Invalid_argument
+              "Palette index %d is outside the ColorMap (%d entries)" index
+              entries;
+          let r, g, b = color_map.(index) in
+          Genarray.set colors [| y; x; 0 |] r;
+          Genarray.set colors [| y; x; 1 |] g;
+          Genarray.set colors [| y; x; 2 |] b
+        done
+      done;
+      colors
+  | _ ->
+      Error.raise_error Error.Invalid_argument
+        "apply_color_map expects a two-dimensional array of indexed data"
+
 let make ?(bigtiff = false) ?(endian = Endian.Big)
     ?(compression = Ifd.No_compression) ?photometric_interpretation
     ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File") data =
