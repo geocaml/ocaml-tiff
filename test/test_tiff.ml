@@ -56,6 +56,17 @@ let test_write_simple_striped_tiff backend _ =
   let _ifd = Tiff.ifd tiff in
   assert_equal ~msg:"Data" data (Tiff.data tiff r)
 
+let test_write_striped_tiff_large_offsets backend _ =
+  with_wo backend "./data/tmp_striped_large_offsets.tiff" @@ fun w ->
+  with_ro backend "./data/tmp_striped_large_offsets.tiff" @@ fun r ->
+  let data =
+    Nx.init UInt8 [| 300; 512 |] (fun i -> i.(0) mod 256) |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make data in
+  Tiff.to_file tiff w;
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+  assert_equal_ba data (Tiff.data tiff r)
+
 let test_write_basic_tiff backend _ =
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r ->
@@ -825,6 +836,8 @@ let suite fs =
     [
       "Test write simple striped TIFF"
       >:: test_write_simple_striped_tiff backend;
+      "Test write striped TIFF with large offsets"
+      >:: test_write_striped_tiff_large_offsets backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write int32 TIFF" >:: test_write_int32_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
