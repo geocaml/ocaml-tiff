@@ -44,12 +44,24 @@ let test_load_simple_float32_geotiff fs _ =
   assert_equal ~msg:"ascii params" [ "WGS 84" ]
     (Tiff.Ifd.geo_ascii_params header)
 
+let test_load_real_world_geotiff fs _ =
+  Eio.Path.(with_open_in (fs / "./data/i30dem.tif")) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Int16) ro in
+  let header = Tiff.ifd tiff in
+  let geokeys = Tiff.Ifd.geo_key_directory header in
+  assert_equal Tiff.Ifd.GeoKeys.Projected
+    (Tiff.Ifd.GeoKeys.model_type geokeys);
+  assert_equal Tiff.Ifd.GeoKeys.RasterPixelIsPoint
+    (Tiff.Ifd.GeoKeys.raster_type geokeys);
+  assert_equal 26710 (Tiff.Ifd.GeoKeys.projected_crs geokeys)
 let suite fs =
   "Basic tests"
   >::: [
          "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;
          "Test load simple float32 geotiff"
          >:: test_load_simple_float32_geotiff fs;
+         "Test load real-world GeoTIFF" >:: test_load_real_world_geotiff fs;
        ]
 
 let () =
