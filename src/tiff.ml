@@ -46,7 +46,15 @@ let pp_kind (type r k) : (r, k) kind Fmt.t =
    but modern libraries override this and default to  64KB or higher for modern hardware. *)
 let default_strip_size = 65_536
 
-type window = { xoff : int; yoff : int; xsize : int; ysize : int }
+module Window = struct
+  type t = { xoff : int; yoff : int; xsize : int; ysize : int }
+
+  let make ~xoff ~yoff ~xsize ~ysize =
+    if xoff < 0 || yoff < 0 || xsize < 0 || ysize < 0 then
+      Error.raise_error Error.Invalid_argument
+        "TIFF window offsets and sizes must be non-negative";
+    { xoff; yoff; xsize; ysize }
+end
 
 module Data = struct
   (* open Bigarray *)
@@ -65,17 +73,18 @@ module Data = struct
   let read_int16_value buf buf_index tiff_endianness =
     Endian.int16 ~offset:buf_index tiff_endianness buf
 
+  (* currently unused but updated regardless incase we later use it *)
   let _read_uint32_value buf buf_index tiff_endianness =
-    Endian.uint32 ~offset:buf_index tiff_endianness buf
+    Endian.int32 ~offset:buf_index tiff_endianness buf
 
   let read_int32_value buf buf_index tiff_endianness =
-    Endian.uint32 ~offset:buf_index tiff_endianness buf
+    Endian.int32 ~offset:buf_index tiff_endianness buf
 
   let read_int64_value buf buf_index tiff_endianness =
     Endian.uint64 ~offset:buf_index tiff_endianness buf
 
   let read_float32_value buf buf_index tiff_endianness =
-    let int_value = Endian.uint32 ~offset:buf_index tiff_endianness buf in
+    let int_value = Endian.int32 ~offset:buf_index tiff_endianness buf in
     Int32.float_of_bits int_value
 
   let read_float64_value buf buf_index tiff_endianness =
@@ -106,11 +115,11 @@ module Data = struct
   let write_float64_value buf buf_index value tiff_endianness =
     Endian.set_double ~offset:buf_index tiff_endianness buf value
 
-  let pp_window fmt window =
+  let pp_window fmt (window : Window.t) =
     Fmt.pf fmt "{ xoff=%i, yoff=%i, xsize=%i, ysize=%i }" window.xoff
       window.yoff window.xsize window.ysize
 
-  let get_window ifd window =
+  let get_window ifd (window : Window.t option) =
     (* Check the window, if any, makes sense for the TIFF file *)
     let () =
       match window with
@@ -129,7 +138,7 @@ module Data = struct
     | None ->
         let width = Ifd.width ifd in
         let height = Ifd.height ifd in
-        { xoff = 0; yoff = 0; xsize = width; ysize = height }
+        Window.make ~xoff:0 ~yoff:0 ~xsize:width ~ysize:height
 
   let get_plane ifd plane =
     let planar_configuration = Ifd.planar_configuration ifd in
@@ -145,8 +154,8 @@ module Data = struct
     | Unknown _, _ ->
         Error.raise_error Error.Malformed_file "Unknown planar format TIFF"
 
-  let process_data ifd (header : Ifd.header) plane window ~on_strip ~on_value
-      ~after_strip =
+  let process_data ifd (header : Ifd.header) plane (window : Window.t) ~on_strip
+      ~on_value ~after_strip =
     let height = Ifd.height ifd in
     let width = Ifd.width ifd in
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
@@ -310,7 +319,7 @@ module Data = struct
     | Ifd.Unknown n ->
         Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 
-  let read_data ifd header ro plane window arr_type read_value =
+  let read_data ifd header ro plane (window : Window.t) arr_type read_value =
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
 
@@ -415,7 +424,7 @@ end
 
 type ('repr, 'kind) t = {
   intent : ('repr, 'kind) intent;
-  mutable window : window option;
+  mutable window : Window.t option;
   mutable plane : int option;
   mutable image_nb : int option;
   mutable data : ('repr, 'kind) Data.t option;
@@ -502,10 +511,7 @@ let read_int64 (fmt : Ifd.sample_format) bpp buf off endian =
   | SignedInteger, 8 -> Int64.of_int (Data.read_int8_value buf off endian)
   | UnsignedInteger, 16 -> Int64.of_int (Data.read_uint16_value buf off endian)
   | SignedInteger, 16 -> Int64.of_int (Data.read_int16_value buf off endian)
-  | UnsignedInteger, 32 ->
-      Int64.logand
-        (Int64.of_int32 (Endian.uint32 ~offset:off endian buf))
-        0xffffffffL
+  | UnsignedInteger, 32 -> Endian.uint32 ~offset:off endian buf
   | SignedInteger, 32 -> Int64.of_int32 (Data.read_int32_value buf off endian)
   | SignedInteger, 64 -> Data.read_int64_value buf off endian
   | _ -> assert false
@@ -660,7 +666,7 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
   | Some data -> write_data ~plane ~window tiff ifd data w
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
-    ?(compression = Ifd.No_compression) ?(photometric_interpretation = Ifd.RGB)
+    ?(compression = Ifd.No_compression) ?photometric_interpretation
     ?(planar_configuration = Ifd.Chunky) ?(file_name = "TIFF_File") data =
   let header = Ifd.create_header ~bigtiff endian in
   let ifd_count, ifd_entries, next_ifd_ptr =
@@ -668,9 +674,6 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
   in
   let compression_int = Ifd.compression_to_int compression in
   let planar_int = Ifd.planar_configuration_to_int planar_configuration in
-  let photometric_int =
-    Ifd.photometric_interpretation_to_int photometric_interpretation
-  in
   let number_of_entries = 12 in
   let ifd_size = ifd_count + (number_of_entries * ifd_entries) + next_ifd_ptr in
   let extra_data_offset = (header.offset |> Optint.Int63.to_int) + ifd_size in
@@ -679,6 +682,15 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
 
   let samples_per_pixel =
     if num_dims > 2 then Genarray.nth_dim data (num_dims - 1) else 1
+  in
+
+  let photometric_interpretation =
+    match photometric_interpretation with
+    | Some p -> p
+    | None -> if samples_per_pixel = 1 then Ifd.BlackIsZero else Ifd.RGB
+  in
+  let photometric_int =
+    Ifd.photometric_interpretation_to_int photometric_interpretation
   in
 
   let width = Genarray.nth_dim data 1 in

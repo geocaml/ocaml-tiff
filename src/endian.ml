@@ -18,10 +18,15 @@ let int16 ?(offset = 0) endian buf =
 let set_int16 ?(offset = 0) endian buf value =
   set_uint16 ~offset endian buf (value land ((1 lsl 16) - 1))
 
-let uint32 ?(offset = 0) endian buf =
+let int32 ?(offset = 0) endian buf =
   match endian with
   | Big -> Cstruct.BE.get_uint32 buf offset
   | Little -> Cstruct.LE.get_uint32 buf offset
+
+(* preserves the 32 raw bits and represents the value numerically as a 
+    non-negative int64 through zero-extending *)
+let uint32 ?(offset = 0) endian buf =
+  Int64.logand (Int64.of_int32 (int32 ~offset endian buf)) 0xFFFFFFFFL
 
 let set_uint32 ?(offset = 0) endian buf value =
   match endian with
@@ -39,7 +44,7 @@ let set_uint64 ?(offset = 0) endian buf value =
   | Little -> Cstruct.LE.set_uint64 buf offset value
 
 let float32 ?(offset = 0) endian buf =
-  Int32.float_of_bits (uint32 ~offset endian buf)
+  Int32.float_of_bits (int32 ~offset endian buf)
 
 let set_float32 ?(offset = 0) endian buf value =
   Int32.bits_of_float value |> set_uint32 ~offset endian buf

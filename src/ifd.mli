@@ -45,6 +45,17 @@ type tag =
   | TileOffsets
   | TileByteCounts
   | GdalMetadata
+  (* Defined in the TIFF 6.0 specification, Appendix A:
+     https://download.osgeo.org/libtiff/doc/TIFF6.pdf *)
+  | NewSubfileType
+  | FillOrder
+  | ImageDescription
+  | Orientation
+  | PageNumber
+  | Software
+  | DateTime
+  | ColorMap
+  | ExtraSamples
   | Unknown of int
 
 type compression =
@@ -165,6 +176,10 @@ val sample_format : t -> sample_format list
 (** This field specifies how to interpret each data sample in a pixel. *)
 
 val planar_configuration : t -> planar_configuration
+
+val color_map : t -> (int * int * int) array option
+(** The red, green and blue values for each index of a palette image, or [None]
+    if the image has no ColorMap. *)
 
 (** {3 GeoTIFF Specific} *)
 
