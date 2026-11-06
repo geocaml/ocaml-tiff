@@ -800,12 +800,30 @@ module GeoKeys = struct
   type key =
     | GTModelTypeGeoKey
     | GTRasterTypeGeoKey
+    | GTCitationGeoKey
     | GeographicTypeGeoKey
     | GeogCitationGeoKey
+    | GeogGeodeticDatumGeoKey
+    | GeogLinearUnitsGeoKey
     | GeogAngularUnitsGeoKey
+    | GeogEllipsoidGeoKey
     | GeogSemiMajorAxisGeoKey
     | GeogInvFlatteningGeoKey
+    | GeogTOWGS84GeoKey
     | ProjectedCRS
+    | PCSCitationGeoKey
+    | ProjectionGeoKey
+    | ProjCoordTransGeoKey
+    | ProjLinearUnitsGeoKey
+    | ProjStdParallel1GeoKey
+    | ProjStdParallel2GeoKey
+    | ProjNatOriginLongGeoKey
+    | ProjNatOriginLatGeoKey
+    | ProjFalseEastingGeoKey
+    | ProjFalseNorthingGeoKey
+    | ProjCenterLongGeoKey
+    | ProjCenterLatGeoKey
+    | ProjScaleAtNatOriginGeoKey
     | Unknown of int
 
   let pp_key ppf = function
@@ -818,6 +836,24 @@ module GeoKeys = struct
     | GeogSemiMajorAxisGeoKey -> Fmt.string ppf "geog-semi-major-axis"
     | GeogInvFlatteningGeoKey -> Fmt.string ppf "geog-inv-flattening"
     | ProjectedCRS -> Fmt.string ppf "projected-crs"
+    | GTCitationGeoKey -> Fmt.string ppf "gt-citation"
+    | GeogGeodeticDatumGeoKey -> Fmt.string ppf "geog-geodetic-datum"
+    | GeogLinearUnitsGeoKey -> Fmt.string ppf "geog-linear-units"
+    | GeogEllipsoidGeoKey -> Fmt.string ppf "geog-ellipsoid"
+    | GeogTOWGS84GeoKey -> Fmt.string ppf "geog-to-wgs84"
+    | PCSCitationGeoKey -> Fmt.string ppf "pcs-citation"
+    | ProjectionGeoKey -> Fmt.string ppf "projection"
+    | ProjCoordTransGeoKey -> Fmt.string ppf "proj-coord-trans"
+    | ProjLinearUnitsGeoKey -> Fmt.string ppf "proj-linear-units"
+    | ProjStdParallel1GeoKey -> Fmt.string ppf "proj-std-parallel-1"
+    | ProjStdParallel2GeoKey -> Fmt.string ppf "proj-std-parallel-2"
+    | ProjNatOriginLongGeoKey -> Fmt.string ppf "proj-nat-origin-long"
+    | ProjNatOriginLatGeoKey -> Fmt.string ppf "proj-nat-origin-lat"
+    | ProjFalseEastingGeoKey -> Fmt.string ppf "proj-false-easting"
+    | ProjFalseNorthingGeoKey -> Fmt.string ppf "proj-false-northing"
+    | ProjCenterLongGeoKey -> Fmt.string ppf "proj-center-long"
+    | ProjCenterLatGeoKey -> Fmt.string ppf "proj-center-lat"
+    | ProjScaleAtNatOriginGeoKey -> Fmt.string ppf "proj-scale-at-nat-origin"
 
   let key_of_id = function
     | 1024 -> GTModelTypeGeoKey
@@ -828,6 +864,24 @@ module GeoKeys = struct
     | 2057 -> GeogSemiMajorAxisGeoKey
     | 2059 -> GeogInvFlatteningGeoKey
     | 3072 -> ProjectedCRS
+    | 1026 -> GTCitationGeoKey
+    | 2050 -> GeogGeodeticDatumGeoKey
+    | 2052 -> GeogLinearUnitsGeoKey
+    | 2056 -> GeogEllipsoidGeoKey
+    | 2062 -> GeogTOWGS84GeoKey
+    | 3073 -> PCSCitationGeoKey
+    | 3074 -> ProjectionGeoKey
+    | 3075 -> ProjCoordTransGeoKey
+    | 3076 -> ProjLinearUnitsGeoKey
+    | 3078 -> ProjStdParallel1GeoKey
+    | 3079 -> ProjStdParallel2GeoKey
+    | 3080 -> ProjNatOriginLongGeoKey
+    | 3081 -> ProjNatOriginLatGeoKey
+    | 3082 -> ProjFalseEastingGeoKey
+    | 3083 -> ProjFalseNorthingGeoKey
+    | 3088 -> ProjCenterLongGeoKey
+    | 3089 -> ProjCenterLatGeoKey
+    | 3092 -> ProjScaleAtNatOriginGeoKey
     | i -> Unknown i
 
   type model_type = Projected | Geographic | Geocentric | Other of int
