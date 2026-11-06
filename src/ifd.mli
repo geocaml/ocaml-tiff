@@ -280,4 +280,6 @@ val write_raw_ifd :
   file_offset:Optint.Int63.t -> header -> File.wo -> entry list -> unit
 
 val v_of_entries : entry list -> int list -> int list -> header -> File.ro -> t
-val make_entry : endianness -> int -> tag -> entry_values -> entry * int
+
+val make_entry :
+  ?kind:tiff_kind -> endianness -> int -> tag -> entry_values -> entry * int
