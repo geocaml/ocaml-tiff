@@ -772,16 +772,17 @@ let string_of_int64 endianness i =
   if endianness = Endian.Little then Cstruct.LE.set_uint64 buf 0 i;
   Cstruct.to_string buf
 
+let geo_ascii_params_raw t =
+  let entry = lookup_exn t.entries GeoAsciiParams in
+  match entry.offset with
+  | Immediate imm -> string_of_int64 t.header.byte_order imm
+  | Offset _ | Read _ ->
+      let ascii = read_entry_raw entry t.ro in
+      Cstruct.concat ascii |> Cstruct.to_string
+
 let geo_ascii_params t =
   (* https://docs.ogc.org/is/19-008r4/19-008r4.html#_requirements_class_geoasciiparamstag *)
-  let entry = lookup_exn t.entries GeoAsciiParams in
-  let s =
-    match entry.offset with
-    | Immediate imm -> string_of_int64 t.header.byte_order imm
-    | Offset _ | Read _ ->
-        let ascii = read_entry_raw entry t.ro in
-        Cstruct.concat ascii |> Cstruct.to_string
-  in
+  let s = geo_ascii_params_raw t in
   let len = String.length s in
   (* Remove the ASCII null byte *)
   let s = String.sub s 0 (len - 1) in
@@ -944,14 +945,7 @@ module GeoKeys = struct
     | `Loc i -> (
         match tag_of_int i with
         | GeoAsciiParams ->
-            let entry = lookup_exn t.entries GeoAsciiParams in
-            let s =
-              match entry.offset with
-              | Immediate imm -> string_of_int64 t.header.byte_order imm
-              | Offset _ | Read _ ->
-                  let ascii = read_entry_raw entry t.ro in
-                  Cstruct.concat ascii |> Cstruct.to_string
-            in
+            let s = geo_ascii_params_raw t in
             String.sub s (Int64.to_int key.offset) (key.count - 1)
         | _ -> "Unknown")
 
