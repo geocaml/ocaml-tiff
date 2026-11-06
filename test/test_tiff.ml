@@ -710,7 +710,11 @@ let test_baseline_tags backend _ =
   assert_bool "ImageDescription"
     (has_tag "./data/color.tiff" Tiff.Ifd.ImageDescription);
   assert_bool "ExtraSamples"
-    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.ExtraSamples)
+    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.ExtraSamples);
+  assert_bool "InterColorProfile"
+    (has_tag "./data/jello-gray.tiff" Tiff.Ifd.InterColorProfile);  
+  assert_bool "GdalNodata"
+  (has_tag "./data/gdal_nodata_lzw.tif" Tiff.Ifd.GdalNodata)  
 
 let test_color_map backend _ =
   let color_map path =

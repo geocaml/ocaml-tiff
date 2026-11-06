@@ -24,6 +24,7 @@ type tag =
   | Compression
   | PhotometricInterpretation
   | DocumentName
+  | InterColorProfile
   | StripOffsets
   | RowsPerStrip
   | StripByteCounts
@@ -45,6 +46,7 @@ type tag =
   | TileOffsets
   | TileByteCounts
   | GdalMetadata
+  | GdalNodata
   (* Defined in the TIFF 6.0 specification, Appendix A:
      https://download.osgeo.org/libtiff/doc/TIFF6.pdf *)
   | NewSubfileType
