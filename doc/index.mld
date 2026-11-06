@@ -1,0 +1,35 @@
+
+{0 TIFF}
+
+{! Tiff} is a library for working with TIFF
+(Tagged Image File Format) images in OCaml.
+
+It provides functionality for reading and writing
+TIFF images and accessing image metadata.
+
+{1 Getting started}
+
+- {{:https://github.com/geocaml/ocaml-tiff#readme}README}
+  — Introduction and installation instructions.
+- {{:https://github.com/geocaml/ocaml-tiff/tree/main/examples}Examples}
+  — Example programs demonstrating library usage.
+- {{:https://github.com/geocaml/ocaml-tiff/blob/main/CONTRIBUTING.md}Contributing}
+  — How to build, test and contribute.
+
+{1 Library [tiff]}
+
+The library provides APIs for working with TIFF
+images and their associated metadata.
+
+- {!module:Tiff} — Main interface for working
+  with TIFF files.
+- {!module:Tiff.Ifd} — Access TIFF Image File
+  Directory (IFD) metadata.
+
+{2 File access}
+
+The file access types describe how TIFF data
+is read from and written to files.
+
+- {!type:Tiff.File.ro} — Read-only file access.
+- {!type:Tiff.File.wo} — Write-only file access.
