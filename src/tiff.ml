@@ -352,6 +352,12 @@ module Data = struct
             apply_predictor ifd header planar_configuration samples_per_pixel
               uncompressed_buffer;
             uncompressed_buffer
+        | false, PACKBITS ->
+            let uncompressed_buffer = Cstruct.create expected_size in
+            Packbits.decode buf uncompressed_buffer;
+            apply_predictor ifd header planar_configuration samples_per_pixel
+              uncompressed_buffer;
+            uncompressed_buffer
         | _ ->
             Error.raise_error Error.Unsupported_feature
               "Unsupported compression")
@@ -835,4 +841,5 @@ let make ?(bigtiff = false) ?(endian = Endian.Big)
 module Private = struct
   module Lzw = Lzw
   module Deflate = Deflate
+  module Packbits = Packbits
 end

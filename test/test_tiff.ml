@@ -831,6 +831,72 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+(* Helper type for building PackBits strings in tests *)
+type packbit = Repeat of char * int | Literal of char list
+
+let packbit_to_string = function
+  | Repeat (c, n) -> String.make 1 (Char.chr (257 - n)) ^ String.make 1 c
+  | Literal chars ->
+      String.make 1 (Char.chr (List.length chars - 1))
+      ^ String.of_seq (List.to_seq chars)
+
+let packbits_to_string v = List.map packbit_to_string v |> String.concat ""
+
+let test_load_packbits_tiff backend _ =
+  let data = "./data/packbits.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Compression" Tiff.Ifd.PACKBITS (Tiff.Ifd.compression ifd);
+  let data = Tiff.data tiff ro in
+  let arr = Bigarray.array2_of_genarray data in
+  assert_equal ~msg:"Pixel 0,0" 0 (Bigarray.Array2.get arr 0 0);
+  assert_equal ~msg:"Pixel 9,9" 99 (Bigarray.Array2.get arr 9 9)
+
+let test_packbits_trailing_garbage _backend _ =
+  let input =
+    packbits_to_string [ Literal [ 'a'; 'b'; 'c' ]; Literal [ 'X'; 'Y'; 'Z' ] ]
+    |> Cstruct.of_string
+  in
+  let output = Cstruct.create 3 in
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Malformed_file,
+         "PackBits: trailing data after output buffer is full",
+         None ))
+    (fun () -> Tiff.Private.Packbits.decode input output)
+
+let test_packbits_literal_overshoot _backend _ =
+  let input =
+    packbits_to_string [ Literal [ 'a'; 'b'; 'c'; 'd'; 'e'; 'f' ] ]
+    |> Cstruct.of_string
+  in
+  let output = Cstruct.create 3 in
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Malformed_file,
+         "PackBits: literal run exceeds output buffer",
+         None ))
+    (fun () -> Tiff.Private.Packbits.decode input output)
+
+let test_packbits_replicate_overshoot _backend _ =
+  let input = packbits_to_string [ Repeat ('a', 3) ] |> Cstruct.of_string in
+  let output = Cstruct.create 2 in
+  assert_raises
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Malformed_file,
+         "PackBits: replicate run exceeds output buffer",
+         None ))
+    (fun () -> Tiff.Private.Packbits.decode input output)
+
+let test_packbits_truncated_input _backend _ =
+  let input = Cstruct.of_string "\x05abc" in
+  let output = Cstruct.create 10 in
+  assert_raises
+    (Tiff.Error.Tiff_error
+       (Tiff.Error.Malformed_file, "PackBits: unexpected end of input", None))
+    (fun () -> Tiff.Private.Packbits.decode input output)
+
 let suite fs =
   let tests backend =
     [
@@ -911,6 +977,16 @@ let suite fs =
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
       "Test color map" >:: test_color_map backend;
+      "Test baseline tags" >:: test_baseline_tags backend;
+      "Test color map" >:: test_color_map backend;
+      "Test load packbits tiff" >:: test_load_packbits_tiff backend;
+      "Test PackBits trailing garbage"
+      >:: test_packbits_trailing_garbage backend;
+      "Test PackBits literal overshoot"
+      >:: test_packbits_literal_overshoot backend;
+      "Test PackBits replicate overshoot"
+      >:: test_packbits_replicate_overshoot backend;
+      "Test PackBits truncated input" >:: test_packbits_truncated_input backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
     ]
