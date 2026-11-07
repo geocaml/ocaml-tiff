@@ -1,4 +1,4 @@
-(* Provides utitilities for working with TIFF files using the Eio library *)
+(* Provides utilities for working with TIFF files using the Eio library *)
 
 let with_open_in path fn =
   Eio.Path.with_open_in path @@ fun r ->
