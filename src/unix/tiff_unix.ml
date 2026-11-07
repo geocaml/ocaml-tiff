@@ -43,7 +43,10 @@ let with_open_out
   let fd, created =
     if List.mem Unix.O_CREAT open_flags then
       try (Unix.openfile s (Unix.O_EXCL :: open_flags) 0o644, true)
-      with Unix.Unix_error (Unix.EEXIST, _, _) ->
+      with
+      | Unix.Unix_error (Unix.EEXIST, _, _)
+      when not (List.mem Unix.O_EXCL open_flags)
+      ->
         (Unix.openfile s open_flags 0o644, false)
     else (Unix.openfile s open_flags 0o644, false)
   in

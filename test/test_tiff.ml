@@ -959,6 +959,36 @@ let test_cleanup_after_partial_write _ =
       assert_bool "Partially written file should be removed"
         (not (Sys.file_exists path)))
 
+(* Explicit O_EXCL should prevent overwriting an existing file. *)
+let test_cleanup_explicit_o_excl _ =
+  let path = Filename.temp_file "ocaml_tiff_excl_" ".tiff" in
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let original_contents = "Original file contents" in
+      let oc = open_out_bin path in
+      output_string oc original_contents;
+      close_out oc;
+
+      let rejected =
+        try
+          Tiff_unix.with_open_out
+            ~open_flags:
+              [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_EXCL; Unix.O_CLOEXEC ] path
+            (fun _ -> ());
+          false
+        with Unix.Unix_error (Unix.EEXIST, _, _) -> true
+      in
+
+      assert_bool "O_EXCL should reject an existing file" rejected;
+      assert_bool "Existing file should not be deleted" (Sys.file_exists path);
+
+      let ic = open_in_bin path in
+      let contents = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      assert_equal ~msg:"Existing file contents should remain unchanged"
+        original_contents contents)
+
 let suite fs =
   let tests backend =
     [
@@ -1049,6 +1079,7 @@ let suite fs =
       "Test cleanup preserves existing file"
       >:: test_cleanup_preserves_existing_file;
       "Test cleanup after partial write" >:: test_cleanup_after_partial_write;
+      "Test cleanup explicit O_EXCL" >:: test_cleanup_explicit_o_excl;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
