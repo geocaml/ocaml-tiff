@@ -599,7 +599,9 @@ let converted_reader (type r k) ~unsafe_ok (kind : (r, k) kind)
 let uniform_sample_format ifd =
   match Ifd.sample_format ifd with
   | fmt :: rest when List.for_all (( = ) fmt) rest -> fmt
-  | _ -> Fmt.invalid_arg "SampleFormat values differ between samples"
+  | _ ->
+      Error.raise_error Error.Unsupported_feature
+        "SampleFormat values differ between samples"
 
 let read_repr (type r k) (t : (r, k) t) ifd plane =
   let fmt = uniform_sample_format ifd in
