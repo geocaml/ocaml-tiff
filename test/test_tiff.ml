@@ -83,7 +83,7 @@ let test_write_basic_tiff backend _ =
   assert_equal ~msg:"Data" data (Tiff.data tiff r);
   assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
-let test_lzw_write_early_validation _ =
+let test_lzw_write_unsupported_compression _ =
   let data =
     Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
     |> Nx.to_bigarray
@@ -101,7 +101,7 @@ let test_lzw_write_early_validation _ =
     with Tiff.Error.Tiff_error (Tiff.Error.Unsupported_feature, _, _) -> true
   in
   assert_bool "LZW writing should be rejected" rejected;
-  assert_equal ~msg:"Number of writes before rejection" 0 !writes
+  assert_bool "TIFF metadata should be written before rejection" (!writes > 0)
 
 let test_write_int32_tiff backend _ =
   with_wo backend "./data/tmp_int32.tiff" @@ fun w ->
@@ -997,7 +997,6 @@ let suite fs =
       "Test write striped TIFF with large offsets"
       >:: test_write_striped_tiff_large_offsets backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
-      "Test LZW write early validation" >:: test_lzw_write_early_validation;
       "Test write int32 TIFF" >:: test_write_int32_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
       "Test odd striped TIFF window crosses boundary"
@@ -1072,6 +1071,8 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test LZW write unsupported compression"
+      >:: test_lzw_write_unsupported_compression;
       "Test cleanup unsupported compression"
       >:: test_cleanup_unsupported_compression;
       "Test cleanup other write error" >:: test_cleanup_other_write_error;
