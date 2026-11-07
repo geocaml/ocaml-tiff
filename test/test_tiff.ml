@@ -937,6 +937,28 @@ let test_cleanup_preserves_existing_file _ =
       assert_equal ~msg:"Existing file contents must remain unchanged"
         original_contents contents)
 
+(* Removes newly created file after the failed write*)
+let test_cleanup_after_partial_write _ =
+  let path = Filename.temp_file "ocaml_tiff_partial_" ".tiff" in
+  Sys.remove path;
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let simulate_failure w =
+        w ~file_offset:Optint.Int63.zero
+          [ Cstruct.of_string "partial TIFF data" ];
+        raise Exit
+      in
+      let failed =
+        try
+          ignore (Tiff_unix.with_open_out path simulate_failure);
+          false
+        with Exit -> true
+      in
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Partially written file should be removed"
+        (not (Sys.file_exists path)))
+
 let suite fs =
   let tests backend =
     [
@@ -1026,6 +1048,7 @@ let suite fs =
       "Test cleanup successful write" >:: test_cleanup_successful_write;
       "Test cleanup preserves existing file"
       >:: test_cleanup_preserves_existing_file;
+      "Test cleanup after partial write" >:: test_cleanup_after_partial_write;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
