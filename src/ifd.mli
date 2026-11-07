@@ -95,6 +95,17 @@ val pp_sample_format : sample_format Fmt.t
 
 type planar_configuration = Chunky | Planar | Unknown of int
 
+type orientation =
+  | Top_left
+  | Top_right
+  | Bottom_right
+  | Bottom_left
+  | Left_top
+  | Right_top
+  | Right_bottom
+  | Left_bottom
+  | Unknown of int
+
 val compression_to_string : compression -> string
 val compression_to_int : compression -> int
 val predictor_of_int : int -> predictor
@@ -103,6 +114,8 @@ val sample_format_of_int : int -> sample_format
 val sample_format_to_int : sample_format -> int
 val planar_configuration_of_int : int -> planar_configuration
 val planar_configuration_to_int : planar_configuration -> int
+val orientation_of_int : int -> orientation
+val orientation_to_int : orientation -> int
 val photometric_interpretation_of_int : int -> photometric_interpretation
 val photometric_interpretation_to_int : photometric_interpretation -> int
 
@@ -176,6 +189,11 @@ val sample_format : t -> sample_format
 (** This field specifies how to interpret each data sample in a pixel. *)
 
 val planar_configuration : t -> planar_configuration
+
+val orientation : t -> orientation
+(** [orientation t] is how the image should be displayed, from the Orientation
+    tag (274). If the tag is missing this is [Top_left], the default in the TIFF
+    specification. *)
 
 val color_map : t -> (int * int * int) array option
 (** The red, green and blue values for each index of a palette image, or [None]

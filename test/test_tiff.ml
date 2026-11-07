@@ -831,6 +831,40 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_orientation_conversion _ =
+  let all =
+    [
+      (1, Tiff.Ifd.Top_left);
+      (2, Tiff.Ifd.Top_right);
+      (3, Tiff.Ifd.Bottom_right);
+      (4, Tiff.Ifd.Bottom_left);
+      (5, Tiff.Ifd.Left_top);
+      (6, Tiff.Ifd.Right_top);
+      (7, Tiff.Ifd.Right_bottom);
+      (8, Tiff.Ifd.Left_bottom);
+    ]
+  in
+  List.iter
+    (fun (i, o) ->
+      assert_equal ~msg:"orientation_of_int" o (Tiff.Ifd.orientation_of_int i);
+      assert_equal ~printer:string_of_int ~msg:"orientation_to_int" i
+        (Tiff.Ifd.orientation_to_int o))
+    all;
+  assert_equal ~msg:"zero is unknown" (Tiff.Ifd.Unknown 0)
+    (Tiff.Ifd.orientation_of_int 0);
+  assert_equal ~msg:"nine is unknown" (Tiff.Ifd.Unknown 9)
+    (Tiff.Ifd.orientation_of_int 9);
+  assert_equal ~printer:string_of_int ~msg:"unknown round trip" 9
+    (Tiff.Ifd.orientation_to_int (Tiff.Ifd.Unknown 9))
+
+let test_orientation_missing backend _ =
+  let data = "./data/uniform.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
+  let header = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:256 ~height:256 ~orientation:Tiff.Ifd.Top_left
+    header
+
 let suite fs =
   let tests backend =
     [
@@ -913,6 +947,8 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test orientation conversion" >:: test_orientation_conversion;
+      "Test orientation missing tag" >:: test_orientation_missing backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
