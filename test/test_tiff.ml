@@ -870,6 +870,31 @@ let test_cleanup_unsupported_compression _ =
   assert_bool "Partial file should be removed" (not (Sys.file_exists path));
   if Sys.file_exists path then Sys.remove path
 
+(* Cleanup should also work for failures unrelated to compression. *)
+let test_cleanup_other_write_error _ =
+  let path = Filename.temp_file "ocaml_tiff_error_" ".tiff" in
+  Sys.remove path;
+
+  let simulate_write w =
+    let buf = Cstruct.of_string "partial TIFF" in
+    w ~file_offset:Optint.Int63.zero [ buf ];
+    failwith "Simulated writing failure"
+  in
+
+  let rejected =
+    try
+      ignore (Tiff_unix.with_open_out path simulate_write);
+      false
+    with
+    | Failure msg when msg = "Simulated writing failure" -> true
+    | _ -> false
+  in
+
+  assert_bool "Original writing error should be preserved" rejected;
+  assert_bool "Partial file should be removed" (not (Sys.file_exists path));
+
+  if Sys.file_exists path then Sys.remove path
+
 let suite fs =
   let tests backend =
     [
@@ -955,6 +980,7 @@ let suite fs =
       >:: test_cleanup_unsupported_compression;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test cleanup other writ eerror" >:: test_cleanup_other_write_error;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
