@@ -1070,10 +1070,10 @@ let suite fs =
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
       "Test color map" >:: test_color_map backend;
-      "Test cleanup unsupported compression"
-      >:: test_cleanup_unsupported_compression;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test cleanup unsupported compression"
+      >:: test_cleanup_unsupported_compression;
       "Test cleanup other write error" >:: test_cleanup_other_write_error;
       "Test cleanup successful write" >:: test_cleanup_successful_write;
       "Test cleanup preserves existing file"
