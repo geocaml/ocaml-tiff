@@ -851,6 +851,25 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+(* Unsupported compression should not leave a newly created output file. *)
+let test_cleanup_unsupported_compression _ =
+  let path = Filename.temp_file "ocaml_tiff_lzw_" ".tiff" in
+  Sys.remove path;
+  let data =
+    Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make ~compression:Tiff.Ifd.LZW data in
+  let rejected =
+    try
+      Tiff_unix.with_open_out path (fun w -> Tiff.to_file tiff w);
+      false
+    with Tiff.Error.Tiff_error (Tiff.Error.Unsupported_feature, _, _) -> true
+  in
+  assert_bool "Unsupported compression should raise an error" rejected;
+  assert_bool "Partial file should be removed" (not (Sys.file_exists path));
+  if Sys.file_exists path then Sys.remove path
+
 let suite fs =
   let tests backend =
     [
@@ -932,6 +951,8 @@ let suite fs =
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
       "Test color map" >:: test_color_map backend;
+      "Test cleanup unsupported compression"
+      >:: test_cleanup_unsupported_compression;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
     ]
