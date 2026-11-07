@@ -463,6 +463,39 @@ let planar_configuration_to_int = function
   | Planar -> 2
   | Unknown i -> i
 
+type orientation =
+  | Top_left
+  | Top_right
+  | Bottom_right
+  | Bottom_left
+  | Left_top
+  | Right_top
+  | Right_bottom
+  | Left_bottom
+  | Unknown of int
+
+let orientation_of_int = function
+  | 1 -> Top_left
+  | 2 -> Top_right
+  | 3 -> Bottom_right
+  | 4 -> Bottom_left
+  | 5 -> Left_top
+  | 6 -> Right_top
+  | 7 -> Right_bottom
+  | 8 -> Left_bottom
+  | i -> Unknown i
+
+let orientation_to_int = function
+  | Top_left -> 1
+  | Top_right -> 2
+  | Bottom_right -> 3
+  | Bottom_left -> 4
+  | Left_top -> 5
+  | Right_top -> 6
+  | Right_bottom -> 7
+  | Left_bottom -> 8
+  | Unknown i -> i
+
 type photometric_interpretation =
   | WhiteIsZero
   | BlackIsZero
@@ -732,6 +765,11 @@ let planar_configuration t =
     lookup_exn t.entries PlanarConfiguration
     |> read_entry |> planar_configuration_of_int
   with Not_found -> Chunky
+
+let orientation t =
+  match lookup t.entries Orientation with
+  | None -> Top_left
+  | Some entry -> read_entry entry |> orientation_of_int
 
 let color_map t =
   match lookup t.entries ColorMap with

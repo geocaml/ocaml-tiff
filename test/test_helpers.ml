@@ -3,7 +3,8 @@ open OUnit2
 let assert_equal_int = assert_equal ~printer:Int.to_string
 
 let assert_ifd ~width ~height ?compression ?samples_per_pixel ?bits_per_sample
-    ?sample_format ?rows_per_strip ?predictor ?planar_configuration ifd =
+    ?sample_format ?rows_per_strip ?predictor ?planar_configuration ?orientation
+    ifd =
   assert_equal_int ~msg:"Image width" width (Tiff.Ifd.width ifd);
   assert_equal_int ~msg:"Image height" height (Tiff.Ifd.height ifd);
   (* Only check an optional property when an expected value was supplied. *)
@@ -33,11 +34,17 @@ let assert_ifd ~width ~height ?compression ?samples_per_pixel ?bits_per_sample
   | None -> ()
   | Some expected ->
       assert_equal ~msg:"Predictor" expected (Tiff.Ifd.predictor ifd));
-  match planar_configuration with
+  (match planar_configuration with
   | None -> ()
   | Some expected ->
       assert_equal
         ~printer:(fun c ->
           Int.to_string (Tiff.Ifd.planar_configuration_to_int c))
         ~msg:"Planar configuration" expected
-        (Tiff.Ifd.planar_configuration ifd)
+        (Tiff.Ifd.planar_configuration ifd));
+  match orientation with
+  | None -> ()
+  | Some expected ->
+      assert_equal
+        ~printer:(fun o -> Int.to_string (Tiff.Ifd.orientation_to_int o))
+        ~msg:"Orientation" expected (Tiff.Ifd.orientation ifd)
