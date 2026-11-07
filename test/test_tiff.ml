@@ -912,6 +912,31 @@ let test_cleanup_successful_write _ =
       assert_bool "Successful TIFF should contain data"
         ((Unix.stat path).Unix.st_size > 0))
 
+(* Existing file should remain preserved after cleanup*)
+let test_cleanup_preserves_existing_file _ =
+  let path = Filename.temp_file "ocaml_tiff_existing_" ".tiff" in
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let simulate_failure _ = raise Exit in
+      let original_contents = "Original TIFF data" in
+      let oc = open_out_bin path in
+      output_string oc original_contents;
+      close_out oc;
+      let failed =
+        try
+          ignore (Tiff_unix.with_open_out path simulate_failure);
+          false
+        with Exit -> true
+      in
+      assert_bool "Writing should raise the original exception" failed;
+      assert_bool "Existing file must not be deleted" (Sys.file_exists path);
+      let ic = open_in_bin path in
+      let contents = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      assert_equal ~msg:"Existing file contents must remain unchanged"
+        original_contents contents)
+
 let suite fs =
   let tests backend =
     [
@@ -999,6 +1024,8 @@ let suite fs =
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
       "Test cleanup other write error" >:: test_cleanup_other_write_error;
       "Test cleanup successful write" >:: test_cleanup_successful_write;
+      "Test cleanup preserves existing file"
+      >:: test_cleanup_preserves_existing_file;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
