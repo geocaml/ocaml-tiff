@@ -895,6 +895,23 @@ let test_cleanup_other_write_error _ =
 
   if Sys.file_exists path then Sys.remove path
 
+(* Successful writes must retain the completed output file. *)
+let test_cleanup_successful_write _ =
+  let path = Filename.temp_file "ocaml_tiff_success_" ".tiff" in
+  Sys.remove path;
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let data =
+        Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+        |> Nx.to_bigarray
+      in
+      let tiff = Tiff.make data in
+      Tiff_unix.with_open_out path (fun w -> Tiff.to_file tiff w);
+      assert_bool "Successful TIFF should exist" (Sys.file_exists path);
+      assert_bool "Successful TIFF should contain data"
+        ((Unix.stat path).Unix.st_size > 0))
+
 let suite fs =
   let tests backend =
     [
@@ -980,7 +997,8 @@ let suite fs =
       >:: test_cleanup_unsupported_compression;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
-      "Test cleanup other writ eerror" >:: test_cleanup_other_write_error;
+      "Test cleanup other write error" >:: test_cleanup_other_write_error;
+      "Test cleanup successful write" >:: test_cleanup_successful_write;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
