@@ -703,10 +703,8 @@ let bits_per_sample t =
             let buf_size = if t.header.kind = Bigtiff then 8 else 4 in
             let buf = Cstruct.create buf_size in
             (match (t.header.kind = Bigtiff, t.header.byte_order) with
-            | true, Endian.Little ->
-                Cstruct.LE.set_uint64 buf 0 imm
-            | true, Endian.Big ->
-                Cstruct.BE.set_uint64 buf 0 imm
+            | true, Endian.Little -> Cstruct.LE.set_uint64 buf 0 imm
+            | true, Endian.Big -> Cstruct.BE.set_uint64 buf 0 imm
             | false, Endian.Little ->
                 Cstruct.LE.set_uint32 buf 0 (Int64.to_int32 imm)
             | false, Endian.Big ->
