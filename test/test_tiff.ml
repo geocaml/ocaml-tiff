@@ -247,6 +247,23 @@ let test_read_multi_plane_fails_when_without_specifying_plane backend _ =
          None ))
     (fun _ -> Tiff.data tiff ro)
 
+let test_read_multi_plane_fails_with_out_of_range_plane backend _ =
+  let data = "./data/uniform_rgb_uint8_lzw.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  assert_raises ~msg:"fail to read plane beyond the last plane"
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Plane 3 requested but TIFF file only has 3",
+         None ))
+    (fun _ -> Tiff.data ~plane:3 tiff ro);
+  assert_raises ~msg:"fail to read negative plane"
+    (Tiff.Error.Tiff_error
+       ( Tiff.Error.Invalid_argument,
+         "Plane -1 requested but TIFF file only has 3",
+         None ))
+    (fun _ -> Tiff.data ~plane:(-1) tiff ro)
+
 let test_load_simple_int8_tiff backend _ =
   with_ro backend "./data/uniform_int8_lzw.tiff" @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.safe_cast Tiff.Int64) ro in
@@ -864,6 +881,8 @@ let suite fs =
       >:: test_read_single_plane_fails_when_specifying_plane backend;
       "Test fail reading from multi-plane TIFF if plane not specified"
       >:: test_read_multi_plane_fails_when_without_specifying_plane backend;
+      "Test fail reading out-of-range plane from multi-plane TIFF"
+      >:: test_read_multi_plane_fails_with_out_of_range_plane backend;
       "Test load simple int8 tiff" >:: test_load_simple_int8_tiff backend;
       "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff backend;
       "Test load simple int16 tiff" >:: test_load_simple_int16_tiff backend;

@@ -143,7 +143,12 @@ module Data = struct
   let get_plane ifd plane =
     let planar_configuration = Ifd.planar_configuration ifd in
     match (planar_configuration, plane) with
-    | Planar, Some p -> p
+    | Planar, Some p ->
+        let planes = Ifd.samples_per_pixel ifd in
+        if p < 0 || p >= planes then
+          Error.raisef Error.Invalid_argument
+            "Plane %d requested but TIFF file only has %d" p planes;
+        p
     | Planar, None ->
         Error.raise_error Error.Invalid_argument
           "Cannot read planar TIFF data: a plane index must be specified"
