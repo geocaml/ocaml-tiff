@@ -147,8 +147,7 @@ module Data = struct
         let planes = Ifd.samples_per_pixel ifd in
         if p < 0 || p >= planes then
           Error.raisef Error.Invalid_argument
-            "Plane %d requested but TIFF file only has %d ([0-%d])" p planes
-            (planes - 1);
+            "Plane %d requested but TIFF file only has %d" p planes;
         p
     | Planar, None ->
         Error.raise_error Error.Invalid_argument

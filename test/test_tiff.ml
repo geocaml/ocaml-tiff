@@ -254,13 +254,13 @@ let test_read_multi_plane_fails_with_out_of_range_plane backend _ =
   assert_raises ~msg:"fail to read plane beyond the last plane"
     (Tiff.Error.Tiff_error
        ( Tiff.Error.Invalid_argument,
-         "Plane 3 requested but TIFF file only has 3 ([0-2])",
+         "Plane 3 requested but TIFF file only has 3",
          None ))
     (fun _ -> Tiff.data ~plane:3 tiff ro);
   assert_raises ~msg:"fail to read negative plane"
     (Tiff.Error.Tiff_error
        ( Tiff.Error.Invalid_argument,
-         "Plane -1 requested but TIFF file only has 3 ([0-2])",
+         "Plane -1 requested but TIFF file only has 3",
          None ))
     (fun _ -> Tiff.data ~plane:(-1) tiff ro)
 
