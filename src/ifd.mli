@@ -260,7 +260,7 @@ val read_entry : entry -> int
 val read_entry_raw : ?count:int -> entry -> File.ro -> Cstruct.t list
 (** Read entries as raw bytes. This will return a buffer list based on the
     layout of the entry. For example, if the count is [10] and the tag is
-    [Double] then you will gexwt back a list of [10] buffers each of length [2].
+    [Double] then you will get back a list of [10] buffers each of length [8].
 *)
 
 val cache_all_entries : t -> t
