@@ -206,7 +206,8 @@ module Data = struct
       (* Calculate the number of rows in the current strip *)
       let rows_in_strip =
         (* If we are the last strip in a plane, then we might have fewer rows *)
-        if strip = strips_per_plane - 1 then height - (strip * rows_per_strip)
+        if strip - plane_offset = strips_per_plane - 1 then
+          height - ((strip - plane_offset) * rows_per_strip)
         else rows_per_strip
       in
 

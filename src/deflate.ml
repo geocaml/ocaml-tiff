@@ -29,18 +29,22 @@ let decode input output_buffer =
   in
 
   let flush buf len =
-    let to_write = min len (output_len - !output_pos) in
-    if to_write > 0 then (
+    if len > output_len - !output_pos then
+      Error.raise_error Error.Malformed_file
+        "DEFLATE output is larger than the expected strip size";
+    if len > 0 then (
       (* Blit directly from buf to output_bigstring using offsets - no sub needed *)
-      Bstr.blit buf ~src_off:0 output_bigarray ~dst_off:!output_pos
-        ~len:to_write;
-      output_pos := !output_pos + to_write)
+      Bstr.blit buf ~src_off:0 output_bigarray ~dst_off:!output_pos ~len;
+      output_pos := !output_pos + len)
   in
 
   let allocate bits = De.make_window ~bits in
   match
     Zl.Higher.uncompress ~allocate ~refill ~flush input_bigarray output_bigarray
   with
-  | Ok () -> ()
+  | Ok () ->
+      if !output_pos <> output_len then
+        Error.raise_error Error.Malformed_file
+          "DEFLATE output is smaller than the expected strip size"
   | Error (`Msg err) ->
       Error.raisef Error.Malformed_file "DEFLATE decompression error: %s" err
