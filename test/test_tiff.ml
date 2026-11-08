@@ -831,6 +831,15 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_bigtiff_bits_per_sample _ =
+  Eio_posix.run @@ fun env ->
+  let file = Eio.Path.(env#fs / "data/uniform_rgb_uint8_bigtiff.tiff") in
+  Tiff_eio.with_open_in file @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"BigTIFF should read three inline SHORT values" [ 8; 8; 8 ]
+    (Tiff.Ifd.bits_per_sample ifd)
+
 let suite fs =
   let tests backend =
     [
@@ -913,6 +922,7 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "BigTIFF inline BitsPerSample" >:: test_bigtiff_bits_per_sample;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
