@@ -694,27 +694,15 @@ let bits_per_sample t =
       match entry.offset with
       | Immediate imm ->
           if entry.count = 1L then [ Int64.to_int imm ]
-          else if entry.count = 2L then (
+          else if
+            t.header.kind = Bigtiff
+            && entry.count >= 2L
+            && entry.count <= 4L
+          then (
             let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
-          else if entry.count = 3L && t.header.kind = Bigtiff then (
-            let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 4;
-            ])
-          else if entry.count = 4L && t.header.kind = Bigtiff then (
-            let buf = Cstruct.create 8 in
-            Cstruct.BE.set_uint64 buf 0 imm;
-            [
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 2;
-              Cstruct.BE.get_uint16 buf 4;
-              Cstruct.BE.get_uint16 buf 6;
-            ])
+            Endian.set_uint64 ~offset:0 t.header.byte_order buf imm;
+            List.init (Int64.to_int entry.count) (fun i ->
+                Endian.uint16 ~offset:(i * 2) t.header.byte_order buf))
           else
             let scales = read_entry_raw entry t.ro in
             List.map (Endian.uint16 t.header.byte_order) scales
