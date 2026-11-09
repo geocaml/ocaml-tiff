@@ -71,7 +71,11 @@ type compression =
   | ADOBE_DEFLATE
   | Other of int
 
-type predictor = No_predictor | HorizontalDifferencing | Unknown of int
+type predictor =
+  | No_predictor
+  | HorizontalDifferencing
+  | FloatingPoint
+  | Unknown of int
 
 type sample_format =
   | UnsignedInteger

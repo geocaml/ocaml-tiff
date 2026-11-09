@@ -831,6 +831,65 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_lzw_predictor3_float32_rgb backend _ =
+  let data = "./data/float32_rgb_lzw_predictor3.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
+  let header = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:3 ~bits_per_sample:[ 32; 32; 32 ] ~rows_per_strip:4
+    ~predictor:Tiff.Ifd.FloatingPoint ~planar_configuration:Tiff.Ifd.Chunky
+    header;
+  let full_data = Tiff.data tiff ro in
+  for y = 0 to 9 do
+    for x = 0 to 9 do
+      for c = 0 to 2 do
+        let expected = float_of_int ((((y * 10) + x) * 3) + c) *. 0.1 in
+        let actual = Bigarray.Genarray.get full_data [| y; x; c |] in
+        assert_bool "Pixel value" (cmp_float expected actual)
+      done
+    done
+  done
+
+let test_lzw_predictor3_float64_be backend _ =
+  let data = "./data/float64_lzw_predictor3_be.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float64) ro in
+  let header = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:10 ~height:10 ~compression:Tiff.Ifd.LZW
+    ~samples_per_pixel:1 ~bits_per_sample:[ 64 ] ~rows_per_strip:4
+    ~predictor:Tiff.Ifd.FloatingPoint ~planar_configuration:Tiff.Ifd.Chunky
+    header;
+  let full_data = Tiff.data tiff ro in
+  for y = 0 to 9 do
+    for x = 0 to 9 do
+      let expected = float_of_int ((y * 10) + x) *. 0.1 in
+      let actual = Bigarray.Genarray.get full_data [| y; x |] in
+      assert_bool "Pixel value" (cmp_float expected actual)
+    done
+  done
+
+let test_deflate_predictor3_float32_planar backend _ =
+  let data = "./data/float32_planar_deflate_predictor3.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Float32) ro in
+  let header = Tiff.ifd tiff in
+  Test_helpers.assert_ifd ~width:10 ~height:10
+    ~compression:Tiff.Ifd.ADOBE_DEFLATE ~samples_per_pixel:3
+    ~bits_per_sample:[ 32; 32; 32 ] ~rows_per_strip:10
+    ~predictor:Tiff.Ifd.FloatingPoint ~planar_configuration:Tiff.Ifd.Planar
+    header;
+  for plane = 0 to 2 do
+    let plane_data = Tiff.data ~plane tiff ro in
+    for y = 0 to 9 do
+      for x = 0 to 9 do
+        let expected = float_of_int ((plane * 100) + (y * 10) + x) *. 0.1 in
+        let actual = Bigarray.Genarray.get plane_data [| y; x |] in
+        assert_bool "Plane pixel value" (cmp_float expected actual)
+      done
+    done
+  done
+
 let suite fs =
   let tests backend =
     [
@@ -913,6 +972,12 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test LZW predictor 3 float32 RGB"
+      >:: test_lzw_predictor3_float32_rgb backend;
+      "Test LZW predictor 3 float64 big-endian"
+      >:: test_lzw_predictor3_float64_be backend;
+      "Test Deflate predictor 3 float32 planar"
+      >:: test_deflate_predictor3_float32_planar backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
