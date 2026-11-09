@@ -293,29 +293,75 @@ module Data = struct
       done
     done
 
+  (* Undo the floating-point predictor (Predictor 3). 32- or 64-bit floats. *)
+  let undo_floating_point_predictor buf ~width ~samples_per_pixel
+      ~bytes_per_sample ~endian =
+    let samples_per_row = width * samples_per_pixel in
+    let bytes_per_row = samples_per_row * bytes_per_sample in
+    let rows = Cstruct.length buf / bytes_per_row in
+    let row_buf = Cstruct.create bytes_per_row in
+    for r = 0 to rows - 1 do
+      let row_start = r * bytes_per_row in
+      (* Undo byte-level horizontal differencing across the row.
+         The first pixel's bytes have no left neighbour and are stored as-is. *)
+      for i = samples_per_pixel to bytes_per_row - 1 do
+        let pos = row_start + i in
+        let left = Cstruct.get_uint8 buf (pos - samples_per_pixel) in
+        let value = (Cstruct.get_uint8 buf pos + left) land 0xff in
+        Cstruct.set_uint8 buf pos value
+      done;
+      (* Bytes in each row are grouped from most-significant to least-significant
+         byte across all samples... so reassemble each float in the file's byte order. *)
+      Cstruct.blit buf row_start row_buf 0 bytes_per_row;
+      for s = 0 to samples_per_row - 1 do
+        for b = 0 to bytes_per_sample - 1 do
+          let byte = Cstruct.get_uint8 row_buf ((b * samples_per_row) + s) in
+          let byte_offset =
+            match endian with
+            | Endian.Big -> b
+            | Endian.Little -> bytes_per_sample - 1 - b
+          in
+          Cstruct.set_uint8 buf
+            (row_start + (s * bytes_per_sample) + byte_offset)
+            byte
+        done
+      done
+    done
+
   let apply_predictor ifd (header : Ifd.header) planar_configuration
       samples_per_pixel buf =
+    let samples () =
+      match planar_configuration with
+      | Ifd.Chunky -> samples_per_pixel
+      | Ifd.Planar -> 1
+      | Ifd.Unknown _ ->
+          Error.raise_error Error.Internal_error
+            "Should not get this far if planar config isn't recognised."
+    in
     match Ifd.predictor ifd with
     | Ifd.No_predictor -> ()
     | Ifd.HorizontalDifferencing ->
-        let samples =
-          match planar_configuration with
-          | Ifd.Chunky -> samples_per_pixel
-          | Ifd.Planar -> 1
-          | Ifd.Unknown _ ->
-              failwith
-                "Should not get this far if planar config isn't recognised."
-        in
         let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
         if bits_per_sample <> 8 && bits_per_sample <> 16 then
-          failwith
-            (Printf.sprintf
-               "Unsupported bits per sample for horizontal differencing: %d \
-                (only 8 and 16 are supported)"
-               bits_per_sample);
+          Error.raisef Error.Unsupported_feature
+            "Unsupported bits per sample for horizontal differencing: %d (only \
+             8 and 16 are supported)"
+            bits_per_sample;
         let bytes_per_sample = bits_per_sample / 8 in
         undo_horizontal_differencing buf ~width:(Ifd.width ifd)
-          ~samples_per_pixel:samples ~bytes_per_sample ~endian:header.byte_order
+          ~samples_per_pixel:(samples ()) ~bytes_per_sample
+          ~endian:header.byte_order
+    | Ifd.FloatingPoint ->
+        let bits_per_sample = List.hd (Ifd.bits_per_sample ifd) in
+        if bits_per_sample <> 32 && bits_per_sample <> 64 then
+          Error.raisef Error.Unsupported_feature
+            "Unsupported bits per sample for floating-point predictor: %d \
+             (only 32 and 64 are supported)"
+            bits_per_sample;
+        let bytes_per_sample = bits_per_sample / 8 in
+        undo_floating_point_predictor buf ~width:(Ifd.width ifd)
+          ~samples_per_pixel:(samples ()) ~bytes_per_sample
+          ~endian:header.byte_order
     | Ifd.Unknown n ->
         Error.raisef Error.Unsupported_feature "Unsupported predictor %d" n
 

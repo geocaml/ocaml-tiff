@@ -411,16 +411,22 @@ let compression_to_int = function
   | ADOBE_DEFLATE -> 8
   | Other i -> i
 
-type predictor = No_predictor | HorizontalDifferencing | Unknown of int
+type predictor =
+  | No_predictor
+  | HorizontalDifferencing
+  | FloatingPoint
+  | Unknown of int
 
 let predictor_of_int = function
   | 1 -> No_predictor
   | 2 -> HorizontalDifferencing
+  | 3 -> FloatingPoint
   | i -> Unknown i
 
 let predictor_to_int = function
   | No_predictor -> 1
   | HorizontalDifferencing -> 2
+  | FloatingPoint -> 3
   | Unknown i -> i
 
 type sample_format =
