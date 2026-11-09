@@ -76,6 +76,7 @@ type field =
   | Srational
   | Float
   | Double
+  | Ifd
   | Long8
   | Slong8
   | Ifd8
@@ -93,6 +94,7 @@ let field_of_int = function
   | 10 -> Srational
   | 11 -> Float
   | 12 -> Double
+  | 13 -> Ifd
   | 16 -> Long8
   | 17 -> Slong8
   | 18 -> Ifd8
@@ -111,6 +113,7 @@ let field_to_int = function
   | Srational -> 10
   | Float -> 11
   | Double -> 12
+  | Ifd -> 13
   | Long8 -> 16
   | Slong8 -> 17
   | Ifd8 -> 18
@@ -128,6 +131,7 @@ let pp_field ppf = function
   | Srational -> Fmt.pf ppf "srational"
   | Float -> Fmt.pf ppf "float"
   | Double -> Fmt.pf ppf "double"
+  | Ifd -> Fmt.pf ppf "ifd"
   | Long8 -> Fmt.pf ppf "long8"
   | Slong8 -> Fmt.pf ppf "slong8"
   | Ifd8 -> Fmt.pf ppf "ifd8"
@@ -146,6 +150,7 @@ let rec field_byte_size (x : field) =
   | Srational -> field_byte_size Slong * 2
   | Float -> 4
   | Double -> 8
+  | Ifd -> 4
   | Long8 -> 8
   | Slong8 -> 8
   | Ifd8 -> 8
@@ -747,7 +752,9 @@ let color_map t =
              (values.(i), values.(n + i), values.((2 * n) + i))))
 
 let compression t =
-  lookup_exn t.entries Compression |> read_entry |> compression_of_int
+  match lookup t.entries Compression with
+  | None -> No_compression
+  | Some entry -> read_entry entry |> compression_of_int
 
 let tiepoint t =
   let entry = lookup_exn t.entries ModelTiepoint in
@@ -793,12 +800,30 @@ module GeoKeys = struct
   type key =
     | GTModelTypeGeoKey
     | GTRasterTypeGeoKey
+    | GTCitationGeoKey
     | GeographicTypeGeoKey
     | GeogCitationGeoKey
+    | GeogGeodeticDatumGeoKey
+    | GeogLinearUnitsGeoKey
     | GeogAngularUnitsGeoKey
+    | GeogEllipsoidGeoKey
     | GeogSemiMajorAxisGeoKey
     | GeogInvFlatteningGeoKey
+    | GeogTOWGS84GeoKey
     | ProjectedCRS
+    | PCSCitationGeoKey
+    | ProjectionGeoKey
+    | ProjCoordTransGeoKey
+    | ProjLinearUnitsGeoKey
+    | ProjStdParallel1GeoKey
+    | ProjStdParallel2GeoKey
+    | ProjNatOriginLongGeoKey
+    | ProjNatOriginLatGeoKey
+    | ProjFalseEastingGeoKey
+    | ProjFalseNorthingGeoKey
+    | ProjCenterLongGeoKey
+    | ProjCenterLatGeoKey
+    | ProjScaleAtNatOriginGeoKey
     | Unknown of int
 
   let pp_key ppf = function
@@ -811,6 +836,24 @@ module GeoKeys = struct
     | GeogSemiMajorAxisGeoKey -> Fmt.string ppf "geog-semi-major-axis"
     | GeogInvFlatteningGeoKey -> Fmt.string ppf "geog-inv-flattening"
     | ProjectedCRS -> Fmt.string ppf "projected-crs"
+    | GTCitationGeoKey -> Fmt.string ppf "gt-citation"
+    | GeogGeodeticDatumGeoKey -> Fmt.string ppf "geog-geodetic-datum"
+    | GeogLinearUnitsGeoKey -> Fmt.string ppf "geog-linear-units"
+    | GeogEllipsoidGeoKey -> Fmt.string ppf "geog-ellipsoid"
+    | GeogTOWGS84GeoKey -> Fmt.string ppf "geog-to-wgs84"
+    | PCSCitationGeoKey -> Fmt.string ppf "pcs-citation"
+    | ProjectionGeoKey -> Fmt.string ppf "projection"
+    | ProjCoordTransGeoKey -> Fmt.string ppf "proj-coord-trans"
+    | ProjLinearUnitsGeoKey -> Fmt.string ppf "proj-linear-units"
+    | ProjStdParallel1GeoKey -> Fmt.string ppf "proj-std-parallel-1"
+    | ProjStdParallel2GeoKey -> Fmt.string ppf "proj-std-parallel-2"
+    | ProjNatOriginLongGeoKey -> Fmt.string ppf "proj-nat-origin-long"
+    | ProjNatOriginLatGeoKey -> Fmt.string ppf "proj-nat-origin-lat"
+    | ProjFalseEastingGeoKey -> Fmt.string ppf "proj-false-easting"
+    | ProjFalseNorthingGeoKey -> Fmt.string ppf "proj-false-northing"
+    | ProjCenterLongGeoKey -> Fmt.string ppf "proj-center-long"
+    | ProjCenterLatGeoKey -> Fmt.string ppf "proj-center-lat"
+    | ProjScaleAtNatOriginGeoKey -> Fmt.string ppf "proj-scale-at-nat-origin"
 
   let key_of_id = function
     | 1024 -> GTModelTypeGeoKey
@@ -821,6 +864,24 @@ module GeoKeys = struct
     | 2057 -> GeogSemiMajorAxisGeoKey
     | 2059 -> GeogInvFlatteningGeoKey
     | 3072 -> ProjectedCRS
+    | 1026 -> GTCitationGeoKey
+    | 2050 -> GeogGeodeticDatumGeoKey
+    | 2052 -> GeogLinearUnitsGeoKey
+    | 2056 -> GeogEllipsoidGeoKey
+    | 2062 -> GeogTOWGS84GeoKey
+    | 3073 -> PCSCitationGeoKey
+    | 3074 -> ProjectionGeoKey
+    | 3075 -> ProjCoordTransGeoKey
+    | 3076 -> ProjLinearUnitsGeoKey
+    | 3078 -> ProjStdParallel1GeoKey
+    | 3079 -> ProjStdParallel2GeoKey
+    | 3080 -> ProjNatOriginLongGeoKey
+    | 3081 -> ProjNatOriginLatGeoKey
+    | 3082 -> ProjFalseEastingGeoKey
+    | 3083 -> ProjFalseNorthingGeoKey
+    | 3088 -> ProjCenterLongGeoKey
+    | 3089 -> ProjCenterLatGeoKey
+    | 3092 -> ProjScaleAtNatOriginGeoKey
     | i -> Unknown i
 
   type model_type = Projected | Geographic | Geocentric | Other of int
@@ -1355,7 +1416,9 @@ let make_entry endian file_offset tag values =
     | [] -> Error.raise_error Error.Unsupported_feature "Unknown field for tag"
     | _ -> (
         match values with
-        | Ints (v :: _) -> smallest_int_field_for v allowed_fields
+        | Ints (v :: rest) ->
+            let largest = List.fold_left Int.max v rest in
+            smallest_int_field_for largest allowed_fields
         | _ ->
             Error.raise_error Error.Unsupported_feature
               "Cannot determine field for non-int multi-field tag")

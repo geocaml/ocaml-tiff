@@ -73,7 +73,7 @@ module Data = struct
   let read_int16_value buf buf_index tiff_endianness =
     Endian.int16 ~offset:buf_index tiff_endianness buf
 
-  (* currently unused but updated regardless incase we later use it *)
+  (* currently unused but updated regardless in case we later use it *)
   let _read_uint32_value buf buf_index tiff_endianness =
     Endian.int32 ~offset:buf_index tiff_endianness buf
 
@@ -399,7 +399,7 @@ module Data = struct
     let rows_per_strip = max 1 (default_strip_size / bytes_per_row) in
     (rows_per_strip, bytes_per_row)
 
-  (* Total byte counts per strip, must strips will be full (i.e. have [rows_per_strip] rows
+  (* Total byte counts per strip, most strips will be full (i.e. have [rows_per_strip] rows
      in them). Only the last might be short. *)
   let compute_data_bytecounts ~rows_per_strip ~height ~bytes_per_row =
     let num_strips = height / rows_per_strip in
@@ -655,6 +655,31 @@ let to_file (type repr kind) ?plane ?window (tiff : (repr, kind) t)
       Error.raise_error Error.Malformed_file
         "Tiff file has no data associated with it."
   | Some data -> write_data ~plane ~window tiff ifd data w
+
+let apply_color_map color_map data =
+  match Genarray.dims data with
+  | [| height; width |] ->
+      let entries = Array.length color_map in
+      let colors =
+        Genarray.create Int16_unsigned c_layout [| height; width; 3 |]
+      in
+      for y = 0 to height - 1 do
+        for x = 0 to width - 1 do
+          let index = Genarray.get data [| y; x |] in
+          if index < 0 || index >= entries then
+            Error.raisef Error.Invalid_argument
+              "Palette index %d is outside the ColorMap (%d entries)" index
+              entries;
+          let r, g, b = color_map.(index) in
+          Genarray.set colors [| y; x; 0 |] r;
+          Genarray.set colors [| y; x; 1 |] g;
+          Genarray.set colors [| y; x; 2 |] b
+        done
+      done;
+      colors
+  | _ ->
+      Error.raise_error Error.Invalid_argument
+        "apply_color_map expects a two-dimensional array of indexed data"
 
 let make ?(bigtiff = false) ?(endian = Endian.Big)
     ?(compression = Ifd.No_compression) ?photometric_interpretation

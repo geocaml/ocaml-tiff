@@ -56,6 +56,17 @@ let test_write_simple_striped_tiff backend _ =
   let _ifd = Tiff.ifd tiff in
   assert_equal ~msg:"Data" data (Tiff.data tiff r)
 
+let test_write_striped_tiff_large_offsets backend _ =
+  with_wo backend "./data/tmp_striped_large_offsets.tiff" @@ fun w ->
+  with_ro backend "./data/tmp_striped_large_offsets.tiff" @@ fun r ->
+  let data =
+    Nx.init UInt8 [| 300; 512 |] (fun i -> i.(0) mod 256) |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make data in
+  Tiff.to_file tiff w;
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+  assert_equal_ba data (Tiff.data tiff r)
+
 let test_write_basic_tiff backend _ =
   with_wo backend "./data/tmp.tiff" @@ fun w ->
   with_ro backend "./data/tmp.tiff" @@ fun r ->
@@ -726,6 +737,30 @@ let test_color_map backend _ =
       assert_equal ~msg:"Blue" (0, 0, 65535) cm.(2);
       assert_bool "No ColorMap" (color_map "./data/uniform.tiff" = None)
 
+let test_apply_color_map backend _ =
+  with_ro backend "./data/palette_uint8.tiff" @@ fun r ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) r in
+  let color_map = Option.get (Tiff.Ifd.color_map (Tiff.ifd tiff)) in
+  let colors = Tiff.apply_color_map color_map (Tiff.data tiff r) in
+  assert_equal ~msg:"Dimensions" [| 2; 4; 3 |] (Bigarray.Genarray.dims colors);
+  let pixel y x =
+    ( Bigarray.Genarray.get colors [| y; x; 0 |],
+      Bigarray.Genarray.get colors [| y; x; 1 |],
+      Bigarray.Genarray.get colors [| y; x; 2 |] )
+  in
+  assert_equal ~msg:"Red" (65535, 0, 0) (pixel 0 0);
+  assert_equal ~msg:"Blue" (0, 0, 65535) (pixel 0 2);
+  assert_equal ~msg:"White" (65535, 65535, 65535) (pixel 1 0)
+
+let test_apply_color_map_bad_index _ =
+  let data =
+    Bigarray.Genarray.create Bigarray.Int8_unsigned Bigarray.c_layout [| 1; 1 |]
+  in
+  Bigarray.Genarray.set data [| 0; 0 |] 5;
+  match Tiff.apply_color_map [| (0, 0, 0) |] data with
+  | exception Tiff.Error.Tiff_error (Invalid_argument, _, _) -> ()
+  | _ -> assert_failure "Expected an out-of-range index to be rejected"
+
 let test_load_striped_no_rows_per_strip backend _ =
   let data = "./data/striped_no_rowsperstrip.tiff" in
   with_ro backend data @@ fun ro ->
@@ -736,6 +771,39 @@ let test_load_striped_no_rows_per_strip backend _ =
   (* The tag is missing, so it should default to the height (10) *)
   assert_equal_int ~msg:"Rows per strip defaults to height" 10
     (Tiff.Ifd.rows_per_strip header)
+
+let test_load_no_compression_tag backend _ =
+  let data = "./data/no_compression_tag.tiff" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 2 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 2 (Tiff.Ifd.height header);
+  assert_equal ~msg:"Compression defaults to No_compression"
+    Tiff.Ifd.No_compression
+    (Tiff.Ifd.compression header);
+  let pixels = Tiff.data tiff ro |> Bigarray.array2_of_genarray in
+  assert_equal_int ~msg:"Pixel 0" 10 pixels.{0, 0};
+  assert_equal_int ~msg:"Pixel 1" 20 pixels.{0, 1};
+  assert_equal_int ~msg:"Pixel 2" 30 pixels.{1, 0};
+  assert_equal_int ~msg:"Pixel 3" 40 pixels.{1, 1}
+
+let test_load_ifd_field_type backend _ =
+  let data = "./data/exif_ifd_type13.tif" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let header = Tiff.ifd tiff in
+  assert_equal_int ~msg:"Image width" 2 (Tiff.Ifd.width header);
+  assert_equal_int ~msg:"Image height" 2 (Tiff.Ifd.height header);
+  (* The ExifIFD entry (tag 34665) has field type 13 and should be kept *)
+  assert_bool "ExifIFD entry is present"
+    (Option.is_some
+       (Tiff.Ifd.lookup (Tiff.Ifd.entries header) (Tiff.Ifd.Unknown 34665)));
+  let pixels = Tiff.data tiff ro |> Bigarray.array2_of_genarray in
+  assert_equal_int ~msg:"Pixel 0" 10 pixels.{0, 0};
+  assert_equal_int ~msg:"Pixel 1" 20 pixels.{0, 1};
+  assert_equal_int ~msg:"Pixel 2" 30 pixels.{1, 0};
+  assert_equal_int ~msg:"Pixel 3" 40 pixels.{1, 1}
 
 let test_malformed_tiff_header backend _ =
   let tmp = "./data/tmp_malformed_header.tiff" in
@@ -786,6 +854,8 @@ let suite fs =
     [
       "Test write simple striped TIFF"
       >:: test_write_simple_striped_tiff backend;
+      "Test write striped TIFF with large offsets"
+      >:: test_write_striped_tiff_large_offsets backend;
       "Test write basic TIFF" >:: test_write_basic_tiff backend;
       "Test write int32 TIFF" >:: test_write_int32_tiff backend;
       "Test write ifd roundtrip" >:: test_write_entries_roundtrip backend;
@@ -834,6 +904,10 @@ let suite fs =
       "Test uneven rows per strip" >:: test_uneven_rows_per_strip backend;
       "Test load striped tiff without RowsPerStrip"
       >:: test_load_striped_no_rows_per_strip backend;
+      "Test load tiff without compression tag"
+      >:: test_load_no_compression_tag backend;
+      "Test load tiff with an IFD-typed (13) field"
+      >:: test_load_ifd_field_type backend;
       "Test LZW and NoCompress agree" >:: test_lzw_cea backend;
       "Test LZW predictor and NoCompress agree"
       >:: test_lzw_predictor_cea backend;
@@ -855,6 +929,8 @@ let suite fs =
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
       "Test color map" >:: test_color_map backend;
+      "Test apply color map" >:: test_apply_color_map backend;
+      "Test apply color map bad index" >:: test_apply_color_map_bad_index;
       "Test 32-bit LONG tile offsets" >:: test_tile_offsets_long backend;
     ]
   in

@@ -44,12 +44,114 @@ let test_load_simple_float32_geotiff fs _ =
   assert_equal ~msg:"ascii params" [ "WGS 84" ]
     (Tiff.Ifd.geo_ascii_params header)
 
+(* [pp_entry] prints "geokey: <name>, field: ...", and that name is the only
+   view of the key the interface offers. *)
+let key_name_of_entry e =
+  let s = Format.asprintf "%a" Tiff.Ifd.GeoKeys.pp_entry e in
+  let first = List.hd (String.split_on_char ',' s) in
+  match String.index_opt first ' ' with
+  | Some i -> String.sub first (i + 1) (String.length first - i - 1)
+  | None -> first
+
+let geokey_names fs path =
+  Eio.Path.(with_open_in (fs / path)) @@ fun r ->
+  let ro = Eio.File.pread_exact r in
+  let header = Tiff.Ifd.read_header ro in
+  let ifd = Tiff.Ifd.v ~file_offset:header.Tiff.Ifd.offset header ro in
+  Tiff.Ifd.geo_key_directory ifd
+  |> Tiff.Ifd.GeoKeys.get_geo_entries |> List.map key_name_of_entry
+
+let test_projected_geokey_names fs _ =
+  let expected =
+    [
+      "gt-model-type";
+      "gt-raster-type";
+      "gt-citation";
+      "geographic-type";
+      "geog-citation";
+      "geog-angular-units";
+      "projected-crs";
+      "projection";
+      "proj-coord-trans";
+      "proj-linear-units";
+      "proj-std-parallel-1";
+      "proj-nat-origin-long";
+      "proj-false-easting";
+      "proj-false-northing";
+    ]
+  in
+  assert_equal ~msg:"cea.tiff geokeys" ~printer:(String.concat ", ") expected
+    (geokey_names fs "./data/cea.tiff")
+
+let test_projected_geokey_names_with_ellipsoid fs _ =
+  let expected =
+    [
+      "gt-model-type";
+      "gt-raster-type";
+      "gt-citation";
+      "geographic-type";
+      "geog-citation";
+      "geog-angular-units";
+      "geog-semi-major-axis";
+      "geog-inv-flattening";
+      "projected-crs";
+      "projection";
+      "proj-coord-trans";
+      "proj-linear-units";
+      "proj-std-parallel-1";
+      "proj-nat-origin-long";
+      "proj-false-easting";
+      "proj-false-northing";
+    ]
+  in
+  assert_equal ~msg:"uneven_rows_per_strip.tiff geokeys"
+    ~printer:(String.concat ", ") expected
+    (geokey_names fs "./data/uneven_rows_per_strip.tiff")
+
+let test_geographic_geokey_names fs _ =
+  let expected =
+    [
+      "gt-model-type";
+      "gt-raster-type";
+      "geographic-type";
+      "geog-citation";
+      "geog-angular-units";
+      "geog-semi-major-axis";
+      "geog-inv-flattening";
+    ]
+  in
+  assert_equal ~msg:"aoh.tiff geokeys" ~printer:(String.concat ", ") expected
+    (geokey_names fs "./data/aoh.tiff")
+
+(* Every key in these files is one the GeoTIFF specification defines, so none
+   of them should fall through to [Unknown]. *)
+let test_no_unnamed_geokeys fs _ =
+  List.iter
+    (fun path ->
+      List.iter
+        (fun name ->
+          assert_bool
+            (Printf.sprintf "%s: key not named: %s" path name)
+            (not (String.starts_with ~prefix:"unknown-" name)))
+        (geokey_names fs path))
+    [
+      "./data/cea.tiff";
+      "./data/cea_lzw.tiff";
+      "./data/uneven_rows_per_strip.tiff";
+      "./data/aoh.tiff";
+    ]
+
 let suite fs =
   "Basic tests"
   >::: [
          "Test load simple uint8 tiff" >:: test_load_simple_uint8_tiff fs;
          "Test load simple float32 geotiff"
          >:: test_load_simple_float32_geotiff fs;
+         "Test projected geokey names" >:: test_projected_geokey_names fs;
+         "Test projected geokey names with ellipsoid"
+         >:: test_projected_geokey_names_with_ellipsoid fs;
+         "Test geographic geokey names" >:: test_geographic_geokey_names fs;
+         "Test no unnamed geokeys" >:: test_no_unnamed_geokeys fs;
        ]
 
 let () =
