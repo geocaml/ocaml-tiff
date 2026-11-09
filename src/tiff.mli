@@ -10,8 +10,14 @@ module File = File
 module Endian = Endian
 module Ifd = Ifd
 
-type window = { xoff : int; yoff : int; xsize : int; ysize : int }
-(** A window can be used to reduce the size of data returned by {! data} *)
+module Window : sig
+  type t
+  (** A window can be used to reduce the size of data returned by {! data} *)
+
+  val make : xoff:int -> yoff:int -> xsize:int -> ysize:int -> t
+  (** Creates a pixel window. Negative arguments raise [Error.Tiff_error] with
+      category [Error.Invalid_argument]. Image bounds are checked on use. *)
+end
 
 type ('repr, 'kind) kind =
   | Uint8 : (int, int8_unsigned_elt) kind
@@ -43,7 +49,7 @@ val from_file : ('repr, 'kind) intent -> File.ro -> ('repr, 'kind) t
 (** Start reading a TIFF file with the type of data specified. *)
 
 val to_file :
-  ?plane:int -> ?window:window -> ('repr, 'kind) t -> File.wo -> unit
+  ?plane:int -> ?window:Window.t -> ('repr, 'kind) t -> File.wo -> unit
 (** [to_file t w] writes the tiff [t] along with its data to a file using [w].
 *)
 
@@ -56,7 +62,7 @@ val ifds : ('repr, 'kind) t -> Ifd.t array
 val data :
   ?image_nb:int ->
   ?plane:int ->
-  ?window:window ->
+  ?window:Window.t ->
   ('repr, 'kind) t ->
   File.ro ->
   ('repr, 'kind) Data.t
@@ -64,6 +70,14 @@ val data :
 
     Higher-level abstractions may wish to present a uniform interface to this
     data. *)
+
+val apply_color_map :
+  (int * int * int) array ->
+  (int, 'kind) Data.t ->
+  (int, int16_unsigned_elt) Data.t
+(** For palette images, {!data} returns indices into the ColorMap.
+    [apply_color_map color_map data] turns the palette indices in [data] into
+    red, green and blue values, using [color_map] from {!Ifd.color_map}. *)
 
 val make :
   ?bigtiff:bool ->

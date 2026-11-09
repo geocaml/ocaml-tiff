@@ -24,7 +24,7 @@ let read_header ro =
   let kind, offset =
     match magic with
     | 42 ->
-        (Tiff, Endian.uint32 ~offset:4 byte_order buf |> Optint.Int63.of_int32)
+        (Tiff, Endian.uint32 ~offset:4 byte_order buf |> Optint.Int63.of_int64)
     | 43 ->
         ( Bigtiff,
           Endian.uint64 ~offset:8 byte_order buf |> Optint.Int63.of_int64 )
@@ -46,6 +46,9 @@ let write_header wo header =
         (header.offset |> Optint.Int63.to_int32)
   | Bigtiff ->
       Endian.set_uint16 ~offset:2 header.byte_order buf 43;
+      (* Bytes 4-5 hold the offset size (always 8) and bytes 6-7 are
+         reserved and must be zero; the buffer is zero-initialised. *)
+      Endian.set_uint16 ~offset:4 header.byte_order buf 8;
       Endian.set_uint64 ~offset:8 header.byte_order buf
         (header.offset |> Optint.Int63.to_int64));
 
@@ -73,6 +76,7 @@ type field =
   | Srational
   | Float
   | Double
+  | Ifd
   | Long8
   | Slong8
   | Ifd8
@@ -90,6 +94,7 @@ let field_of_int = function
   | 10 -> Srational
   | 11 -> Float
   | 12 -> Double
+  | 13 -> Ifd
   | 16 -> Long8
   | 17 -> Slong8
   | 18 -> Ifd8
@@ -108,6 +113,7 @@ let field_to_int = function
   | Srational -> 10
   | Float -> 11
   | Double -> 12
+  | Ifd -> 13
   | Long8 -> 16
   | Slong8 -> 17
   | Ifd8 -> 18
@@ -125,6 +131,7 @@ let pp_field ppf = function
   | Srational -> Fmt.pf ppf "srational"
   | Float -> Fmt.pf ppf "float"
   | Double -> Fmt.pf ppf "double"
+  | Ifd -> Fmt.pf ppf "ifd"
   | Long8 -> Fmt.pf ppf "long8"
   | Slong8 -> Fmt.pf ppf "slong8"
   | Ifd8 -> Fmt.pf ppf "ifd8"
@@ -143,6 +150,7 @@ let rec field_byte_size (x : field) =
   | Srational -> field_byte_size Slong * 2
   | Float -> 4
   | Double -> 8
+  | Ifd -> 4
   | Long8 -> 8
   | Slong8 -> 8
   | Ifd8 -> 8
@@ -175,6 +183,15 @@ type tag =
   | TileOffsets
   | TileByteCounts
   | GdalMetadata
+  | NewSubfileType
+  | FillOrder
+  | ImageDescription
+  | Orientation
+  | PageNumber
+  | Software
+  | DateTime
+  | ColorMap
+  | ExtraSamples
   | Unknown of int
 
 let tag_of_int = function
@@ -205,6 +222,15 @@ let tag_of_int = function
   | 324 -> TileOffsets
   | 325 -> TileByteCounts
   | 42112 -> GdalMetadata
+  | 254 -> NewSubfileType
+  | 266 -> FillOrder
+  | 270 -> ImageDescription
+  | 274 -> Orientation
+  | 297 -> PageNumber
+  | 305 -> Software
+  | 306 -> DateTime
+  | 320 -> ColorMap
+  | 338 -> ExtraSamples
   | i -> Unknown i
 
 let tag_to_int = function
@@ -235,6 +261,15 @@ let tag_to_int = function
   | TileOffsets -> 324
   | TileByteCounts -> 325
   | GdalMetadata -> 42112
+  | NewSubfileType -> 254
+  | FillOrder -> 266
+  | ImageDescription -> 270
+  | Orientation -> 274
+  | PageNumber -> 297
+  | Software -> 305
+  | DateTime -> 306
+  | ColorMap -> 320
+  | ExtraSamples -> 338
   | Unknown i -> i
 
 let tag_to_fields = function
@@ -243,12 +278,15 @@ let tag_to_fields = function
       [ Short; Long ]
   | BitsPerSample | Compression | PhotometricInterpretation | SamplesPerPixel
   | ResolutionUnit | PlanarConfiguration | SampleFormat | Predictor
-  | GeoKeyDirectory ->
+  | GeoKeyDirectory | FillOrder | Orientation | PageNumber | ColorMap
+  | ExtraSamples ->
       [ Short ]
-  | TileOffsets -> [ Long ]
+  | TileOffsets | NewSubfileType -> [ Long ]
   | ModelPixelScale | ModelTiepoint | ModelTransformation | GeoDoubleParams ->
       [ Double ]
-  | GeoAsciiParams | GdalMetadata | DocumentName -> [ Ascii ]
+  | GeoAsciiParams | GdalMetadata | DocumentName | ImageDescription | Software
+  | DateTime ->
+      [ Ascii ]
   | XResolution | YResolution -> [ Rational ]
 
 let pp_tag ppf (x : tag) =
@@ -280,6 +318,15 @@ let pp_tag ppf (x : tag) =
   | TileOffsets -> Fmt.string ppf "tile-offsets"
   | TileByteCounts -> Fmt.string ppf "tile-byte-counts"
   | GdalMetadata -> Fmt.string ppf "gdal-metadata"
+  | NewSubfileType -> Fmt.string ppf "new-subfile-type"
+  | FillOrder -> Fmt.string ppf "fill-order"
+  | ImageDescription -> Fmt.string ppf "image-description"
+  | Orientation -> Fmt.string ppf "orientation"
+  | PageNumber -> Fmt.string ppf "page-number"
+  | Software -> Fmt.string ppf "software"
+  | DateTime -> Fmt.string ppf "date-time"
+  | ColorMap -> Fmt.string ppf "color-map"
+  | ExtraSamples -> Fmt.string ppf "extra-samples"
   | Unknown i -> Fmt.pf ppf "unknown-%i" i
 
 type offset =
@@ -508,7 +555,7 @@ let get_dataset_offsets endian entries reader =
     let strips = ref [] in
     let get_offset ~offset buf = function
       | Short -> Endian.uint16 ~offset endian buf
-      | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
+      | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
       | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
       | _ ->
           Error.raise_error Error.Unsupported_feature
@@ -552,7 +599,7 @@ let get_bytecounts endian entries reader =
     let strips = ref [] in
     let get_offset ~offset buf = function
       | Short -> Endian.uint16 ~offset endian buf
-      | Long -> Endian.uint32 ~offset endian buf |> Int32.to_int
+      | Long -> Endian.uint32 ~offset endian buf |> Int64.to_int
       | Long8 -> Endian.uint64 ~offset endian buf |> Int64.to_int
       | _ ->
           Error.raisef Error.Unsupported_feature "Unsupported strip length: %a"
@@ -646,37 +693,39 @@ let document_name t =
   String.sub s 0 (String.length s - 1)
 
 let bits_per_sample t =
-  let entry = lookup_exn t.entries BitsPerSample in
-  match entry.offset with
-  | Immediate imm ->
-      if entry.count = 1L then [ Int64.to_int imm ]
-      else if entry.count = 2L then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
-      else if entry.count = 3L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-        ])
-      else if entry.count = 4L && t.header.kind = Bigtiff then (
-        let buf = Cstruct.create 8 in
-        Cstruct.BE.set_uint64 buf 0 imm;
-        [
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 2;
-          Cstruct.BE.get_uint16 buf 4;
-          Cstruct.BE.get_uint16 buf 6;
-        ])
-      else
-        let scales = read_entry_raw entry t.ro in
-        List.map (Endian.uint16 t.header.byte_order) scales
-  | _ ->
-      let scales = read_entry_raw entry t.ro in
-      List.map (Endian.uint16 t.header.byte_order) scales
+  match lookup t.entries BitsPerSample with
+  | None -> [ 1 ] (* TIFF 6.0 default *)
+  | Some entry -> (
+      match entry.offset with
+      | Immediate imm ->
+          if entry.count = 1L then [ Int64.to_int imm ]
+          else if entry.count = 2L then (
+            let buf = Cstruct.create 8 in
+            Cstruct.BE.set_uint64 buf 0 imm;
+            [ Cstruct.BE.get_uint16 buf 0; Cstruct.BE.get_uint16 buf 2 ])
+          else if entry.count = 3L && t.header.kind = Bigtiff then (
+            let buf = Cstruct.create 8 in
+            Cstruct.BE.set_uint64 buf 0 imm;
+            [
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 4;
+            ])
+          else if entry.count = 4L && t.header.kind = Bigtiff then (
+            let buf = Cstruct.create 8 in
+            Cstruct.BE.set_uint64 buf 0 imm;
+            [
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 2;
+              Cstruct.BE.get_uint16 buf 4;
+              Cstruct.BE.get_uint16 buf 6;
+            ])
+          else
+            let scales = read_entry_raw entry t.ro in
+            List.map (Endian.uint16 t.header.byte_order) scales
+      | _ ->
+          let scales = read_entry_raw entry t.ro in
+          List.map (Endian.uint16 t.header.byte_order) scales)
 
 let planar_configuration t =
   try
@@ -684,8 +733,28 @@ let planar_configuration t =
     |> read_entry |> planar_configuration_of_int
   with Not_found -> Chunky
 
+let color_map t =
+  match lookup t.entries ColorMap with
+  | None -> None
+  | Some entry ->
+      let values =
+        read_entry_raw entry t.ro
+        |> List.map (Endian.uint16 t.header.byte_order)
+        |> Array.of_list
+      in
+      let len = Array.length values in
+      if len mod 3 <> 0 then
+        Error.raise_error Error.Malformed_file
+          "ColorMap count is not a multiple of 3";
+      let n = len / 3 in
+      Some
+        (Array.init n (fun i ->
+             (values.(i), values.(n + i), values.((2 * n) + i))))
+
 let compression t =
-  lookup_exn t.entries Compression |> read_entry |> compression_of_int
+  match lookup t.entries Compression with
+  | None -> No_compression
+  | Some entry -> read_entry entry |> compression_of_int
 
 let tiepoint t =
   let entry = lookup_exn t.entries ModelTiepoint in
@@ -731,12 +800,30 @@ module GeoKeys = struct
   type key =
     | GTModelTypeGeoKey
     | GTRasterTypeGeoKey
+    | GTCitationGeoKey
     | GeographicTypeGeoKey
     | GeogCitationGeoKey
+    | GeogGeodeticDatumGeoKey
+    | GeogLinearUnitsGeoKey
     | GeogAngularUnitsGeoKey
+    | GeogEllipsoidGeoKey
     | GeogSemiMajorAxisGeoKey
     | GeogInvFlatteningGeoKey
+    | GeogTOWGS84GeoKey
     | ProjectedCRS
+    | PCSCitationGeoKey
+    | ProjectionGeoKey
+    | ProjCoordTransGeoKey
+    | ProjLinearUnitsGeoKey
+    | ProjStdParallel1GeoKey
+    | ProjStdParallel2GeoKey
+    | ProjNatOriginLongGeoKey
+    | ProjNatOriginLatGeoKey
+    | ProjFalseEastingGeoKey
+    | ProjFalseNorthingGeoKey
+    | ProjCenterLongGeoKey
+    | ProjCenterLatGeoKey
+    | ProjScaleAtNatOriginGeoKey
     | Unknown of int
 
   let pp_key ppf = function
@@ -749,6 +836,24 @@ module GeoKeys = struct
     | GeogSemiMajorAxisGeoKey -> Fmt.string ppf "geog-semi-major-axis"
     | GeogInvFlatteningGeoKey -> Fmt.string ppf "geog-inv-flattening"
     | ProjectedCRS -> Fmt.string ppf "projected-crs"
+    | GTCitationGeoKey -> Fmt.string ppf "gt-citation"
+    | GeogGeodeticDatumGeoKey -> Fmt.string ppf "geog-geodetic-datum"
+    | GeogLinearUnitsGeoKey -> Fmt.string ppf "geog-linear-units"
+    | GeogEllipsoidGeoKey -> Fmt.string ppf "geog-ellipsoid"
+    | GeogTOWGS84GeoKey -> Fmt.string ppf "geog-to-wgs84"
+    | PCSCitationGeoKey -> Fmt.string ppf "pcs-citation"
+    | ProjectionGeoKey -> Fmt.string ppf "projection"
+    | ProjCoordTransGeoKey -> Fmt.string ppf "proj-coord-trans"
+    | ProjLinearUnitsGeoKey -> Fmt.string ppf "proj-linear-units"
+    | ProjStdParallel1GeoKey -> Fmt.string ppf "proj-std-parallel-1"
+    | ProjStdParallel2GeoKey -> Fmt.string ppf "proj-std-parallel-2"
+    | ProjNatOriginLongGeoKey -> Fmt.string ppf "proj-nat-origin-long"
+    | ProjNatOriginLatGeoKey -> Fmt.string ppf "proj-nat-origin-lat"
+    | ProjFalseEastingGeoKey -> Fmt.string ppf "proj-false-easting"
+    | ProjFalseNorthingGeoKey -> Fmt.string ppf "proj-false-northing"
+    | ProjCenterLongGeoKey -> Fmt.string ppf "proj-center-long"
+    | ProjCenterLatGeoKey -> Fmt.string ppf "proj-center-lat"
+    | ProjScaleAtNatOriginGeoKey -> Fmt.string ppf "proj-scale-at-nat-origin"
 
   let key_of_id = function
     | 1024 -> GTModelTypeGeoKey
@@ -759,6 +864,24 @@ module GeoKeys = struct
     | 2057 -> GeogSemiMajorAxisGeoKey
     | 2059 -> GeogInvFlatteningGeoKey
     | 3072 -> ProjectedCRS
+    | 1026 -> GTCitationGeoKey
+    | 2050 -> GeogGeodeticDatumGeoKey
+    | 2052 -> GeogLinearUnitsGeoKey
+    | 2056 -> GeogEllipsoidGeoKey
+    | 2062 -> GeogTOWGS84GeoKey
+    | 3073 -> PCSCitationGeoKey
+    | 3074 -> ProjectionGeoKey
+    | 3075 -> ProjCoordTransGeoKey
+    | 3076 -> ProjLinearUnitsGeoKey
+    | 3078 -> ProjStdParallel1GeoKey
+    | 3079 -> ProjStdParallel2GeoKey
+    | 3080 -> ProjNatOriginLongGeoKey
+    | 3081 -> ProjNatOriginLatGeoKey
+    | 3082 -> ProjFalseEastingGeoKey
+    | 3083 -> ProjFalseNorthingGeoKey
+    | 3088 -> ProjCenterLongGeoKey
+    | 3089 -> ProjCenterLatGeoKey
+    | 3092 -> ProjScaleAtNatOriginGeoKey
     | i -> Unknown i
 
   type model_type = Projected | Geographic | Geocentric | Other of int
@@ -948,7 +1071,6 @@ let tile_byte_counts t =
   let offsets = read_entry_raw entry t.ro in
   if field_byte_size entry.field = 4 then
     List.map (Endian.uint32 t.header.byte_order) offsets
-    |> List.map Int64.of_int32
   else List.map (Endian.uint64 t.header.byte_order) offsets
 
 let v ~file_offset header reader =
@@ -979,9 +1101,7 @@ let v ~file_offset header reader =
         let field =
           Endian.uint16 ~offset:(base_offset + 2) endian buf |> field_of_int
         in
-        let count =
-          Endian.uint32 ~offset:(base_offset + 4) endian buf |> Int64.of_int32
-        in
+        let count = Endian.uint32 ~offset:(base_offset + 4) endian buf in
         let is_immediate = is_immediate_raw ~count field in
         let offset =
           match (is_immediate, field) with
@@ -989,9 +1109,7 @@ let v ~file_offset header reader =
               Cstruct.get_uint8 buf (base_offset + 8) |> Int64.of_int
           | true, Short ->
               Endian.uint16 ~offset:(base_offset + 8) endian buf |> Int64.of_int
-          | _ ->
-              Endian.uint32 ~offset:(base_offset + 8) endian buf
-              |> Int64.of_int32
+          | _ -> Endian.uint32 ~offset:(base_offset + 8) endian buf
         in
         let offset = if is_immediate then Immediate offset else Offset offset in
         let entry = { tag; field; count; offset } in
@@ -1011,9 +1129,7 @@ let v ~file_offset header reader =
           | true, Short ->
               Endian.uint16 ~offset:(base_offset + 12) endian buf
               |> Int64.of_int
-          | true, Long ->
-              Endian.uint32 ~offset:(base_offset + 12) endian buf
-              |> Int64.of_int32
+          | true, Long -> Endian.uint32 ~offset:(base_offset + 12) endian buf
           | _ -> Endian.uint64 ~offset:(base_offset + 12) endian buf
         in
         let offset = if is_immediate then Immediate offset else Offset offset in
@@ -1024,7 +1140,7 @@ let v ~file_offset header reader =
     match header.kind with
     | Tiff ->
         Endian.uint32 ~offset:0 header.byte_order next_ifd_buf
-        |> Optint.Int63.of_int32
+        |> Optint.Int63.of_int64
     | Bigtiff ->
         Endian.uint64 ~offset:0 header.byte_order next_ifd_buf
         |> Optint.Int63.of_int64
@@ -1297,7 +1413,9 @@ let make_entry endian file_offset tag values =
     | [] -> Error.raise_error Error.Unsupported_feature "Unknown field for tag"
     | _ -> (
         match values with
-        | Ints (v :: _) -> smallest_int_field_for v allowed_fields
+        | Ints (v :: rest) ->
+            let largest = List.fold_left Int.max v rest in
+            smallest_int_field_for largest allowed_fields
         | _ ->
             Error.raise_error Error.Unsupported_feature
               "Cannot determine field for non-int multi-field tag")
