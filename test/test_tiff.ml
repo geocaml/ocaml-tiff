@@ -831,6 +831,24 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_tile_offsets_long backend _ =
+  let expected_offsets = [ 166L; 422L; 678L; 934L ] in
+  let files =
+    [ "./data/tile_offsets_long_le.tiff"; "./data/tile_offsets_long_be.tiff" ]
+  in
+  List.iter
+    (fun path ->
+      with_ro backend path @@ fun ro ->
+      let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+      let ifd = Tiff.ifd tiff in
+      let actual_offsets = Tiff.Ifd.tile_offsets ifd in
+      assert_equal
+        ~msg:("Tile offsets in " ^ path)
+        ~printer:(fun offsets ->
+          String.concat ", " (List.map Int64.to_string offsets))
+        expected_offsets actual_offsets)
+    files
+
 let suite fs =
   let tests backend =
     [
@@ -913,6 +931,7 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test 32-bit LONG tile offsets" >:: test_tile_offsets_long backend;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
