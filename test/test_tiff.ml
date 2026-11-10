@@ -989,6 +989,73 @@ let test_cleanup_explicit_o_excl _ =
       assert_equal ~msg:"Existing file contents should remain unchanged"
         original_contents contents)
 
+(* Eio: exclusive creation must handle success, failure, and existing files. *)
+let test_eio_exclusive fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_excl_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write: remove newly created partial file. *)
+      remove_if_exists ();
+
+      let simulate_failure w =
+        w ~file_offset:Optint.Int63.zero
+          [ Cstruct.of_string "partial TIFF data" ];
+        raise Exit
+      in
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path
+               simulate_failure);
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Partial file should be removed"
+        (not (Sys.file_exists filename));
+
+      (* 2. Successful write: preserve completed file. *)
+      Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "TIFF test data" ]);
+
+      assert_bool "Successful write should preserve the file"
+        (Sys.file_exists filename);
+
+      let read_contents () =
+        let ic = open_in_bin filename in
+        Fun.protect
+          ~finally:(fun () -> close_in ic)
+          (fun () -> really_input_string ic (in_channel_length ic))
+      in
+
+      assert_equal ~msg:"Successful write contents" "TIFF test data"
+        (read_contents ());
+
+      (* 3. Existing file: reject exclusive creation. *)
+      let callback_called = ref false in
+
+      let rejected =
+        try
+          Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path (fun _ ->
+              callback_called := true);
+          false
+        with Eio.Exn.Io (Eio.Fs.E (Eio.Fs.Already_exists _), _) -> true
+      in
+
+      assert_bool "Exclusive creation should reject existing file" rejected;
+      assert_bool "Callback should not run" (not !callback_called);
+      assert_bool "Existing file should remain" (Sys.file_exists filename);
+      assert_equal ~msg:"Existing contents must remain unchanged"
+        "TIFF test data" (read_contents ()))
+
 let suite fs =
   let tests backend =
     [
@@ -1081,6 +1148,7 @@ let suite fs =
       >:: test_cleanup_preserves_existing_file;
       "Test cleanup after partial write" >:: test_cleanup_after_partial_write;
       "Test cleanup explicit O_EXCL" >:: test_cleanup_explicit_o_excl;
+      "Test Eio exclusive creation" >:: test_eio_exclusive fs;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
