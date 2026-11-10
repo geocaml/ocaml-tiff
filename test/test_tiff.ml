@@ -83,6 +83,26 @@ let test_write_basic_tiff backend _ =
   assert_equal ~msg:"Data" data (Tiff.data tiff r);
   assert_equal ~msg:"Document Name" document_name "TIFF_File"
 
+let test_lzw_write_unsupported_compression _ =
+  let data =
+    Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make ~compression:Tiff.Ifd.LZW data in
+  let writes = ref 0 in
+  let writer ~file_offset:_ buffers =
+    incr writes;
+    ignore buffers
+  in
+  let rejected =
+    try
+      Tiff.to_file tiff writer;
+      false
+    with Tiff.Error.Tiff_error (Tiff.Error.Unsupported_feature, _, _) -> true
+  in
+  assert_bool "LZW writing should be rejected" rejected;
+  assert_bool "TIFF metadata should be written before rejection" (!writes > 0)
+
 let test_write_int32_tiff backend _ =
   with_wo backend "./data/tmp_int32.tiff" @@ fun w ->
   with_ro backend "./data/tmp_int32.tiff" @@ fun r ->
@@ -831,6 +851,211 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+(* Unsupported compression should not leave a newly created output file. *)
+let test_cleanup_unsupported_compression _ =
+  let path = Filename.temp_file "ocaml_tiff_lzw_" ".tiff" in
+  Sys.remove path;
+  let data =
+    Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+    |> Nx.to_bigarray
+  in
+  let tiff = Tiff.make ~compression:Tiff.Ifd.LZW data in
+  let rejected =
+    try
+      Tiff_unix.with_open_out path (fun w -> Tiff.to_file tiff w);
+      false
+    with Tiff.Error.Tiff_error (Tiff.Error.Unsupported_feature, _, _) -> true
+  in
+  assert_bool "Unsupported compression should raise an error" rejected;
+  assert_bool "Partial file should be removed" (not (Sys.file_exists path));
+  if Sys.file_exists path then Sys.remove path
+
+(* Cleanup should also work for failures unrelated to compression. *)
+let test_cleanup_other_write_error _ =
+  let path = Filename.temp_file "ocaml_tiff_error_" ".tiff" in
+  Sys.remove path;
+
+  let simulate_write w =
+    let buf = Cstruct.of_string "partial TIFF" in
+    w ~file_offset:Optint.Int63.zero [ buf ];
+    failwith "Simulated writing failure"
+  in
+
+  let rejected =
+    try
+      ignore (Tiff_unix.with_open_out path simulate_write);
+      false
+    with
+    | Failure msg when msg = "Simulated writing failure" -> true
+    | _ -> false
+  in
+
+  assert_bool "Original writing error should be preserved" rejected;
+  assert_bool "Partial file should be removed" (not (Sys.file_exists path));
+
+  if Sys.file_exists path then Sys.remove path
+
+(* Successful writes must retain the completed output file. *)
+let test_cleanup_successful_write _ =
+  let path = Filename.temp_file "ocaml_tiff_success_" ".tiff" in
+  Sys.remove path;
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let data =
+        Nx.init UInt8 [| 10; 10 |] (fun i -> Array.fold_left ( + ) 0 i)
+        |> Nx.to_bigarray
+      in
+      let tiff = Tiff.make data in
+      Tiff_unix.with_open_out path (fun w -> Tiff.to_file tiff w);
+      assert_bool "Successful TIFF should exist" (Sys.file_exists path);
+      assert_bool "Successful TIFF should contain data"
+        ((Unix.stat path).Unix.st_size > 0))
+
+(* Existing file should remain preserved after cleanup*)
+let test_cleanup_preserves_existing_file _ =
+  let path = Filename.temp_file "ocaml_tiff_existing_" ".tiff" in
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let simulate_failure _ = raise Exit in
+      let original_contents = "Original TIFF data" in
+      let oc = open_out_bin path in
+      output_string oc original_contents;
+      close_out oc;
+      let failed =
+        try
+          ignore (Tiff_unix.with_open_out path simulate_failure);
+          false
+        with Exit -> true
+      in
+      assert_bool "Writing should raise the original exception" failed;
+      assert_bool "Existing file must not be deleted" (Sys.file_exists path);
+      let ic = open_in_bin path in
+      let contents = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      assert_equal ~msg:"Existing file contents must remain unchanged"
+        original_contents contents)
+
+(* Removes newly created file after the failed write*)
+let test_cleanup_after_partial_write _ =
+  let path = Filename.temp_file "ocaml_tiff_partial_" ".tiff" in
+  Sys.remove path;
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let simulate_failure w =
+        w ~file_offset:Optint.Int63.zero
+          [ Cstruct.of_string "partial TIFF data" ];
+        raise Exit
+      in
+      let failed =
+        try
+          ignore (Tiff_unix.with_open_out path simulate_failure);
+          false
+        with Exit -> true
+      in
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Partially written file should be removed"
+        (not (Sys.file_exists path)))
+
+(* Explicit O_EXCL should prevent overwriting an existing file. *)
+let test_cleanup_explicit_o_excl _ =
+  let path = Filename.temp_file "ocaml_tiff_excl_" ".tiff" in
+  Fun.protect
+    ~finally:(fun () -> if Sys.file_exists path then Sys.remove path)
+    (fun () ->
+      let original_contents = "Original file contents" in
+      let oc = open_out_bin path in
+      output_string oc original_contents;
+      close_out oc;
+
+      let rejected =
+        try
+          Tiff_unix.with_open_out
+            ~open_flags:
+              [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_EXCL; Unix.O_CLOEXEC ] path
+            (fun _ -> ());
+          false
+        with Unix.Unix_error (Unix.EEXIST, _, _) -> true
+      in
+
+      assert_bool "O_EXCL should reject an existing file" rejected;
+      assert_bool "Existing file should not be deleted" (Sys.file_exists path);
+
+      let ic = open_in_bin path in
+      let contents = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      assert_equal ~msg:"Existing file contents should remain unchanged"
+        original_contents contents)
+
+(* Eio: exclusive creation must handle success, failure, and existing files. *)
+let test_eio_exclusive fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_excl_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write: remove newly created partial file. *)
+      remove_if_exists ();
+
+      let simulate_failure w =
+        w ~file_offset:Optint.Int63.zero
+          [ Cstruct.of_string "partial TIFF data" ];
+        raise Exit
+      in
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path
+               simulate_failure);
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Partial file should be removed"
+        (not (Sys.file_exists filename));
+
+      (* 2. Successful write: preserve completed file. *)
+      Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "TIFF test data" ]);
+
+      assert_bool "Successful write should preserve the file"
+        (Sys.file_exists filename);
+
+      let read_contents () =
+        let ic = open_in_bin filename in
+        Fun.protect
+          ~finally:(fun () -> close_in ic)
+          (fun () -> really_input_string ic (in_channel_length ic))
+      in
+
+      assert_equal ~msg:"Successful write contents" "TIFF test data"
+        (read_contents ());
+
+      (* 3. Existing file: reject exclusive creation. *)
+      let callback_called = ref false in
+
+      let rejected =
+        try
+          Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path (fun _ ->
+              callback_called := true);
+          false
+        with Eio.Exn.Io (Eio.Fs.E (Eio.Fs.Already_exists _), _) -> true
+      in
+
+      assert_bool "Exclusive creation should reject existing file" rejected;
+      assert_bool "Callback should not run" (not !callback_called);
+      assert_bool "Existing file should remain" (Sys.file_exists filename);
+      assert_equal ~msg:"Existing contents must remain unchanged"
+        "TIFF test data" (read_contents ()))
+
 let suite fs =
   let tests backend =
     [
@@ -913,6 +1138,17 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test LZW write unsupported compression"
+      >:: test_lzw_write_unsupported_compression;
+      "Test cleanup unsupported compression"
+      >:: test_cleanup_unsupported_compression;
+      "Test cleanup other write error" >:: test_cleanup_other_write_error;
+      "Test cleanup successful write" >:: test_cleanup_successful_write;
+      "Test cleanup preserves existing file"
+      >:: test_cleanup_preserves_existing_file;
+      "Test cleanup after partial write" >:: test_cleanup_after_partial_write;
+      "Test cleanup explicit O_EXCL" >:: test_cleanup_explicit_o_excl;
+      "Test Eio exclusive creation" >:: test_eio_exclusive fs;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]

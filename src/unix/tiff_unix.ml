@@ -37,7 +37,24 @@ let with_open_in ?(open_flags = [ Unix.O_RDONLY; Unix.O_CLOEXEC ]) s fn =
   let fd = Unix.openfile s open_flags 0 in
   Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> fn (of_fd fd))
 
-let with_open_out ?(open_flags = [ Unix.O_WRONLY; Unix.O_CREAT; O_CLOEXEC ]) s
-    fn =
-  let fd = Unix.openfile s open_flags 0o644 in
-  Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> fn (of_fd_write fd))
+(* Remove newly created files on write failure without deleting existing files. *)
+let with_open_out
+    ?(open_flags = [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_CLOEXEC ]) s fn =
+  let fd, created =
+    if List.mem Unix.O_CREAT open_flags then
+      try (Unix.openfile s (Unix.O_EXCL :: open_flags) 0o644, true)
+      with
+      | Unix.Unix_error (Unix.EEXIST, _, _)
+      when not (List.mem Unix.O_EXCL open_flags)
+      ->
+        (Unix.openfile s open_flags 0o644, false)
+    else (Unix.openfile s open_flags 0o644, false)
+  in
+  try
+    Fun.protect
+      ~finally:(fun () -> Unix.close fd)
+      (fun () -> fn (of_fd_write fd))
+  with exn ->
+    (if created then
+       try Unix.unlink s with Unix.Unix_error (Unix.ENOENT, _, _) -> ());
+    raise exn
