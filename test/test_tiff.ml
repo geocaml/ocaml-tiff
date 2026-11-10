@@ -898,6 +898,79 @@ let test_eio_exclusive fs _ =
       assert_equal ~msg:"Existing contents must remain unchanged"
         "TIFF test data" (read_contents ()))
 
+(* Eio: If_missing should clean up only newly created files. *)
+let test_eio_if_missing fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_missing_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  let read_contents () =
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write to a newly created file. *)
+      remove_if_exists ();
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path
+               (fun w ->
+                 w ~file_offset:Optint.Int63.zero
+                   [ Cstruct.of_string "partial TIFF data" ];
+                 raise Exit));
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Newly created file should be removed on failure"
+        (not (Sys.file_exists filename));
+
+      (* 2. Successful write to a newly created file. *)
+      Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "Completed TIFF data" ]);
+
+      assert_bool "Successful write should preserve the file"
+        (Sys.file_exists filename);
+      assert_equal ~msg:"Successful write contents" "Completed TIFF data"
+        (read_contents ());
+
+      (* 3. Failed write to an existing file. *)
+      let failed_existing =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path
+               (fun _ -> raise Exit));
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed_existing;
+      assert_bool "Existing file must not be deleted" (Sys.file_exists filename);
+      assert_equal ~msg:"Existing contents should remain unchanged"
+        "Completed TIFF data" (read_contents ());
+
+      (* 4. Successful write to an existing file. *)
+      Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "Updated TIFF data" ]);
+
+      assert_bool "Existing file should remain after successful write"
+        (Sys.file_exists filename);
+
+      let contents = read_contents () in
+      assert_bool "Existing file should contain updated data"
+        (String.starts_with ~prefix:"Updated TIFF data" contents))
+
 let suite fs =
   let tests backend =
     [
@@ -981,6 +1054,7 @@ let suite fs =
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
       "Test Eio exclusive creation" >:: test_eio_exclusive fs;
+      "Test Eio If_missing cleanup" >:: test_eio_if_missing fs;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
