@@ -1037,6 +1037,99 @@ let test_eio_never fs _ =
       assert_bool "Never must not create a file"
         (not (Sys.file_exists filename)))
 
+(* Eio Or_truncate regression tests for issue #154. *)
+
+let with_eio_truncate_test_file fs fn =
+  let filename = Filename.temp_file "ocaml_tiff_eio_truncate_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+  let write_contents contents =
+    let oc = open_out_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_out oc)
+      (fun () -> output_string oc contents)
+  in
+  let read_contents () =
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      fn path remove_if_exists write_contents read_contents)
+
+let eio_truncate_write path contents =
+  Tiff_eio.with_open_out ~open_flags:(`Or_truncate 0o644) path (fun w ->
+      w ~file_offset:Optint.Int63.zero [ Cstruct.of_string contents ])
+
+let eio_truncate_fail path ?partial () =
+  let raised =
+    try
+      ignore
+        (Tiff_eio.with_open_out ~open_flags:(`Or_truncate 0o644) path (fun w ->
+             (match partial with
+             | Some contents ->
+                 w ~file_offset:Optint.Int63.zero [ Cstruct.of_string contents ]
+             | None -> ());
+             raise Exit));
+      false
+    with Exit -> true
+  in
+  assert_bool "Original write exception should propagate" raised
+
+(* 1. New file: successful write should preserve the file. *)
+let test_eio_truncate_new_success fs _ =
+  with_eio_truncate_test_file fs (fun path remove_if_exists _ read_contents ->
+      remove_if_exists ();
+      eio_truncate_write path "New TIFF data";
+      assert_bool "New file should remain after success" (Eio.Path.is_file path);
+      assert_equal "New TIFF data" (read_contents ()))
+
+(* 2. New file: immediate failure should remove the file. *)
+let test_eio_truncate_new_failure fs _ =
+  with_eio_truncate_test_file fs (fun path remove_if_exists _ _ ->
+      remove_if_exists ();
+      eio_truncate_fail path ();
+      assert_bool "New file should be removed after failure"
+        (not (Eio.Path.is_file path)))
+
+(* 3. New file: partial write followed by failure. *)
+let test_eio_truncate_new_partial_failure fs _ =
+  with_eio_truncate_test_file fs (fun path remove_if_exists _ _ ->
+      remove_if_exists ();
+      eio_truncate_fail path ~partial:"Partial" ();
+      assert_bool "Partial new file should be removed"
+        (not (Eio.Path.is_file path)))
+
+(* 4. Existing file: successful write should truncate old contents. *)
+let test_eio_truncate_existing_success fs _ =
+  with_eio_truncate_test_file fs (fun path _ write_contents read_contents ->
+      write_contents "Original TIFF data with extra bytes";
+      eio_truncate_write path "Updated TIFF data";
+      assert_bool "Existing file should remain after success"
+        (Eio.Path.is_file path);
+      assert_equal "Updated TIFF data" (read_contents ()))
+
+(* 5. Existing file: immediate failure should preserve the file. *)
+let test_eio_truncate_existing_failure fs _ =
+  with_eio_truncate_test_file fs (fun path _ write_contents read_contents ->
+      write_contents "Original TIFF data";
+      eio_truncate_fail path ();
+      assert_bool "Existing file must remain after failure"
+        (Eio.Path.is_file path);
+      assert_equal "" (read_contents ()))
+
+(* 6. Existing file: partial write followed by failure. *)
+let test_eio_truncate_existing_partial_failure fs _ =
+  with_eio_truncate_test_file fs (fun path _ write_contents read_contents ->
+      write_contents "Original TIFF data";
+      eio_truncate_fail path ~partial:"Partial" ();
+      assert_bool "Existing file must remain after partial failure"
+        (Eio.Path.is_file path);
+      assert_equal "Partial" (read_contents ()))
+
 let suite fs =
   let tests backend =
     [
@@ -1122,6 +1215,16 @@ let suite fs =
       "Test Eio exclusive creation" >:: test_eio_exclusive fs;
       "Test Eio If_missing cleanup" >:: test_eio_if_missing fs;
       "Test Eio Never cleanup" >:: test_eio_never fs;
+      "Test Eio Or_truncate new success" >:: test_eio_truncate_new_success fs;
+      "Test Eio Or_truncate new failure" >:: test_eio_truncate_new_failure fs;
+      "Test Eio Or_truncate new partial failure"
+      >:: test_eio_truncate_new_partial_failure fs;
+      "Test Eio Or_truncate existing success"
+      >:: test_eio_truncate_existing_success fs;
+      "Test Eio Or_truncate existing failure"
+      >:: test_eio_truncate_existing_failure fs;
+      "Test Eio Or_truncate existing partial failure"
+      >:: test_eio_truncate_existing_partial_failure fs;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
