@@ -835,6 +835,10 @@ let test_read_ycbcr_subsample_fujifilm backend _ =
   let data = "./data/dscf0013.tif" in
   with_ro backend data @@ fun ro ->
   let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let h, v = Tiff.Ifd.ycbcr_subsampling (Tiff.ifd tiff) in
+  Printf.printf "Decoded YCbCr subsampling: (%d, %d)\n%!" h v;
+  assert_equal ~msg:"YCbCr subsampling" (2, 1)
+  (Tiff.Ifd.ycbcr_subsampling (Tiff.ifd tiff));
   let data_dim = Bigarray.Genarray.dims (Tiff.data tiff ro) in
   assert_equal ~msg:"Image dimension" [| 480; 640; 3 |] data_dim
 

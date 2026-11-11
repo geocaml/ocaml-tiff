@@ -56,6 +56,7 @@ type tag =
   | DateTime
   | ColorMap
   | ExtraSamples
+  | YCbCrSubSampling
   | Unknown of int
 
 type compression =
@@ -203,6 +204,9 @@ val geo_double_params : t -> float array
 val geo_ascii_params : t -> string list
 (** All of the ASCII valued GeoKeys. *)
 
+val ycbcr_subsampling : t -> int * int
+(**Return the horizontal and vertical subsample factors. *)
+
 module GeoKeys : sig
   type ifd = t
   type t
@@ -270,6 +274,10 @@ val cache_all_entries : t -> t
 val write_entry : entry -> File.wo -> unit
 (** Write data of an entry to an offset location. *)
 
+val photometric_interpretation : t -> photometric_interpretation
+(** Returns the photometric interpretation of the TIFF image.
+    Raises [Not_found] if the tag is absent. *)
+    
 type entry_values =
   | Ints of int list
   | String of string
