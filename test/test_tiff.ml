@@ -831,6 +831,13 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_read_ycbcr_subsample_fujifilm backend _ =
+  let data = "./data/dscf0013.tif" in
+  with_ro backend data @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let data_dim = Bigarray.Genarray.dims (Tiff.data tiff ro) in
+  assert_equal ~msg:"Image dimension" [| 480; 640; 3 |] data_dim
+
 let suite fs =
   let tests backend =
     [
@@ -870,6 +877,8 @@ let suite fs =
       "Test load simple uint16 tiff" >:: test_load_simple_uint16_tiff backend;
       "Test load simple int32 tiff" >:: test_load_simple_int32_tiff backend;
       "Test load simple uint32 tiff" >:: test_load_simple_uint32_tiff backend;
+      "Test read ycbcr subsample fujifilm"
+      >:: test_read_ycbcr_subsample_fujifilm backend;
       "Test write grayscale photometric"
       >:: test_write_grayscale_photometric backend;
       "Test safe cast rejects lossy conversion"
