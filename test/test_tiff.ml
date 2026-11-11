@@ -831,6 +831,305 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+(* Eio: exclusive creation must handle success, failure, and existing files. *)
+let test_eio_exclusive fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_excl_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write: remove newly created partial file. *)
+      remove_if_exists ();
+
+      let simulate_failure w =
+        w ~file_offset:Optint.Int63.zero
+          [ Cstruct.of_string "partial TIFF data" ];
+        raise Exit
+      in
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path
+               simulate_failure);
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Partial file should be removed"
+        (not (Sys.file_exists filename));
+
+      (* 2. Successful write: preserve completed file. *)
+      Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "TIFF test data" ]);
+
+      assert_bool "Successful write should preserve the file"
+        (Sys.file_exists filename);
+
+      let read_contents () =
+        let ic = open_in_bin filename in
+        Fun.protect
+          ~finally:(fun () -> close_in ic)
+          (fun () -> really_input_string ic (in_channel_length ic))
+      in
+
+      assert_equal ~msg:"Successful write contents" "TIFF test data"
+        (read_contents ());
+
+      (* 3. Existing file: reject exclusive creation. *)
+      let callback_called = ref false in
+
+      let rejected =
+        try
+          Tiff_eio.with_open_out ~open_flags:(`Exclusive 0o644) path (fun _ ->
+              callback_called := true);
+          false
+        with Eio.Exn.Io (Eio.Fs.E (Eio.Fs.Already_exists _), _) -> true
+      in
+
+      assert_bool "Exclusive creation should reject existing file" rejected;
+      assert_bool "Callback should not run" (not !callback_called);
+      assert_bool "Existing file should remain" (Sys.file_exists filename);
+      assert_equal ~msg:"Existing contents must remain unchanged"
+        "TIFF test data" (read_contents ()))
+
+(* Eio: If_missing should clean up only newly created files. *)
+let test_eio_if_missing fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_missing_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  let read_contents () =
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write to a newly created file. *)
+      remove_if_exists ();
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path
+               (fun w ->
+                 w ~file_offset:Optint.Int63.zero
+                   [ Cstruct.of_string "partial TIFF data" ];
+                 raise Exit));
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Newly created file should be removed on failure"
+        (not (Sys.file_exists filename));
+
+      (* 2. Successful write to a newly created file. *)
+      Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "Completed TIFF data" ]);
+
+      assert_bool "Successful write should preserve the file"
+        (Sys.file_exists filename);
+      assert_equal ~msg:"Successful write contents" "Completed TIFF data"
+        (read_contents ());
+
+      (* 3. Failed write to an existing file. *)
+      let failed_existing =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path
+               (fun _ -> raise Exit));
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed_existing;
+      assert_bool "Existing file must not be deleted" (Sys.file_exists filename);
+      assert_equal ~msg:"Existing contents should remain unchanged"
+        "Completed TIFF data" (read_contents ());
+
+      (* 4. Successful write to an existing file. *)
+      Tiff_eio.with_open_out ~open_flags:(`If_missing 0o644) path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "Updated TIFF data" ]);
+
+      assert_bool "Existing file should remain after successful write"
+        (Sys.file_exists filename);
+
+      let contents = read_contents () in
+      assert_bool "Existing file should contain updated data"
+        (String.starts_with ~prefix:"Updated TIFF data" contents))
+
+(* Eio: Never should only open existing files and never delete them. *)
+let test_eio_never fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_never_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  let read_contents () =
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write to an existing file. *)
+      let original_contents = "Original TIFF data" in
+      let oc = open_out_bin filename in
+      output_string oc original_contents;
+      close_out oc;
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:`Never path (fun w ->
+                 w ~file_offset:Optint.Int63.zero
+                   [ Cstruct.of_string "Partial" ];
+                 raise Exit));
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Existing file should remain after failure"
+        (Sys.file_exists filename);
+
+      (* Never does not roll back writes to existing files. *)
+      assert_bool "Existing file should retain written bytes"
+        (String.starts_with ~prefix:"Partial" (read_contents ()));
+
+      (* 2. Successful write to an existing file. *)
+      Tiff_eio.with_open_out ~open_flags:`Never path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "Updated TIFF data" ]);
+
+      assert_bool "Existing file should remain after success"
+        (Sys.file_exists filename);
+      assert_bool "Successful write should update contents"
+        (String.starts_with ~prefix:"Updated TIFF data" (read_contents ()));
+
+      (* 3. Missing file: opening should fail without creating it. *)
+      remove_if_exists ();
+
+      let rejected =
+        try
+          ignore (Tiff_eio.with_open_out ~open_flags:`Never path (fun _ -> ()));
+          false
+        with Eio.Exn.Io (Eio.Fs.E (Eio.Fs.Not_found _), _) -> true
+      in
+
+      assert_bool "Never should reject missing files" rejected;
+      assert_bool "Never must not create a file"
+        (not (Sys.file_exists filename)))
+
+(* Eio Or_truncate regression tests for issue #154. *)
+
+let with_eio_truncate_test_file fs fn =
+  let filename = Filename.temp_file "ocaml_tiff_eio_truncate_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+  let write_contents contents =
+    let oc = open_out_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_out oc)
+      (fun () -> output_string oc contents)
+  in
+  let read_contents () =
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      fn path remove_if_exists write_contents read_contents)
+
+let eio_truncate_write path contents =
+  Tiff_eio.with_open_out ~open_flags:(`Or_truncate 0o644) path (fun w ->
+      w ~file_offset:Optint.Int63.zero [ Cstruct.of_string contents ])
+
+let eio_truncate_fail path ?partial () =
+  let raised =
+    try
+      ignore
+        (Tiff_eio.with_open_out ~open_flags:(`Or_truncate 0o644) path (fun w ->
+             (match partial with
+             | Some contents ->
+                 w ~file_offset:Optint.Int63.zero [ Cstruct.of_string contents ]
+             | None -> ());
+             raise Exit));
+      false
+    with Exit -> true
+  in
+  assert_bool "Original write exception should propagate" raised
+
+(* 1. New file: successful write should preserve the file. *)
+let test_eio_truncate_new_success fs _ =
+  with_eio_truncate_test_file fs (fun path remove_if_exists _ read_contents ->
+      remove_if_exists ();
+      eio_truncate_write path "New TIFF data";
+      assert_bool "New file should remain after success" (Eio.Path.is_file path);
+      assert_equal "New TIFF data" (read_contents ()))
+
+(* 2. New file: immediate failure should remove the file. *)
+let test_eio_truncate_new_failure fs _ =
+  with_eio_truncate_test_file fs (fun path remove_if_exists _ _ ->
+      remove_if_exists ();
+      eio_truncate_fail path ();
+      assert_bool "New file should be removed after failure"
+        (not (Eio.Path.is_file path)))
+
+(* 3. New file: partial write followed by failure. *)
+let test_eio_truncate_new_partial_failure fs _ =
+  with_eio_truncate_test_file fs (fun path remove_if_exists _ _ ->
+      remove_if_exists ();
+      eio_truncate_fail path ~partial:"Partial" ();
+      assert_bool "Partial new file should be removed"
+        (not (Eio.Path.is_file path)))
+
+(* 4. Existing file: successful write should truncate old contents. *)
+let test_eio_truncate_existing_success fs _ =
+  with_eio_truncate_test_file fs (fun path _ write_contents read_contents ->
+      write_contents "Original TIFF data with extra bytes";
+      eio_truncate_write path "Updated TIFF data";
+      assert_bool "Existing file should remain after success"
+        (Eio.Path.is_file path);
+      assert_equal "Updated TIFF data" (read_contents ()))
+
+(* 5. Existing file: immediate failure should preserve the file. *)
+let test_eio_truncate_existing_failure fs _ =
+  with_eio_truncate_test_file fs (fun path _ write_contents read_contents ->
+      write_contents "Original TIFF data";
+      eio_truncate_fail path ();
+      assert_bool "Existing file must remain after failure"
+        (Eio.Path.is_file path);
+      assert_equal "" (read_contents ()))
+
+(* 6. Existing file: partial write followed by failure. *)
+let test_eio_truncate_existing_partial_failure fs _ =
+  with_eio_truncate_test_file fs (fun path _ write_contents read_contents ->
+      write_contents "Original TIFF data";
+      eio_truncate_fail path ~partial:"Partial" ();
+      assert_bool "Existing file must remain after partial failure"
+        (Eio.Path.is_file path);
+      assert_equal "Partial" (read_contents ()))
+
 let suite fs =
   let tests backend =
     [
@@ -913,6 +1212,19 @@ let suite fs =
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
+      "Test Eio exclusive creation" >:: test_eio_exclusive fs;
+      "Test Eio If_missing cleanup" >:: test_eio_if_missing fs;
+      "Test Eio Never cleanup" >:: test_eio_never fs;
+      "Test Eio Or_truncate new success" >:: test_eio_truncate_new_success fs;
+      "Test Eio Or_truncate new failure" >:: test_eio_truncate_new_failure fs;
+      "Test Eio Or_truncate new partial failure"
+      >:: test_eio_truncate_new_partial_failure fs;
+      "Test Eio Or_truncate existing success"
+      >:: test_eio_truncate_existing_success fs;
+      "Test Eio Or_truncate existing failure"
+      >:: test_eio_truncate_existing_failure fs;
+      "Test Eio Or_truncate existing partial failure"
+      >:: test_eio_truncate_existing_partial_failure fs;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
