@@ -971,6 +971,72 @@ let test_eio_if_missing fs _ =
       assert_bool "Existing file should contain updated data"
         (String.starts_with ~prefix:"Updated TIFF data" contents))
 
+(* Eio: Never should only open existing files and never delete them. *)
+let test_eio_never fs _ =
+  let filename = Filename.temp_file "ocaml_tiff_eio_never_" ".tiff" in
+  let path = Eio.Path.(fs / filename) in
+
+  let remove_if_exists () =
+    if Sys.file_exists filename then Sys.remove filename
+  in
+
+  let read_contents () =
+    let ic = open_in_bin filename in
+    Fun.protect
+      ~finally:(fun () -> close_in ic)
+      (fun () -> really_input_string ic (in_channel_length ic))
+  in
+
+  Fun.protect ~finally:remove_if_exists (fun () ->
+      (* 1. Failed write to an existing file. *)
+      let original_contents = "Original TIFF data" in
+      let oc = open_out_bin filename in
+      output_string oc original_contents;
+      close_out oc;
+
+      let failed =
+        try
+          ignore
+            (Tiff_eio.with_open_out ~open_flags:`Never path (fun w ->
+                 w ~file_offset:Optint.Int63.zero
+                   [ Cstruct.of_string "Partial" ];
+                 raise Exit));
+          false
+        with Exit -> true
+      in
+
+      assert_bool "Original exception should propagate" failed;
+      assert_bool "Existing file should remain after failure"
+        (Sys.file_exists filename);
+
+      (* Never does not roll back writes to existing files. *)
+      assert_bool "Existing file should retain written bytes"
+        (String.starts_with ~prefix:"Partial" (read_contents ()));
+
+      (* 2. Successful write to an existing file. *)
+      Tiff_eio.with_open_out ~open_flags:`Never path (fun w ->
+          w ~file_offset:Optint.Int63.zero
+            [ Cstruct.of_string "Updated TIFF data" ]);
+
+      assert_bool "Existing file should remain after success"
+        (Sys.file_exists filename);
+      assert_bool "Successful write should update contents"
+        (String.starts_with ~prefix:"Updated TIFF data" (read_contents ()));
+
+      (* 3. Missing file: opening should fail without creating it. *)
+      remove_if_exists ();
+
+      let rejected =
+        try
+          ignore (Tiff_eio.with_open_out ~open_flags:`Never path (fun _ -> ()));
+          false
+        with Eio.Exn.Io (Eio.Fs.E (Eio.Fs.Not_found _), _) -> true
+      in
+
+      assert_bool "Never should reject missing files" rejected;
+      assert_bool "Never must not create a file"
+        (not (Sys.file_exists filename)))
+
 let suite fs =
   let tests backend =
     [
@@ -1055,6 +1121,7 @@ let suite fs =
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
       "Test Eio exclusive creation" >:: test_eio_exclusive fs;
       "Test Eio If_missing cleanup" >:: test_eio_if_missing fs;
+      "Test Eio Never cleanup" >:: test_eio_never fs;
     ]
   in
   "Basic Tests" >::: [ "Eio" >::: tests (Eio fs); "Unix" >::: tests Unix ]
