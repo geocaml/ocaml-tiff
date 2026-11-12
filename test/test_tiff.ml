@@ -31,6 +31,15 @@ let with_ro backend path fn =
       Tiff_eio.with_open_in path fn
   | Unix -> Tiff_unix.with_open_in path fn
 
+let test_inline_bits_per_sample _ =
+  Eio_posix.run @@ fun env ->
+  let file = Eio.Path.(env#fs / "data/jello-gray.tiff") in
+  Tiff_eio.with_open_in file @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Int8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"Two inline SHORT values should decode to [8; 8]" [ 8; 8 ]
+    (Tiff.Ifd.bits_per_sample ifd)
+
 let with_wo backend path fn =
   match backend with
   | Eio fs ->
@@ -831,6 +840,133 @@ let test_missing_bits_per_sample backend _ =
   assert_equal ~msg:"Bits per sample defaults to 1" [ 1 ]
     (Tiff.Ifd.bits_per_sample ifd)
 
+let test_inline_shorts ~bigtiff ~values endian expected_bytes _ =
+  let header = Tiff.Ifd.create_header ~bigtiff endian in
+
+  let entry, _ =
+    Tiff.Ifd.make_entry ~kind:header.kind endian 256 Tiff.Ifd.BitsPerSample
+      (Tiff.Ifd.Ints values)
+  in
+
+  let entry_size = if bigtiff then 20 else 12 in
+  let count_size = if bigtiff then 8 else 2 in
+  let value_offset = count_size + if bigtiff then 12 else 8 in
+
+  (* Allocate space for the IFD entry count, entry, and next-IFD offset. *)
+  let output = Cstruct.create (count_size + entry_size + 8) in
+  (* Write the serialised IFD bytes into the in-memory Cstruct buffer. *)
+  let writer ~file_offset bufs =
+    let pos = Optint.Int63.to_int file_offset in
+    ignore
+      (List.fold_left
+         (fun pos buf ->
+           Cstruct.blit buf 0 output pos (Cstruct.length buf);
+           pos + Cstruct.length buf)
+         pos bufs)
+  in
+
+  Tiff.Ifd.write_raw_ifd ~file_offset:Optint.Int63.zero header writer [ entry ];
+
+  let actual =
+    Cstruct.to_string
+      (Cstruct.sub output value_offset (String.length expected_bytes))
+  in
+
+  (* Verify that the writer serialises inline SHORTs in the correct byte order. *)
+  assert_equal ~msg:"Inline SHORT values must be serialised correctly"
+    ~printer:(fun s ->
+      String.concat " "
+        (List.init (String.length s) (fun i ->
+             Printf.sprintf "%02x" (Char.code s.[i]))))
+    expected_bytes actual;
+
+  (* Read the serialised IFD back from the same Cstruct buffer. *)
+  let reader ~file_offset bufs =
+    let pos = ref (Optint.Int63.to_int file_offset) in
+    List.iter
+      (fun buf ->
+        let len = Cstruct.length buf in
+        if !pos < 0 || len > Cstruct.length output - !pos then raise End_of_file;
+        Cstruct.blit output !pos buf 0 len;
+        pos := !pos + len)
+      bufs
+  in
+
+  let ifd = Tiff.Ifd.v ~file_offset:Optint.Int63.zero header reader in
+
+  (* Verify that decoding preserves the original distinct SHORT values and order. *)
+  assert_equal ~msg:"Inline SHORT values must round-trip correctly"
+    ~printer:(fun xs ->
+      "[" ^ String.concat "; " (List.map string_of_int xs) ^ "]")
+    values
+    (Tiff.Ifd.bits_per_sample ifd)
+
+(* Classic TIFF: 1 inline SHORT *)
+let test_classic_single_little_inline_short =
+  test_inline_shorts ~bigtiff:false ~values:[ 8 ] Tiff.Endian.Little
+    "\x08\x00\x00\x00"
+
+let test_classic_single_big_inline_short =
+  test_inline_shorts ~bigtiff:false ~values:[ 8 ] Tiff.Endian.Big
+    "\x00\x08\x00\x00"
+
+(* Classic TIFF: 2 inline SHORTs *)
+let test_classic_little_inline_shorts =
+  test_inline_shorts ~bigtiff:false ~values:[ 8; 16 ] Tiff.Endian.Little
+    "\x08\x00\x10\x00"
+
+let test_classic_big_inline_shorts =
+  test_inline_shorts ~bigtiff:false ~values:[ 8; 16 ] Tiff.Endian.Big
+    "\x00\x08\x00\x10"
+
+(* BigTIFF: 1 inline SHORT *)
+let test_bigtiff_single_little_inline_short =
+  test_inline_shorts ~bigtiff:true ~values:[ 8 ] Tiff.Endian.Little
+    "\x08\x00\x00\x00\x00\x00\x00\x00"
+
+let test_bigtiff_single_big_inline_short =
+  test_inline_shorts ~bigtiff:true ~values:[ 8 ] Tiff.Endian.Big
+    "\x00\x08\x00\x00\x00\x00\x00\x00"
+
+(* BigTIFF: 2 inline SHORTs *)
+let test_bigtiff_two_little_inline_shorts =
+  test_inline_shorts ~bigtiff:true ~values:[ 8; 16 ] Tiff.Endian.Little
+    "\x08\x00\x10\x00\x00\x00\x00\x00"
+
+let test_bigtiff_two_big_inline_shorts =
+  test_inline_shorts ~bigtiff:true ~values:[ 8; 16 ] Tiff.Endian.Big
+    "\x00\x08\x00\x10\x00\x00\x00\x00"
+
+(* BigTIFF: 3 inline SHORTs *)
+let test_bigtiff_three_little_inline_shorts =
+  test_inline_shorts ~bigtiff:true ~values:[ 8; 16; 32 ] Tiff.Endian.Little
+    "\x08\x00\x10\x00\x20\x00\x00\x00"
+
+let test_bigtiff_three_big_inline_shorts =
+  test_inline_shorts ~bigtiff:true ~values:[ 8; 16; 32 ] Tiff.Endian.Big
+    "\x00\x08\x00\x10\x00\x20\x00\x00"
+
+(* BigTIFF: 4 inline SHORTs *)
+let test_bigtiff_little_inline_shorts =
+  test_inline_shorts ~bigtiff:true ~values:[ 8; 16; 32; 64 ] Tiff.Endian.Little
+    "\x08\x00\x10\x00\x20\x00\x40\x00"
+
+let test_bigtiff_big_inline_shorts =
+  test_inline_shorts ~bigtiff:true ~values:[ 8; 16; 32; 64 ] Tiff.Endian.Big
+    "\x00\x08\x00\x10\x00\x20\x00\x40"
+
+let test_bigtiff_read_inline_shorts filename expected _ =
+  Eio_posix.run @@ fun env ->
+  let file = Eio.Path.(env#fs / "data" / filename) in
+  Tiff_eio.with_open_in file @@ fun ro ->
+  let tiff = Tiff.from_file (Tiff.as_kind Tiff.Uint8) ro in
+  let ifd = Tiff.ifd tiff in
+  assert_equal ~msg:"BigTIFF should decode inline SHORT values"
+    ~printer:(fun values ->
+      "[" ^ String.concat "; " (List.map string_of_int values) ^ "]")
+    expected
+    (Tiff.Ifd.bits_per_sample ifd)
+
 let suite fs =
   let tests backend =
     [
@@ -910,6 +1046,42 @@ let suite fs =
       "Test missing BitsPerSample defaults to 1"
       >:: test_missing_bits_per_sample backend;
       "Test baseline tags" >:: test_baseline_tags backend;
+      "Test inline BitsPerSample values" >:: test_inline_bits_per_sample;
+      "Classic TIFF: 1 inline SHORT (little-endian)"
+      >:: test_classic_single_little_inline_short;
+      "Classic TIFF: 1 inline SHORT (big-endian)"
+      >:: test_classic_single_big_inline_short;
+      "Classic TIFF: 2 inline SHORTs (little-endian)"
+      >:: test_classic_little_inline_shorts;
+      "Classic TIFF: 2 inline SHORTs (big-endian)"
+      >:: test_classic_big_inline_shorts;
+      "BigTIFF: 1 inline SHORT (little-endian)"
+      >:: test_bigtiff_single_little_inline_short;
+      "BigTIFF: 1 inline SHORT (big-endian)"
+      >:: test_bigtiff_single_big_inline_short;
+      "BigTIFF: 2 inline SHORTs (little-endian)"
+      >:: test_bigtiff_two_little_inline_shorts;
+      "BigTIFF: 2 inline SHORTs (big-endian)"
+      >:: test_bigtiff_two_big_inline_shorts;
+      "BigTIFF: 3 inline SHORTs (little-endian)"
+      >:: test_bigtiff_three_little_inline_shorts;
+      "BigTIFF: 3 inline SHORTs (big-endian)"
+      >:: test_bigtiff_three_big_inline_shorts;
+      "BigTIFF: 4 inline SHORTs (little-endian)"
+      >:: test_bigtiff_little_inline_shorts;
+      "BigTIFF: 4 inline SHORTs (big-endian)" >:: test_bigtiff_big_inline_shorts;
+      "BigTIFF reads three inline SHORTs (little-endian)"
+      >:: test_bigtiff_read_inline_shorts "inline_three_shorts_le.tiff"
+            [ 8; 8; 8 ];
+      "BigTIFF reads three inline SHORTs (big-endian)"
+      >:: test_bigtiff_read_inline_shorts "inline_three_shorts_be.tiff"
+            [ 8; 8; 8 ];
+      "BigTIFF reads four inline SHORTs (little-endian)"
+      >:: test_bigtiff_read_inline_shorts "inline_four_shorts_le.tiff"
+            [ 8; 8; 8; 8 ];
+      "BigTIFF reads four inline SHORTs (big-endian)"
+      >:: test_bigtiff_read_inline_shorts "inline_four_shorts_be.tiff"
+            [ 8; 8; 8; 8 ];
       "Test color map" >:: test_color_map backend;
       "Test apply color map" >:: test_apply_color_map backend;
       "Test apply color map bad index" >:: test_apply_color_map_bad_index;
