@@ -161,7 +161,9 @@ module Data = struct
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let bits_per_sample = Ifd.bits_per_sample ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
-    let photometric_interpretation = Ifd.photometric_interpretation ifd in
+    let photometric_interpretation =
+      try Some (Ifd.photometric_interpretation ifd) with Not_found -> None
+    in
     let bytes_per_pixel =
       match planar_configuration with
       | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
@@ -170,7 +172,7 @@ module Data = struct
           failwith "Should not get this far if planar config isn't recognised."
     in
     let is_ycbcr_2x1 =
-      photometric_interpretation = Ifd.YCbCr
+      photometric_interpretation = Some Ifd.YCbCr
       && planar_configuration = Ifd.Chunky
       && samples_per_pixel = 3
       && bits_per_sample = [ 8; 8; 8 ]
