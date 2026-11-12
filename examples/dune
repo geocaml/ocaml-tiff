@@ -1,7 +1,3 @@
 (executable
  (name checkerboard)
  (libraries nx tiff.eio eio_posix))
-
-(executable
- (name ifd)
- (libraries nx tiff.eio eio_posix))
