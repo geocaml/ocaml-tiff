@@ -161,12 +161,22 @@ module Data = struct
     let samples_per_pixel = Ifd.samples_per_pixel ifd in
     let bits_per_sample = Ifd.bits_per_sample ifd in
     let planar_configuration = Ifd.planar_configuration ifd in
+    let photometric_interpretation =
+      try Some (Ifd.photometric_interpretation ifd) with Not_found -> None
+    in
     let bytes_per_pixel =
       match planar_configuration with
       | Chunky -> List.fold_left Int.add 0 bits_per_sample / 8
       | Planar -> List.nth bits_per_sample plane / 8
       | Unknown _ ->
           failwith "Should not get this far if planar config isn't recognised."
+    in
+    let is_ycbcr_2x1 =
+      photometric_interpretation = Some Ifd.YCbCr
+      && planar_configuration = Ifd.Chunky
+      && samples_per_pixel = 3
+      && bits_per_sample = [ 8; 8; 8 ]
+      && Ifd.ycbcr_subsampling ifd = (2, 1)
     in
     let strip_offsets = Array.of_list (Ifd.data_offsets ifd) in
     let strip_bytecounts = Array.of_list (Ifd.data_bytecounts ifd) in
@@ -210,7 +220,10 @@ module Data = struct
         else rows_per_strip
       in
 
-      let expected_size = rows_in_strip * width * bytes_per_pixel in
+      let expected_size =
+        if is_ycbcr_2x1 then rows_in_strip * ((width + 1) / 2) * 4
+        else rows_in_strip * width * bytes_per_pixel
+      in
 
       let strip_length =
         match sparse with false -> raw_strip_length | true -> expected_size
@@ -236,24 +249,47 @@ module Data = struct
 
           while !x_offset <= window.xoff + window.xsize - 1 do
             (* The index into the strip buffer *)
-            let index = !x_offset + (inner_row * width) in
+            (if is_ycbcr_2x1 then (
+               let groups_per_row = (width + 1) / 2 in
+               let group_index = !x_offset / 2 in
+               let group_start =
+                 (inner_row * groups_per_row * 4) + (group_index * 4)
+               in
+               let y_index = !x_offset mod 2 in
 
-            if samples_per_pixel = 1 || planar_configuration = Planar then
-              on_value strip_buffer (index * bytes_per_pixel)
-                [| y_offset - window.yoff; !x_offset - window.xoff |]
-                tiff_endianness
-            else
-              for channel = 0 to samples_per_pixel - 1 do
-                (*Calculate offset for each byte in the pixel*)
-                let byte_off =
-                  bytes_per_pixel / List.length bits_per_sample * channel
-                in
+               (* Y channel *)
+               on_value strip_buffer (group_start + y_index)
+                 [| y_offset - window.yoff; !x_offset - window.xoff; 0 |]
+                 tiff_endianness;
 
-                on_value strip_buffer
-                  ((index * bytes_per_pixel) + byte_off)
-                  [| y_offset - window.yoff; !x_offset - window.xoff; channel |]
-                  tiff_endianness
-              done;
+               (* Cb channel *)
+               on_value strip_buffer (group_start + 2)
+                 [| y_offset - window.yoff; !x_offset - window.xoff; 1 |]
+                 tiff_endianness;
+
+               (* Cr channel *)
+               on_value strip_buffer (group_start + 3)
+                 [| y_offset - window.yoff; !x_offset - window.xoff; 2 |]
+                 tiff_endianness)
+             else
+               let index = !x_offset + (inner_row * width) in
+               if samples_per_pixel = 1 || planar_configuration = Planar then
+                 on_value strip_buffer (index * bytes_per_pixel)
+                   [| y_offset - window.yoff; !x_offset - window.xoff |]
+                   tiff_endianness
+               else
+                 for channel = 0 to samples_per_pixel - 1 do
+                   (*Calculate offset for each byte in the pixel*)
+                   let byte_off =
+                     bytes_per_pixel / List.length bits_per_sample * channel
+                   in
+                   on_value strip_buffer
+                     ((index * bytes_per_pixel) + byte_off)
+                     [|
+                       y_offset - window.yoff; !x_offset - window.xoff; channel;
+                     |]
+                     tiff_endianness
+                 done);
             x_offset := !x_offset + 1
           done
       done;

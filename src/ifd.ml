@@ -192,6 +192,7 @@ type tag =
   | DateTime
   | ColorMap
   | ExtraSamples
+  | YCbCrSubSampling
   | Unknown of int
 
 let tag_of_int = function
@@ -231,6 +232,7 @@ let tag_of_int = function
   | 306 -> DateTime
   | 320 -> ColorMap
   | 338 -> ExtraSamples
+  | 530 -> YCbCrSubSampling
   | i -> Unknown i
 
 let tag_to_int = function
@@ -270,6 +272,7 @@ let tag_to_int = function
   | DateTime -> 306
   | ColorMap -> 320
   | ExtraSamples -> 338
+  | YCbCrSubSampling -> 530
   | Unknown i -> i
 
 let tag_to_fields = function
@@ -279,7 +282,7 @@ let tag_to_fields = function
   | BitsPerSample | Compression | PhotometricInterpretation | SamplesPerPixel
   | ResolutionUnit | PlanarConfiguration | SampleFormat | Predictor
   | GeoKeyDirectory | FillOrder | Orientation | PageNumber | ColorMap
-  | ExtraSamples ->
+  | ExtraSamples | YCbCrSubSampling ->
       [ Short ]
   | TileOffsets | NewSubfileType -> [ Long ]
   | ModelPixelScale | ModelTiepoint | ModelTransformation | GeoDoubleParams ->
@@ -327,6 +330,7 @@ let pp_tag ppf (x : tag) =
   | DateTime -> Fmt.string ppf "date-time"
   | ColorMap -> Fmt.string ppf "color-map"
   | ExtraSamples -> Fmt.string ppf "extra-samples"
+  | YCbCrSubSampling -> Fmt.string ppf "ycbcr-subsampling"
   | Unknown i -> Fmt.pf ppf "unknown-%i" i
 
 type offset =
@@ -692,6 +696,39 @@ let document_name t =
   let s = Cstruct.concat (read_entry_raw entry t.ro) |> Cstruct.to_string in
   String.sub s 0 (String.length s - 1)
 
+let ycbcr_subsampling t =
+  match lookup t.entries YCbCrSubSampling with
+  | None -> (2, 2)
+  | Some entry ->
+      if entry.field = Short && entry.count = 2L then
+        let values =
+          match entry.offset with
+          | Immediate imm -> (
+              let lower = Int64.logand imm 0xFFFFL |> Int64.to_int in
+              let upper =
+                Int64.shift_right_logical imm 16
+                |> Int64.logand 0xFFFFL |> Int64.to_int
+              in
+              match t.header.byte_order with
+              | Endian.Little -> [ lower; upper ]
+              | Endian.Big -> [ upper; lower ])
+          | _ ->
+              read_entry_raw entry t.ro
+              |> List.map (Endian.uint16 t.header.byte_order)
+        in
+        match values with
+        | [ horizontal; vertical ] ->
+            if horizontal > 0 && vertical > 0 then (horizontal, vertical)
+            else
+              Error.raisef Error.Malformed_file
+                "Invalid YCbCr subsampling factors: %a" pp_entry entry
+        | _ ->
+            Error.raisef Error.Malformed_file "Bad entry for short read: %a"
+              pp_entry entry
+      else
+        Error.raisef Error.Malformed_file
+          "Incorrect file entries for the TIFF file: %a" pp_entry entry
+
 let bits_per_sample t =
   match lookup t.entries BitsPerSample with
   | None -> [ 1 ] (* TIFF 6.0 default *)
@@ -755,6 +792,10 @@ let compression t =
   match lookup t.entries Compression with
   | None -> No_compression
   | Some entry -> read_entry entry |> compression_of_int
+
+let photometric_interpretation t =
+  lookup_exn t.entries PhotometricInterpretation
+  |> read_entry |> photometric_interpretation_of_int
 
 let tiepoint t =
   let entry = lookup_exn t.entries ModelTiepoint in
@@ -1102,11 +1143,16 @@ let v ~file_offset header reader =
           Endian.uint16 ~offset:(base_offset + 2) endian buf |> field_of_int
         in
         let count = Endian.uint32 ~offset:(base_offset + 4) endian buf in
-        let is_immediate = is_immediate_raw ~count field in
+        let is_immediate =
+          is_immediate_raw ~count field
+          || (tag = YCbCrSubSampling && field = Short && count = 2L)
+        in
         let offset =
           match (is_immediate, field) with
           | true, Byte ->
               Cstruct.get_uint8 buf (base_offset + 8) |> Int64.of_int
+          | true, Short when tag = YCbCrSubSampling ->
+              Endian.uint32 ~offset:(base_offset + 8) endian buf
           | true, Short ->
               Endian.uint16 ~offset:(base_offset + 8) endian buf |> Int64.of_int
           | _ -> Endian.uint32 ~offset:(base_offset + 8) endian buf
