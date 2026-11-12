@@ -275,9 +275,9 @@ val write_entry : entry -> File.wo -> unit
 (** Write data of an entry to an offset location. *)
 
 val photometric_interpretation : t -> photometric_interpretation
-(** Returns the photometric interpretation of the TIFF image.
-    Raises [Not_found] if the tag is absent. *)
-    
+(** Returns the photometric interpretation of the TIFF image. Raises [Not_found]
+    if the tag is absent. *)
+
 type entry_values =
   | Ints of int list
   | String of string

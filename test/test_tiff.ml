@@ -838,9 +838,49 @@ let test_read_ycbcr_subsample_fujifilm backend _ =
   let h, v = Tiff.Ifd.ycbcr_subsampling (Tiff.ifd tiff) in
   Printf.printf "Decoded YCbCr subsampling: (%d, %d)\n%!" h v;
   assert_equal ~msg:"YCbCr subsampling" (2, 1)
-  (Tiff.Ifd.ycbcr_subsampling (Tiff.ifd tiff));
-  let data_dim = Bigarray.Genarray.dims (Tiff.data tiff ro) in
-  assert_equal ~msg:"Image dimension" [| 480; 640; 3 |] data_dim
+    (Tiff.Ifd.ycbcr_subsampling (Tiff.ifd tiff));
+
+  let data = Tiff.data tiff ro in
+  let data_dim = Bigarray.Genarray.dims data in
+  assert_equal ~msg:"Image dimension" [| 480; 640; 3 |] data_dim;
+
+  (* Verify the first pixel *)
+  assert_equal ~msg:"Pixel (0,0) Y" 2 (Bigarray.Genarray.get data [| 0; 0; 0 |]);
+
+  assert_equal ~msg:"Pixel (0,0) Cb" 128
+    (Bigarray.Genarray.get data [| 0; 0; 1 |]);
+
+  assert_equal ~msg:"Pixel (0,0) Cr" 130
+    (Bigarray.Genarray.get data [| 0; 0; 2 |]);
+
+  (* Verify the second pixel *)
+  assert_equal ~msg:"Pixel (0,1) Y" 1 (Bigarray.Genarray.get data [| 0; 1; 0 |]);
+
+  assert_equal ~msg:"Pixel (0,1) Cb" 128
+    (Bigarray.Genarray.get data [| 0; 1; 1 |]);
+
+  assert_equal ~msg:"Pixel (0,1) Cr" 130
+    (Bigarray.Genarray.get data [| 0; 1; 2 |]);
+
+  (* Verify the final row of the first strip *)
+  assert_equal ~msg:"Pixel (14,0) Y" 1
+    (Bigarray.Genarray.get data [| 14; 0; 0 |]);
+
+  assert_equal ~msg:"Pixel (14,0) Cb" 128
+    (Bigarray.Genarray.get data [| 14; 0; 1 |]);
+
+  assert_equal ~msg:"Pixel (14,0) Cr" 128
+    (Bigarray.Genarray.get data [| 14; 0; 2 |]);
+
+  (* Verify the first row of the second strip *)
+  assert_equal ~msg:"Pixel (15,0) Y" 1
+    (Bigarray.Genarray.get data [| 15; 0; 0 |]);
+
+  assert_equal ~msg:"Pixel (15,0) Cb" 128
+    (Bigarray.Genarray.get data [| 15; 0; 1 |]);
+
+  assert_equal ~msg:"Pixel (15,0) Cr" 128
+    (Bigarray.Genarray.get data [| 15; 0; 2 |])
 
 let suite fs =
   let tests backend =
